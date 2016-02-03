@@ -28,6 +28,10 @@
  * >> f = open('output.json')
  * >> d = pd.read_json(f, orient='split', precise_float=True)
  *
+ * On success, a json string is printed to stdout and the process terminates
+ * with an exit status of zero.  On failure, information is written to stderr
+ * and the process terminates with a nonzero exit status.
+ *
  * input format:
  * {
  * "model_and_data" : {
@@ -59,8 +63,15 @@
  * }
  *
  */
-#include "flint.h"
+#include "jansson.h"
+#include "flint/flint.h"
 #include "arb_mat.h"
+
+#include "runjson.h"
+
+
+json_t *run(void *userdata, json_t *root);
+void _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 
 void
 _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
@@ -81,155 +92,71 @@ _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
     }
 }
 
-void
-_prune_helper(arb_mat_t res, fmpq_mat_t Q, slong p, ulong q,
-              arb_mat_t mat, slong prec)
+
+json_t *run(void *userdata, json_t *root)
 {
-    arb_mat_t R, P;
-    fmpq_mat_t Qt;
-    fmpq_t t;
-
-    /* initialize the exact branch length */
-    fmpq_init(t);
-    fmpq_set_si(t, p, q);
-
-    /*
-    flint_printf("branch length: ");
-    fmpq_print(t);
-    flint_printf("\n");
-    */
-
-    /* initialize the exact rate matrix */
-    fmpq_mat_init(Qt, 4, 4);
-    _fmpq_mat_scalar_mul_fmpq(Qt, Q, t);
-
-    /*
-    flint_printf("scaled rational rate matrix:\n");
-    fmpq_mat_print(Qt);
-    */
-
-    /* initialize the arbitrary precision rate matrix */
-    arb_mat_init(R, 4, 4);
-    arb_mat_set_fmpq_mat(R, Qt, prec);
-
-    /* initialize the matrix exponential */
-    arb_mat_init(P, 4, 4);
-    arb_mat_exp(P, R, prec);
-
-    /*
-    flint_printf("probability transition matrix:\n");
-    arb_mat_printd(P, 15);
-    */
-
-    /* compute the matrix exponential matrix product */
-    arb_mat_mul(res, P, mat, prec);
-
-    arb_mat_clear(R);
-    arb_mat_clear(P);
-    fmpq_mat_clear(Qt);
-    fmpq_clear(t);
-}
-
-void
-_prune(arb_mat_t Lc, fmpq_mat_t Q,
-       arb_mat_t La, slong pa, ulong qa,
-       arb_mat_t Lb, slong pb, ulong qb, slong prec)
-{
-    _prune_helper(La, Q, pa, qa, La, prec);
-    _prune_helper(Lb, Q, pb, qb, Lb, prec);
-    _arb_mat_mul_entrywise(Lc, La, Lb, prec);
-}
-
-int
-main(int argc, char *argv[])
-{
-    slong prec, i, j;
-    /*
-    slong digits, 
-    */
-    arb_mat_struct leaf[5];
-    fmpq_mat_t Q;
-    arb_mat_t prior;
-    arb_mat_t final;
-
-    /*
-    digits = 100;
-    prec = digits * 3.3219280948873623 + 5;
-    */
-    prec = 8192;
-
-    flint_printf("working precision: %ld\n", prec);
-
-    flint_printf("initializing leaf states...\n");
-    for (i = 0; i < 5; i++)
+    if (userdata)
     {
-        arb_mat_init(leaf + i, 4, 1);
-        arb_mat_zero(leaf + i);
-    }
-    arb_one(arb_mat_entry(leaf+0, 0, 0)); /* A */
-    arb_one(arb_mat_entry(leaf+1, 1, 0)); /* C */
-    arb_one(arb_mat_entry(leaf+2, 1, 0)); /* C */
-    arb_one(arb_mat_entry(leaf+3, 1, 0)); /* C */
-    arb_one(arb_mat_entry(leaf+4, 2, 0)); /* G */
-
-
-    /* initialize the prior row vector [[1/4, 1/4, 1/4, 1/4]] */
-    flint_printf("initializing prior...\n");
-    arb_mat_init(prior, 1, 4);
-    for (i = 0; i < 4; i++)
-    {
-        arb_one(arb_mat_entry(prior, 0, i));
-        arb_mul_2exp_si(arb_mat_entry(prior, 0, i),
-                        arb_mat_entry(prior, 0, i), -2);
+        fprintf(stderr, "error: unexpected userdata\n");
+        abort();
     }
 
-    /* initialize the 4x4 Jukes-Cantor rate matrix */
-    flint_printf("initializing rate matrix...\n");
-    fmpq_mat_init(Q, 4, 4);
-    _jukes_cantor_rate_matrix(Q);
-
     /*
-    flint_printf("rational rate matrix:\n");
-    fmpq_mat_print(Q);
-    */
+ * input format:
+ * {
+ * "model_and_data" : {
+ *  "edges" : [[a, b], [c, d], ...],                 (#edges, 2)
+ *  "edge_rate_coefficients" : [a, b, ...],          (#edges, )
+ *  "rate_matrix" : [[a, b, ...], [c, d, ...], ...], (#states, #states)
+ *  "probability_array" : [...]                      (#sites, #nodes, #states)
+ * },
+ * "reductions" : [
+ * {
+ *  "columns" : ["site"],
+ *  "selection" : [a, b, c, ...], (optional)
+ *  "aggregation" : {"sum" | "avg" | [a, b, c, ...]} (optional)
+ * }], (optional)
+ * "working_precision" : a, (optional)
+ * "sum_product_strategy" : {"brute_force" | "dynamic_programming"} (optional)
+ * }
+ * */
 
-    /* prune the tree in a hardcoded order, with hardcoded branch lengths */
-    flint_printf("pruning...\n");
-    _prune(leaf+0, Q, leaf+0, 1, 100, leaf+1, 1, 5, prec);
-    _prune(leaf+3, Q, leaf+3, 3, 10, leaf+4, 1, 50, prec);
-    _prune(leaf+2, Q, leaf+2, 3, 10, leaf+3, 1, 20, prec);
-    _prune(leaf+0, Q, leaf+0, 1, 20, leaf+2, 2, 20, prec);
+    json_t *model_and_data = NULL;
+    json_t *reductions = NULL;
+    int working_precision = 0;
+    const char *sum_product_strategy = NULL;
 
-    /* compute a final dot product involving the prior distribution */
-    flint_printf("taking final dot product...\n");
-    arb_mat_init(final, 1, 1);
-    arb_mat_mul(final, prior, leaf+0, prec);
-
-    /* report the likelihood */
-    flint_printf("likelihood: ");
-    arb_printn(arb_mat_entry(final, 0, 0), 50000, ARB_STR_CONDENSE * 20);
-    flint_printf("\n");
-    /*
-    flint_printf("likelihood: ");
-    arb_print(arb_mat_entry(final, 0, 0));
-    flint_printf("\n");
-    */
-
-    /* clear */
-    arb_mat_clear(final);
-    arb_mat_clear(prior);
-    fmpq_mat_clear(Q);
-    for (i = 0; i < 5; i++)
+    /* parse the json input */
     {
-        arb_mat_clear(leaf + i);
+        json_error_t err;
+        int result;
+        size_t flags;
+        
+        flags = JSON_STRICT;
+        result = json_unpack_ex(root, &err, flags,
+                "{s:o, s?o, s?i, s?s}",
+                "model_and_data", &model_and_data,
+                "reductions", &reductions,
+                "working_precision", &working_precision,
+                "sum_product_strategy", &sum_product_strategy);
+        if (result)
+        {
+            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+            abort();
+        }
     }
 
-    return 0;
+    /* return new json object */
+    {
+        json_t *j_out;
+        j_out = json_pack("{s:s}", "hello", "world");
+        return j_out;
+    }
 }
+
 
 int main(void)
 {
-    /*
     json_hom_t hom;
     hom->userdata = NULL;
     hom->clear = NULL;
@@ -238,8 +165,4 @@ int main(void)
 
     flint_cleanup();
     return result;
-    */
-    int i;
-    i = 0;
-    return add_two_ints(i, i);
 }
