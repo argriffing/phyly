@@ -112,15 +112,12 @@ validate_edge(int *v, json_t *root)
 
 
 int
-validate_edges(size_t *node_count, size_t *edge_count, json_t *root)
+validate_edges(int *node_count, int *edge_count, json_t *root)
 {
     int pair[2];
-    int i;
+    int i, j, result, idx;
+    int *v;
     json_t *edge;
-
-    size_t *v;
-    int result;
-    int idx;
 
     v = NULL;
     result = 0;
@@ -128,7 +125,8 @@ validate_edges(size_t *node_count, size_t *edge_count, json_t *root)
     if (!json_is_array(root))
     {
         fprintf(stderr, "validate_edges: not an array\n");
-        result = -1; goto finish;
+        result = -1;
+        goto finish;
     }
 
     *edge_count = json_array_size(root);
@@ -139,20 +137,46 @@ validate_edges(size_t *node_count, size_t *edge_count, json_t *root)
     {
         edge = json_array_get(root, i);
 
+        /* require that the edge is a json array of two integers */
         result = validate_edge(pair, edge);
         if (result) goto finish;
+
+        /* debug */
+        printf("%d [%d %d]\n", i, pair[0], pair[1]);
         
-        for (i = 0; i < 2; i++)
+        /* require that the node indices are within a valid range */
+        for (j = 0; j < 2; j++)
         {
-            idx = pair[i];
+            idx = pair[j];
             if (idx < 0 || idx >= *node_count)
             {
                 fprintf(stderr, "validate_edges: node indices must be ");
                 fprintf(stderr, "integers no less than 0 and no greater ");
                 fprintf(stderr, "than the number of edges\n");
-                result = -1; goto finish;
+                result = -1;
+                goto finish;
             }
             v[idx]++;
+        }
+
+        /* require that edges have distinct endpoints */
+        if (pair[0] == pair[1])
+        {
+            fprintf(stderr, "validate_edges: edges cannot be loops\n");
+            result = -1;
+            goto finish;
+        }
+    }
+
+    /* require that each node is an endpoint of at least one edge */
+    for (i = 0; i < *node_count; i++)
+    {
+        if (v[i] < 1)
+        {
+            fprintf(stderr, "validate_edges: node index %d is not ", i);
+            fprintf(stderr, "an endpoint of any edge\n");
+            result = -1;
+            goto finish;
         }
     }
 
@@ -199,6 +223,11 @@ validate_model_and_data(json_t *root)
     }
 
     /* edges */
+    {
+        int node_count, edge_count;
+        result = validate_edges(&node_count, &edge_count, edges);
+        if (result) return result;
+    }
 
     return 0;
 }
@@ -206,6 +235,8 @@ validate_model_and_data(json_t *root)
 
 json_t *run(void *userdata, json_t *root)
 {
+    int result;
+
     if (userdata)
     {
         fprintf(stderr, "error: unexpected userdata\n");
@@ -256,6 +287,10 @@ json_t *run(void *userdata, json_t *root)
             abort();
         }
     }
+
+    /* validate the model and data section of the json input */
+    result = validate_model_and_data(model_and_data);
+    if (result) abort();
 
     /* return new json object */
     {
