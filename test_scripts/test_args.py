@@ -102,6 +102,21 @@ def test_bad_edges_cycle():
     x['model_and_data']['edges'] = [[0, 1], [1, 2], [2, 0]]
     assert_raises(ReturnError, runjson, args, x)
 
+def test_bad_edges_disconnected_cycle():
+    # This graph looks like a tree locally and using global degree statistics,
+    # but it is disconnected and has a cycle.
+    x = copy.deepcopy(good_input)
+    x['model_and_data']['edges'] = [
+            [0, 1], [1, 2], [2, 0],
+            [3, 4], [4, 5], [4, 6]]
+    assert_raises(ReturnError, runjson, args, x)
+
+def test_bad_edges_undirected_tree():
+    # This graph is an undirected tree but not a directed tree.
+    x = copy.deepcopy(good_input)
+    x['model_and_data']['edges'] = [[0, 1], [2, 1], [1, 3]]
+    assert_raises(ReturnError, runjson, args, x)
+
 def test_bad_edges_disconnected_dag_and_tree():
     # This graph shares some properties with trees, but is not a tree.
     # It is a directed acyclic graph, and the number of nodes in the graph

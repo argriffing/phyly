@@ -115,11 +115,12 @@ int
 validate_edges(int *node_count, int *edge_count, json_t *root)
 {
     int pair[2];
-    int i, j, result, idx;
-    int *v;
+    int i, result;
+    int *in_degree, *out_degree;
     json_t *edge;
 
-    v = NULL;
+    in_degree = NULL;
+    out_degree = NULL;
     result = 0;
 
     if (!json_is_array(root))
@@ -131,22 +132,24 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
 
     *edge_count = json_array_size(root);
     *node_count = *edge_count + 1;
-    v = calloc(*node_count, sizeof(*v));
+    in_degree = calloc(*node_count, sizeof(*in_degree));
+    out_degree = calloc(*node_count, sizeof(*out_degree));
 
     for (i = 0; i < *edge_count; i++)
     {
+        int j;
+
         edge = json_array_get(root, i);
 
         /* require that the edge is a json array of two integers */
         result = validate_edge(pair, edge);
         if (result) goto finish;
 
-        /* debug */
-        printf("%d [%d %d]\n", i, pair[0], pair[1]);
-        
         /* require that the node indices are within a valid range */
         for (j = 0; j < 2; j++)
         {
+            int idx;
+
             idx = pair[j];
             if (idx < 0 || idx >= *node_count)
             {
@@ -156,7 +159,6 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
                 result = -1;
                 goto finish;
             }
-            v[idx]++;
         }
 
         /* require that edges have distinct endpoints */
@@ -166,12 +168,30 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
             result = -1;
             goto finish;
         }
+
+        /* update vertex degrees */
+        out_degree[pair[0]]++;
+        in_degree[pair[1]]++;
+    }
+
+    /* require that the in-degree of each node is 0 or 1 */
+    for (i = 0; i < *node_count; i++)
+    {
+        if (in_degree[i] < 0 || in_degree[i] > 1)
+        {
+            fprintf(stderr, "validate_edges: the in-degree of each node ");
+            fprintf(stderr, "must be 0 or 1\n");
+            result = -1;
+            goto finish;
+        }
     }
 
     /* require that each node is an endpoint of at least one edge */
     for (i = 0; i < *node_count; i++)
     {
-        if (v[i] < 1)
+        int degree;
+        degree = in_degree[i] + out_degree[i];
+        if (degree < 1)
         {
             fprintf(stderr, "validate_edges: node index %d is not ", i);
             fprintf(stderr, "an endpoint of any edge\n");
@@ -182,7 +202,8 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
 
 finish:
 
-    free(v);
+    free(in_degree);
+    free(out_degree);
     return result;
 }
 
