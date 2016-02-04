@@ -69,7 +69,6 @@
 
 #include "runjson.h"
 
-
 json_t *run(void *userdata, json_t *root);
 void _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 
@@ -90,6 +89,118 @@ _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
                     arb_mat_entry(b, i, j), prec);
         }
     }
+}
+
+
+int
+validate_edge(int *v, json_t *root)
+{
+    json_error_t err;
+    int result;
+    size_t flags;
+
+    flags = JSON_STRICT;
+    result = json_unpack_ex(root, &err, flags, "[i, i]", v+0, v+1);
+    if (result)
+    {
+        fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+        return result;
+    }
+
+    return 0;
+}
+
+
+int
+validate_edges(size_t *node_count, size_t *edge_count, json_t *root)
+{
+    int pair[2];
+    int i;
+    json_t *edge;
+
+    size_t *v;
+    int result;
+    int idx;
+
+    v = NULL;
+    result = 0;
+
+    if (!json_is_array(root))
+    {
+        fprintf(stderr, "validate_edges: not an array\n");
+        result = -1; goto finish;
+    }
+
+    *edge_count = json_array_size(root);
+    *node_count = *edge_count + 1;
+    v = calloc(*node_count, sizeof(*v));
+
+    for (i = 0; i < *edge_count; i++)
+    {
+        edge = json_array_get(root, i);
+
+        result = validate_edge(pair, edge);
+        if (result) goto finish;
+        
+        for (i = 0; i < 2; i++)
+        {
+            idx = pair[i];
+            if (idx < 0 || idx >= *node_count)
+            {
+                fprintf(stderr, "validate_edges: node indices must be ");
+                fprintf(stderr, "integers no less than 0 and no greater ");
+                fprintf(stderr, "than the number of edges\n");
+                result = -1; goto finish;
+            }
+            v[idx]++;
+        }
+    }
+
+finish:
+
+    free(v);
+    return result;
+}
+
+
+
+int
+validate_model_and_data(json_t *root)
+{
+    json_error_t err;
+    int result;
+    size_t flags;
+    json_t *edges;
+    json_t *edge_rate_coefficients;
+    json_t *rate_matrix;
+    json_t *probability_array;
+
+    flags = JSON_STRICT;
+
+    /*
+ * "model_and_data" : {
+ *  "edges" : [[a, b], [c, d], ...],                 (#edges, 2)
+ *  "edge_rate_coefficients" : [a, b, ...],          (#edges, )
+ *  "rate_matrix" : [[a, b, ...], [c, d, ...], ...], (#states, #states)
+ *  "probability_array" : [...]                      (#sites, #nodes, #states)
+ *  */
+        
+    /* all four members are json objects and all are required */
+    result = json_unpack_ex(root, &err, flags,
+            "{s:o, s:o, s:o, s:o}",
+            "edges", &edges,
+            "edge_rate_coefficients", &edge_rate_coefficients,
+            "rate_matrix", &rate_matrix,
+            "probability_array", &probability_array);
+    if (result)
+    {
+        fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+        return result;
+    }
+
+    /* edges */
+
+    return 0;
 }
 
 
