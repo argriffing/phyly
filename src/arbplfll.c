@@ -70,9 +70,64 @@
 #include "runjson.h"
 #include "csr_graph.h"
 
+
+typedef struct
+{
+    double *data;
+    int r;
+    int c;
+} dmat_struct;
+typedef dmat_struct dmat_t[1];
+
+static __inline__ int
+dmat_nrows(dmat_t mat)
+{
+    return mat->r;
+}
+
+static __inline__ int
+dmat_ncols(dmat_t mat)
+{
+    return mat->c;
+}
+
+static __inline__ double *
+dmat_entry(dmat_t mat, int i, int j)
+{
+    return mat->data + i * mat->c + j;
+}
+
+void
+dmat_pre_init(dmat_t mat)
+{
+    /* either init or clear may follow this call */
+    mat->data = NULL;
+    mat->r = 0;
+    mat->c = 0;
+}
+
+void
+dmat_init(dmat_t mat, int r, int c)
+{
+    mat->data = malloc(r*c*sizeof(double));
+    mat->r = r;
+    mat->c = c;
+}
+
+void
+dmat_clear(dmat_t mat)
+{
+    free(mat->data);
+}
+
+
+
+
+
 typedef struct
 {
     csr_graph_t g;
+    dmat_t mat;
     int root_node_index;
     int *preorder;
     int *edge_rate_coefficients;
@@ -86,6 +141,7 @@ model_and_data_init(model_and_data_t m)
     m->preorder = NULL;
     m->edge_rate_coefficients = NULL;
     csr_graph_init(m->g);
+    dmat_pre_init(m->mat);
 }
 
 void
@@ -94,6 +150,7 @@ model_and_data_clear(model_and_data_t m)
     free(m->preorder);
     free(m->edge_rate_coefficients);
     csr_graph_clear(m->g);
+    dmat_clear(m->mat);
 }
 
 
@@ -349,6 +406,66 @@ finish:
 
 
 int
+validate_rate_matrix(json_t *root)
+{
+    int i, j;
+    int n, col_count;
+    json_t *x, *y;
+    dmat_t mat;
+    int result;
+
+    result = 0;
+    dmat_pre_init(mat);
+
+    if (!json_is_array(root))
+    {
+        fprintf(stderr, "validate_rate_matrix: not an array\n");
+        result = -1;
+        goto finish;
+    }
+
+    n = json_array_size(root);
+    dmat_init(mat, n, n);
+
+    for (i = 0; i < n; i++)
+    {
+        x = json_array_get(root, i);
+        if (!json_is_array(x))
+        {
+            fprintf(stderr, "validate_rate_matrix: this row is not an array\n");
+            result = -1;
+            goto finish;
+        }
+        col_count = json_array_size(x);
+        if (col_count != n)
+        {
+            fprintf(stderr, "validate_rate_matrix: this row length does not ");
+            fprintf(stderr, "match the number of rows: ");
+            fprintf(stderr, "(actual: %d desired: %d)\n", col_count, n);
+            result = -1;
+            goto finish;
+        }
+        for (j = 0; j < n; j++)
+        {
+            y = json_array_get(x, i);
+            if (!json_is_number(y))
+            {
+                fprintf(stderr, "validate_rate_matrix: not a number\n");
+                result = -1;
+                goto finish;
+            }
+            *dmat_entry(mat, i, j) = json_number_value(y);
+        }
+    }
+
+finish:
+
+    dmat_clear(mat);
+    return result;
+}
+
+
+int
 validate_model_and_data(json_t *root)
 {
     json_error_t err;
@@ -395,6 +512,12 @@ validate_model_and_data(json_t *root)
     /* edge_rate_coefficients */
     {
         result = validate_edge_rate_coefficients(m->g, edge_rate_coefficients);
+        if (result) goto finish;
+    }
+
+    /* rate_matrix */
+    {
+        result = validate_rate_matrix(rate_matrix);
         if (result) goto finish;
     }
 

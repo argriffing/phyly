@@ -164,3 +164,48 @@ def test_bad_edge_coeffs_number_as_string():
     m = x['model_and_data']
     m['edge_rate_coefficients'] = [1, 2, "3"]
     yield _myfail, x
+
+def test_bad_rate_matrix_not_array():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['rate_matrix'] = {"hello" : "world"}
+    yield _myfail, x
+
+def test_bad_rate_matrix_row_is_not_array():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['rate_matrix'] = [
+            [0, 4.2, 3.0],
+            {"hello" : "world"},
+            [6.0, 0.5, 0]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_row_is_too_long():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['rate_matrix'] = [
+            [0, 4.2, 3.0],
+            [1.0, 0, 5.0, 8.0],
+            [6.0, 0.5, 0]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_row_is_too_short():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['rate_matrix'] = [
+            [0, 4.2, 3.0],
+            [1.0, 0],
+            [6.0, 0.5, 0]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_string_entry():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['rate_matrix'] = [
+            [0, 4.2, 3.0],
+            [1.0, "wat", 5.0],
+            [6.0, 0.5, 0]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_number_as_string_entry():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['rate_matrix'] = [
+            [0, 4.2, 3.0],
+            [1.0, "42", 5.0],
+            [6.0, 0.5, 0]]
+    yield _myfail, x
