@@ -209,3 +209,51 @@ def test_bad_rate_matrix_number_as_string_entry():
             [1.0, "42", 5.0],
             [6.0, 0.5, 0]]
     yield _myfail, x
+
+def test_bad_probability_array_bad_data_level_0():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'] = "foo"
+    yield _myfail, x
+
+def test_bad_probability_array_bad_data_level_1():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'][0] = "foo"
+    yield _myfail, x
+
+def test_bad_probability_array_bad_data_level_2():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'][0][0] = "foo"
+    yield _myfail, x
+
+def test_bad_probability_array_bad_data_level_3():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'][0][0][0] = "foo"
+    yield _myfail, x
+
+def test_bad_rate_matrix_too_many_nodes():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'] = [
+             [[0.6, 0.2, 0.2], [1,1,1], [1,0,0], [0,0,1], [1,1,1]],
+             [[0.6, 0.2, 0.2], [1,1,1], [0,0,1], [0,0,1], [1,1,1]]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_too_few_nodes():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'] = [
+             [[0.6, 0.2, 0.2], [0,0,1], [1,1,1]],
+             [[0.6, 0.2, 0.2], [0,0,1], [1,1,1]]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_too_many_states():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'] = [
+             [[0.6, 0.2, 0.2, 0.1], [1,1,1,1], [1,0,0,1], [0,0,1,1]],
+             [[0.6, 0.2, 0.2, 0.1], [1,1,1,1], [0,0,1,1], [0,0,1,1]]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_too_few_states():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['probability_array'] = [
+             [[0.6, 0.2], [1,1], [1,0], [0,0]],
+             [[0.6, 0.2], [1,1], [0,0], [0,0]]]
+    yield _myfail, x

@@ -123,11 +123,73 @@ dmat_clear(dmat_t mat)
 
 
 
+typedef struct
+{
+    double *data;
+    int s;
+    int r;
+    int c;
+} pmat_struct;
+typedef pmat_struct pmat_t[1];
+
+static __inline__ int
+pmat_nsites(pmat_t mat)
+{
+    return mat->s;
+}
+
+static __inline__ int
+pmat_nrows(pmat_t mat)
+{
+    return mat->r;
+}
+
+static __inline__ int
+pmat_ncols(pmat_t mat)
+{
+    return mat->c;
+}
+
+static __inline__ double *
+pmat_entry(pmat_t mat, int i, int j, int k)
+{
+    return mat->data + i * mat->r * mat->c + j * mat->c + k;
+}
+
+void
+pmat_pre_init(pmat_t mat)
+{
+    /* either init or clear may follow this call */
+    mat->data = NULL;
+    mat->s = 0;
+    mat->r = 0;
+    mat->c = 0;
+}
+
+void
+pmat_init(pmat_t mat, int s, int r, int c)
+{
+    mat->data = malloc(s*r*c*sizeof(double));
+    mat->s = s;
+    mat->r = r;
+    mat->c = c;
+}
+
+void
+pmat_clear(pmat_t mat)
+{
+    free(mat->data);
+}
+
+
+
+
 
 typedef struct
 {
     csr_graph_t g;
     dmat_t mat;
+    pmat_t p;
     int root_node_index;
     int *preorder;
     int *edge_rate_coefficients;
@@ -142,6 +204,7 @@ model_and_data_init(model_and_data_t m)
     m->edge_rate_coefficients = NULL;
     csr_graph_init(m->g);
     dmat_pre_init(m->mat);
+    pmat_pre_init(m->p);
 }
 
 void
@@ -151,6 +214,7 @@ model_and_data_clear(model_and_data_t m)
     free(m->edge_rate_coefficients);
     csr_graph_clear(m->g);
     dmat_clear(m->mat);
+    pmat_clear(m->p);
 }
 
 
@@ -179,14 +243,14 @@ _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 
 
 int
-validate_edge(int *v, json_t *root)
+validate_edge(int *pair, json_t *root)
 {
     json_error_t err;
     int result;
     size_t flags;
 
     flags = JSON_STRICT;
-    result = json_unpack_ex(root, &err, flags, "[i, i]", v+0, v+1);
+    result = json_unpack_ex(root, &err, flags, "[i, i]", pair+0, pair+1);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
@@ -198,7 +262,7 @@ validate_edge(int *v, json_t *root)
 
 
 int
-validate_edges(csr_graph_t g, json_t *root)
+validate_edges(model_and_data_t m, json_t *root)
 {
     int root_node_index;
     int pair[2];
@@ -315,9 +379,9 @@ validate_edges(csr_graph_t g, json_t *root)
     {
         int n;
         n = node_count;
-        csr_graph_clear(g);
-        csr_graph_init_outdegree(g, n, out_degree);
-        csr_graph_start_adding_edges(g);
+        csr_graph_clear(m->g);
+        csr_graph_init_outdegree(m->g, n, out_degree);
+        csr_graph_start_adding_edges(m->g);
         for (i = 0; i < edge_count; i++)
         {
             edge = json_array_get(root, i);
@@ -328,9 +392,9 @@ validate_edges(csr_graph_t g, json_t *root)
                 fprintf(stderr, "on second pass\n");
                 goto finish;
             }
-            csr_graph_add_edge(g, pair[0], pair[1]);
+            csr_graph_add_edge(m->g, pair[0], pair[1]);
         }
-        csr_graph_stop_adding_edges(g);
+        csr_graph_stop_adding_edges(m->g);
     }
 
     /* define a topological ordering of the nodes */
@@ -338,7 +402,7 @@ validate_edges(csr_graph_t g, json_t *root)
         int n;
         n = node_count;
         preorder = malloc(n * sizeof(int));
-        result = csr_graph_get_tree_topo_sort(preorder, g, root_node_index);
+        result = csr_graph_get_tree_topo_sort(preorder, m->g, root_node_index);
         if (result)
         {
             goto finish;
@@ -355,15 +419,17 @@ finish:
 
 
 int
-validate_edge_rate_coefficients(csr_graph_t g, json_t *root)
+validate_edge_rate_coefficients(model_and_data_t m, json_t *root)
 {
     int i;
+    int n;
     int edge_count;
     json_t *x;
 
     int *rates;
     int result;
 
+    edge_count = m->g->nnz;
     rates = NULL;
     result = 0;
 
@@ -374,12 +440,12 @@ validate_edge_rate_coefficients(csr_graph_t g, json_t *root)
         goto finish;
     }
 
-    edge_count = json_array_size(root);
-    if (edge_count != g->nnz)
+    n = json_array_size(root);
+    if (n != edge_count)
     {
         fprintf(stderr, "validate_edge_rate_coefficients: ");
         fprintf(stderr, "unexpected array length ");
-        fprintf(stderr, "(actual: %d desired: %d)\n", edge_count, g->nnz);
+        fprintf(stderr, "(actual: %d desired: %d)\n", n, edge_count);
         result = -1;
         goto finish;
     }
@@ -406,16 +472,14 @@ finish:
 
 
 int
-validate_rate_matrix(json_t *root)
+validate_rate_matrix(model_and_data_t m, json_t *root)
 {
     int i, j;
     int n, col_count;
     json_t *x, *y;
-    dmat_t mat;
     int result;
 
     result = 0;
-    dmat_pre_init(mat);
 
     if (!json_is_array(root))
     {
@@ -425,7 +489,7 @@ validate_rate_matrix(json_t *root)
     }
 
     n = json_array_size(root);
-    dmat_init(mat, n, n);
+    dmat_init(m->mat, n, n);
 
     for (i = 0; i < n; i++)
     {
@@ -454,13 +518,97 @@ validate_rate_matrix(json_t *root)
                 result = -1;
                 goto finish;
             }
-            *dmat_entry(mat, i, j) = json_number_value(y);
+            *dmat_entry(m->mat, i, j) = json_number_value(y);
         }
     }
 
 finish:
 
-    dmat_clear(mat);
+    return result;
+}
+
+
+int
+validate_probability_array(model_and_data_t m, json_t *root)
+{
+    int node_count, state_count;
+    int i, j, k;
+    int site_count, n;
+    json_t *x, *y, *z;
+    int result;
+
+    node_count = m->g->n;
+    state_count = dmat_nrows(m->mat);
+
+    result = 0;
+
+    if (!json_is_array(root))
+    {
+        fprintf(stderr, "validate_probability_array: ");
+        fprintf(stderr, "validate_probability_array: expected an array\n");
+        result = -1;
+        goto finish;
+    }
+
+    site_count = json_array_size(root);
+    pmat_init(m->p, site_count, node_count, state_count);
+
+    for (i = 0; i < site_count; i++)
+    {
+        x = json_array_get(root, i);
+        if (!json_is_array(x))
+        {
+            fprintf(stderr, "validate_probability_array: expected an array\n");
+            result = -1;
+            goto finish;
+        }
+
+        n = json_array_size(x);
+        if (n != node_count)
+        {
+            fprintf(stderr, "validate_probability_array: failed to ");
+            fprintf(stderr, "match the number of nodes: ");
+            fprintf(stderr, "(actual: %d desired: %d)\n", n, node_count);
+            result = -1;
+            goto finish;
+        }
+        for (j = 0; j < node_count; j++)
+        {
+            y = json_array_get(x, j);
+            if (!json_is_array(y))
+            {
+                fprintf(stderr, "validate_probability_array: ");
+                fprintf(stderr, "expected an array\n");
+                result = -1;
+                goto finish;
+            }
+
+            n = json_array_size(y);
+            if (n != state_count)
+            {
+                fprintf(stderr, "validate_probability_array: failed to ");
+                fprintf(stderr, "match the number of states: ");
+                fprintf(stderr, "(actual: %d desired: %d)\n", n, state_count);
+                result = -1;
+                goto finish;
+            }
+            for (k = 0; k < state_count; k++)
+            {
+                z = json_array_get(y, k);
+                if (!json_is_number(z))
+                {
+                    fprintf(stderr, "validate_probability_array: ");
+                    fprintf(stderr, "not a number\n");
+                    result = -1;
+                    goto finish;
+                }
+                *pmat_entry(m->p, i, j, k) = json_number_value(z);
+            }
+        }
+    }
+
+finish:
+
     return result;
 }
 
@@ -482,14 +630,6 @@ validate_model_and_data(json_t *root)
     result = 0;
     flags = JSON_STRICT;
 
-    /*
- * "model_and_data" : {
- *  "edges" : [[a, b], [c, d], ...],                 (#edges, 2)
- *  "edge_rate_coefficients" : [a, b, ...],          (#edges, )
- *  "rate_matrix" : [[a, b, ...], [c, d, ...], ...], (#states, #states)
- *  "probability_array" : [...]                      (#sites, #nodes, #states)
- *  */
-        
     /* all four members are json objects and all are required */
     result = json_unpack_ex(root, &err, flags,
             "{s:o, s:o, s:o, s:o}",
@@ -505,19 +645,25 @@ validate_model_and_data(json_t *root)
 
     /* edges */
     {
-        result = validate_edges(m->g, edges);
+        result = validate_edges(m, edges);
         if (result) goto finish;
     }
 
     /* edge_rate_coefficients */
     {
-        result = validate_edge_rate_coefficients(m->g, edge_rate_coefficients);
+        result = validate_edge_rate_coefficients(m, edge_rate_coefficients);
         if (result) goto finish;
     }
 
     /* rate_matrix */
     {
-        result = validate_rate_matrix(rate_matrix);
+        result = validate_rate_matrix(m, rate_matrix);
+        if (result) goto finish;
+    }
+
+    /* probability_array */
+    {
+        result = validate_probability_array(m, probability_array);
         if (result) goto finish;
     }
 
