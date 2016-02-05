@@ -5,9 +5,9 @@
 #include "runjson.h"
 
 
-char *jsonwrap(void *userdata, const char *s_in);
+char *jsonwrap(void *userdata, const char *s_in, int *retcode);
 
-char *jsonwrap(void *userdata, const char *s_in)
+char *jsonwrap(void *userdata, const char *s_in, int *retcode)
 {
     json_hom_ptr p = userdata;
 
@@ -16,39 +16,46 @@ char *jsonwrap(void *userdata, const char *s_in)
     json_t *j_in;
     json_t *j_out;
     char *s_out;
-    char name[] = "json wrapper";
+    int result;
+
+    result = 0;
+    j_in = NULL;
+    j_out = NULL;
+    s_out = NULL;
 
     /* convert input string to json using jansson */
     j_in = json_loads(s_in, flags, &error);
-    if (!j_in) {
-        fprintf(stderr, "json error in %s: on json line %d: %s\n",
-            name, error.line, error.text);
-        return NULL;
+    if (!j_in)
+    {
+        fprintf(stderr, "error on json line %d: %s\n",
+            error.line, error.text);
+        result = -1;
+        goto finish;
     }
 
     /* call the underlying function to get a new jansson object */
-    j_out = p->f(p->userdata, j_in);
-    if (!j_out) {
-        /*
-        fprintf(stderr, "error: failed to get json object output\n");
-        return NULL;
-        */
+    j_out = p->f(p->userdata, j_in, &result);
+    if (result)
+    {
+        goto finish;
     }
 
     /* convert the output jansson object to a string */
     if (j_out)
     {
         s_out = json_dumps(j_out, flags);
-        if (!s_out) {
+        if (!s_out)
+        {
             fprintf(stderr, "error: failed to dump ");
             fprintf(stderr, "the json object to a string\n");
-            return NULL;
+            result = -1;
+            goto finish;
         }
     }
-    else
-    {
-        s_out = NULL;
-    }
+
+finish:
+
+    *retcode = result;
 
     /* attempt to free the input and output json objects */
     json_decref(j_in);
@@ -57,6 +64,7 @@ char *jsonwrap(void *userdata, const char *s_in)
     /* return the output string which must be freed by the caller */
     return s_out;
 }
+
 
 string_hom_ptr
 json_induced_string_hom(json_hom_t hom)
@@ -93,10 +101,7 @@ char *fgets_dynamic(FILE *stream)
       capacity <<= 1;
       s = realloc(s, capacity * sizeof(*s));
       if (!s) {
-        fprintf(
-            stderr,
-            "error: fgets_dynamic: failed to reallocate %d\n",
-            capacity);
+        fprintf(stderr, "fgets_dynamic: failed to reallocate %d\n", capacity);
         return 0;
       }
     }
@@ -112,39 +117,33 @@ char *fgets_dynamic(FILE *stream)
 int
 run_string_script(string_hom_t hom)
 {
-  char *s_in = 0;
-  char *s_out = 0;
-  char name[] = "string->string wrapper";
+    char *s_in = 0;
+    char *s_out = 0;
+    int retcode = 0;
 
-  /* read the string from stdin until we find eof */
-  s_in = fgets_dynamic(stdin);
-  if (!s_in) {
-    fprintf(stderr, "error: %s: failed to read string from stdin\n", name);
-    return -1;
-  }
+    /* read the string from stdin until we find eof */
+    s_in = fgets_dynamic(stdin);
+    if (!s_in) {
+        fprintf(stderr, "failed to read string from stdin\n");
+        return -1;
+    }
 
-  /* call the string interface wrapper */
-  s_out = hom->f(hom->userdata, s_in);
-  /*
-  if (!s_out) {
-    fprintf(stderr, "error: %s: failed to get a response\n", name);
-    return -1;
-  }
-  */
+    /* call the string interface wrapper */
+    s_out = hom->f(hom->userdata, s_in, &retcode);
 
-  /* free the input string */
-  free(s_in);
+    /* free the input string */
+    free(s_in);
 
-  /* write the string to stdout */
-  /* free the string allocated by the script function */
-  if (s_out)
-  {
+    /* write the string to stdout */
+    /* free the string allocated by the script function */
+    if (s_out)
+    {
       puts(s_out);
       free(s_out);
-  }
+    }
 
-  /* return zero if no error */
-  return 0;
+    /* return zero if no error */
+    return retcode;
 }
 
 

@@ -19,6 +19,7 @@ py_arbplf_ll(PyObject *self, PyObject *args)
     const char *s_in;
     char *s_out;
     PyObject *ret;
+    int retcode = 0;
 
 	/* The ':arbplf_ll' is for error messages */
 	if (!PyArg_ParseTuple(args, "s:arbplf_ll", &s_in))
@@ -38,12 +39,12 @@ py_arbplf_ll(PyObject *self, PyObject *args)
         string_hom_ptr s_hom = json_induced_string_hom(j_hom);
         {
             /* apply the string->string map */
-            s_out = s_hom->f(s_hom->userdata, s_in);
+            s_out = s_hom->f(s_hom->userdata, s_in, &retcode);
         }
         free(s_hom);
     }
 
-    if (0)
+    if (retcode)
     {
         PyErr_SetString(PyExc_RuntimeError, "arbplf likelihood error");
         ret = NULL;

@@ -10,10 +10,14 @@ import copy
 from subprocess import Popen, PIPE
 from numpy.testing import assert_equal, assert_raises, TestCase
 
+from arbplf import arbplf_ll
+
 args = ['arbplf-ll']
+
 
 class ReturnError(Exception):
     pass
+
 
 good_input = {
      "model_and_data" : {
@@ -44,63 +48,68 @@ def runjson(args, d):
     else:
         return json.loads(out)
 
+def _myfail(d):
+    s = json.dumps(d)
+    assert_raises(RuntimeError, arbplf_ll, s)
+
+
 def test_ok():
-    runjson(args, good_input)
+    arbplf_ll(json.dumps(good_input))
 
 def test_bad_edge_not_array_but_dict():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'][2] = {'hello' : 'world'}
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edge_not_array_but_string():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'][2] = 'hello'
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edge_not_array_but_int():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'][2] = 0
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edge_negative_node_index():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'][2] = [-1, 3]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edge_too_high_node_index():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'] = [[0, 1], [1, 5], [1, 6]]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edge_long_array():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'][0] = [0, 1, 2]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edge_short_array():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'][0] = [0]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edge_connected_loop():
     x = copy.deepcopy(good_input)
-    x['model_and_data']['edges'][2] = [[0, 1], [1, 2], [2, 2]]
-    assert_raises(ReturnError, runjson, args, x)
+    x['model_and_data']['edges'] = [[0, 1], [1, 2], [2, 2]]
+    yield _myfail, x
 
 def test_bad_edge_disconnected_loop():
     x = copy.deepcopy(good_input)
-    x['model_and_data']['edges'][2] = [[0, 1], [1, 2], [3, 3]]
-    assert_raises(ReturnError, runjson, args, x)
+    x['model_and_data']['edges'] = [[0, 1], [1, 2], [3, 3]]
+    yield _myfail, x
 
 def test_bad_edges_dag_but_not_tree():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'] = [[0, 1], [1, 2], [1, 3], [2, 3]]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edges_cycle():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'] = [[0, 1], [1, 2], [2, 0]]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edges_disconnected_cycle():
     # This graph looks like a tree locally and using global degree statistics,
@@ -109,13 +118,13 @@ def test_bad_edges_disconnected_cycle():
     x['model_and_data']['edges'] = [
             [0, 1], [1, 2], [2, 0],
             [3, 4], [4, 5], [4, 6]]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edges_undirected_tree():
     # This graph is an undirected tree but not a directed tree.
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'] = [[0, 1], [2, 1], [1, 3]]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x
 
 def test_bad_edges_disconnected_dag_and_tree():
     # This graph shares some properties with trees, but is not a tree.
@@ -124,4 +133,4 @@ def test_bad_edges_disconnected_dag_and_tree():
     # It is bipartite.
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'] = [[0, 1], [0, 2], [1, 3], [2, 3], [4, 5]]
-    assert_raises(ReturnError, runjson, args, x)
+    yield _myfail, x

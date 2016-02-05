@@ -292,11 +292,13 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
     {
         int *v;
         int n;
+        int flag;
+        flag = 0;
         n = *node_count;
         csr_graph_clear(g);
         csr_graph_init_outdegree(g, n, out_degree);
         v = calloc(n, sizeof(int));
-        for (i = 0; i < *edge_count; i++)
+        for (i = 0; !flag && i < *edge_count; i++)
         {
             int offset, a, b;
             edge = json_array_get(root, i);
@@ -305,15 +307,22 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
             {
                 fprintf(stderr, "validate_edges: internal error ");
                 fprintf(stderr, "on second pass\n");
-                abort();
+                flag = 1;
             }
-            a = pair[0];
-            b = pair[1];
-            offset = g->indptr[a] + v[a];
-            g->indices[offset] = b;
-            v[a]++;
+            else
+            {
+                a = pair[0];
+                b = pair[1];
+                offset = g->indptr[a] + v[a];
+                g->indices[offset] = b;
+                v[a]++;
+            }
         }
         free(v);
+        if (flag)
+        {
+            goto finish;
+        }
     }
 
     /* define a topological ordering of the nodes */
@@ -431,20 +440,20 @@ validate_model_and_data(json_t *root)
 }
 
 
-json_t *arbplf_ll_run(void *userdata, json_t *root)
+json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 {
-    int result;
-
     json_t *j_out = NULL;
     json_t *model_and_data = NULL;
     json_t *reductions = NULL;
     int working_precision = 0;
     const char *sum_product_strategy = NULL;
+    int result = 0;
 
     if (userdata)
     {
         fprintf(stderr, "error: unexpected userdata\n");
-        abort();
+        result = -1;
+        goto finish;
     }
 
     /*
@@ -470,7 +479,6 @@ json_t *arbplf_ll_run(void *userdata, json_t *root)
     /* parse the json input */
     {
         json_error_t err;
-        int result;
         size_t flags;
         
         flags = JSON_STRICT;
@@ -483,16 +491,23 @@ json_t *arbplf_ll_run(void *userdata, json_t *root)
         if (result)
         {
             fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-            abort();
+            goto finish;
         }
     }
 
     /* validate the model and data section of the json input */
     result = validate_model_and_data(model_and_data);
-    if (result) abort();
+    if (result)
+    {
+        goto finish;
+    }
 
     /* create new json object */
     j_out = json_pack("{s:s}", "hello", "world");
+
+finish:
+
+    *retcode = result;
 
     flint_cleanup();
     return j_out;

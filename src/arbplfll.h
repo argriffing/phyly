@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-json_t *arbplf_ll_run(void *userdata, json_t *root);
+json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode);
 
 #ifdef __cplusplus
 }

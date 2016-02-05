@@ -25,10 +25,12 @@ extern "C" {
 #endif
 
 /* a function that maps a string to a string */
-typedef char *(*string_hom_fn_t)(void *userdata, const char *data);
+typedef char *(*string_hom_fn_t)(
+        void *userdata, const char *data, int *retcode);
 
 /* a function that maps a json struct to a json struct */
-typedef json_t *(*json_hom_fn_t)(void *userdata, json_t *data);
+typedef json_t *(*json_hom_fn_t)(
+        void *userdata, json_t *data, int *retcode);
 
 /* generic destructor */
 typedef void (*clear_fn_t)(void *userdata);
