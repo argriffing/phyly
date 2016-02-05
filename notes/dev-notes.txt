@@ -14,6 +14,7 @@ $ popd
 And more tests using the python extension
 (this does not yet use the autotools build system):
 $ pushd src
+$ rm -r build
 $ python setup.py install --user
 $ popd
 $ nosetests

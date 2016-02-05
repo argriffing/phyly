@@ -134,3 +134,33 @@ def test_bad_edges_disconnected_dag_and_tree():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'] = [[0, 1], [0, 2], [1, 3], [2, 3], [4, 5]]
     yield _myfail, x
+
+def test_bad_edge_coeffs_not_array():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']
+    m['edge_rate_coefficients'] = {"hello" : "world"}
+    yield _myfail, x
+
+def test_bad_edge_coeffs_too_many():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']
+    m['edge_rate_coefficients'] = [1, 2, 3, 4]
+    yield _myfail, x
+
+def test_bad_edge_coeffs_too_few():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']
+    m['edge_rate_coefficients'] = [1, 2]
+    yield _myfail, x
+
+def test_bad_edge_coeffs_string():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']
+    m['edge_rate_coefficients'] = [1, 2, "wat"]
+    yield _myfail, x
+
+def test_bad_edge_coeffs_number_as_string():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']
+    m['edge_rate_coefficients'] = [1, 2, "3"]
+    yield _myfail, x

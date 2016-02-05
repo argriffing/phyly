@@ -70,6 +70,34 @@
 #include "runjson.h"
 #include "csr_graph.h"
 
+typedef struct
+{
+    csr_graph_t g;
+    int root_node_index;
+    int *preorder;
+    int *edge_rate_coefficients;
+} model_and_data_struct;
+typedef model_and_data_struct model_and_data_t[1];
+
+void
+model_and_data_init(model_and_data_t m)
+{
+    m->root_node_index = -1;
+    m->preorder = NULL;
+    m->edge_rate_coefficients = NULL;
+    csr_graph_init(m->g);
+}
+
+void
+model_and_data_clear(model_and_data_t m)
+{
+    free(m->preorder);
+    free(m->edge_rate_coefficients);
+    csr_graph_clear(m->g);
+}
+
+
+
 
 void _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 
@@ -113,17 +141,15 @@ validate_edge(int *v, json_t *root)
 
 
 int
-validate_edges(int *node_count, int *edge_count, json_t *root)
+validate_edges(csr_graph_t g, json_t *root)
 {
     int root_node_index;
     int pair[2];
     int i, result;
     int *in_degree, *out_degree;
     int *preorder;
+    int edge_count, node_count;
     json_t *edge;
-    csr_graph_t g;
-
-    csr_graph_init(g);
 
     in_degree = NULL;
     out_degree = NULL;
@@ -137,12 +163,12 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
         goto finish;
     }
 
-    *edge_count = json_array_size(root);
-    *node_count = *edge_count + 1;
-    in_degree = calloc(*node_count, sizeof(*in_degree));
-    out_degree = calloc(*node_count, sizeof(*out_degree));
+    edge_count = json_array_size(root);
+    node_count = edge_count + 1;
+    in_degree = calloc(node_count, sizeof(*in_degree));
+    out_degree = calloc(node_count, sizeof(*out_degree));
 
-    for (i = 0; i < *edge_count; i++)
+    for (i = 0; i < edge_count; i++)
     {
         int j;
 
@@ -158,7 +184,7 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
             int idx;
 
             idx = pair[j];
-            if (idx < 0 || idx >= *node_count)
+            if (idx < 0 || idx >= node_count)
             {
                 fprintf(stderr, "validate_edges: node indices must be ");
                 fprintf(stderr, "integers no less than 0 and no greater ");
@@ -185,7 +211,7 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
     root_node_index = -1;
     {
         int root_count = 0;
-        for (i = 0; i < *node_count; i++)
+        for (i = 0; i < node_count; i++)
         {
             if (!in_degree[i])
             {
@@ -203,7 +229,7 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
     }
 
     /* require that the in-degree of each node is 0 or 1 */
-    for (i = 0; i < *node_count; i++)
+    for (i = 0; i < node_count; i++)
     {
         if (in_degree[i] < 0 || in_degree[i] > 1)
         {
@@ -215,7 +241,7 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
     }
 
     /* require that each node is an endpoint of at least one edge */
-    for (i = 0; i < *node_count; i++)
+    for (i = 0; i < node_count; i++)
     {
         int degree;
         degree = in_degree[i] + out_degree[i];
@@ -231,11 +257,11 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
     /* define the edges of the csr graph */
     {
         int n;
-        n = *node_count;
+        n = node_count;
         csr_graph_clear(g);
         csr_graph_init_outdegree(g, n, out_degree);
         csr_graph_start_adding_edges(g);
-        for (i = 0; i < *edge_count; i++)
+        for (i = 0; i < edge_count; i++)
         {
             edge = json_array_get(root, i);
             result = validate_edge(pair, edge);
@@ -253,7 +279,7 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
     /* define a topological ordering of the nodes */
     {
         int n;
-        n = *node_count;
+        n = node_count;
         preorder = malloc(n * sizeof(int));
         result = csr_graph_get_tree_topo_sort(preorder, g, root_node_index);
         if (result)
@@ -267,23 +293,76 @@ finish:
     free(in_degree);
     free(out_degree);
     free(preorder);
-    csr_graph_clear(g);
     return result;
 }
 
+
+int
+validate_edge_rate_coefficients(csr_graph_t g, json_t *root)
+{
+    int i;
+    int edge_count;
+    json_t *x;
+
+    int *rates;
+    int result;
+
+    rates = NULL;
+    result = 0;
+
+    if (!json_is_array(root))
+    {
+        fprintf(stderr, "validate_edge_rate_coefficients: not an array\n");
+        result = -1;
+        goto finish;
+    }
+
+    edge_count = json_array_size(root);
+    if (edge_count != g->nnz)
+    {
+        fprintf(stderr, "validate_edge_rate_coefficients: ");
+        fprintf(stderr, "unexpected array length ");
+        fprintf(stderr, "(actual: %d desired: %d)\n", edge_count, g->nnz);
+        result = -1;
+        goto finish;
+    }
+
+    rates = malloc(edge_count * sizeof(double));
+    for (i = 0; i < edge_count; i++)
+    {
+        x = json_array_get(root, i);
+        if (!json_is_number(x))
+        {
+            fprintf(stderr, "validate_edge_rate_coefficients: ");
+            fprintf(stderr, "not a number\n");
+            result = -1;
+            goto finish;
+        }
+        rates[i] = json_number_value(x);
+    }
+
+finish:
+
+    free(rates);
+    return result;
+}
 
 
 int
 validate_model_and_data(json_t *root)
 {
     json_error_t err;
-    int result;
-    size_t flags;
     json_t *edges;
     json_t *edge_rate_coefficients;
     json_t *rate_matrix;
     json_t *probability_array;
 
+    model_and_data_t m;
+    int result;
+    size_t flags;
+
+    model_and_data_init(m);
+    result = 0;
     flags = JSON_STRICT;
 
     /*
@@ -304,17 +383,25 @@ validate_model_and_data(json_t *root)
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-        return result;
+        goto finish;
     }
 
     /* edges */
     {
-        int node_count, edge_count;
-        result = validate_edges(&node_count, &edge_count, edges);
-        if (result) return result;
+        result = validate_edges(m->g, edges);
+        if (result) goto finish;
     }
 
-    return 0;
+    /* edge_rate_coefficients */
+    {
+        result = validate_edge_rate_coefficients(m->g, edge_rate_coefficients);
+        if (result) goto finish;
+    }
+
+finish:
+
+    model_and_data_clear(m);
+    return result;
 }
 
 
