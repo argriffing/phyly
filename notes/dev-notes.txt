@@ -4,14 +4,19 @@ $ autoreconf --install
 Put the rebuilt files through some paces:
 $ rm -r build
 $ mkdir build
-$ cd build
+$ pushd build
 $ ../configure CPPFLAGS='-I/usr/local/include/flint' --prefix=~/.local
 $ make
 $ make check
 $ make install
-$ cd ..
+$ popd
+
+And more tests using the python extension
+(this does not yet use the autotools build system):
+$ pushd src
+$ python setup.py install --user
+$ popd
 $ nosetests
 
 Another configure option:
 $ ../configure CPPFLAGS='-I/usr/local/include/flint' --prefix=~/.local CFLAGS='-march=native -O3 -ffast-math -g -Wall -Wextra'
-

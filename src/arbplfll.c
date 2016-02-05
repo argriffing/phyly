@@ -68,67 +68,7 @@
 #include "arb_mat.h"
 
 #include "runjson.h"
-
-typedef struct
-{
-    int *indices;
-    int *indptr;
-    int n;
-    int nnz;
-} csr_graph_struct;
-typedef csr_graph_struct csr_graph_t[1];
-
-void
-csr_graph_init(csr_graph_t g)
-{
-    g->indices = NULL;
-    g->indptr = NULL;
-    g->n = 0;
-    g->nnz = 0;
-}
-
-void
-csr_graph_init_outdegree(csr_graph_t g, int n, int *out_degree)
-{
-    int i, nnz, accum;
-
-    /* count the edges, and use this count to allocate the indices array  */
-    accum = 0;
-    for (i = 0; i < n; i++)
-    {
-        accum += out_degree[i];
-    }
-    nnz = accum;
-    g->indices = malloc(nnz * sizeof(int));
-    for (i = 0; i < nnz; i++)
-    {
-        g->indices[i] = -1;
-    }
-
-    /* define the indptr array */
-    accum = 0;
-    g->indptr = malloc((n+1) * sizeof(int));
-    for (i = 0; i < n; i++)
-    {
-        g->indptr[i] = accum;
-        accum += out_degree[i];
-    }
-    g->indptr[i] = accum;
-
-    g->n = n;
-    g->nnz = nnz;
-}
-
-void
-csr_graph_clear(csr_graph_t g)
-{
-    free(g->indices);
-    free(g->indptr);
-    g->n = 0;
-    g->nnz = 0;
-}
-
-
+#include "csr_graph.h"
 
 
 void _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
@@ -290,96 +230,34 @@ validate_edges(int *node_count, int *edge_count, json_t *root)
 
     /* define the edges of the csr graph */
     {
-        int *v;
         int n;
-        int flag;
-        flag = 0;
         n = *node_count;
         csr_graph_clear(g);
         csr_graph_init_outdegree(g, n, out_degree);
-        v = calloc(n, sizeof(int));
-        for (i = 0; !flag && i < *edge_count; i++)
+        csr_graph_start_adding_edges(g);
+        for (i = 0; i < *edge_count; i++)
         {
-            int offset, a, b;
             edge = json_array_get(root, i);
             result = validate_edge(pair, edge);
             if (result)
             {
                 fprintf(stderr, "validate_edges: internal error ");
                 fprintf(stderr, "on second pass\n");
-                flag = 1;
+                goto finish;
             }
-            else
-            {
-                a = pair[0];
-                b = pair[1];
-                offset = g->indptr[a] + v[a];
-                g->indices[offset] = b;
-                v[a]++;
-            }
+            csr_graph_add_edge(g, pair[0], pair[1]);
         }
-        free(v);
-        if (flag)
-        {
-            goto finish;
-        }
+        csr_graph_stop_adding_edges(g);
     }
 
     /* define a topological ordering of the nodes */
     {
-        int n, nu, nv;
-        int *visited, *u, *v, *tmp;
-        int npre;
-        int flag;
-        flag = 0;
+        int n;
         n = *node_count;
-        visited = calloc(n, sizeof(int));
         preorder = malloc(n * sizeof(int));
-        u = malloc(n * sizeof(int));
-        v = malloc(n * sizeof(int));
-        npre = 0;
-        nv = 1;
-        v[0] = root_node_index;
-        visited[0] = 1;
-        while (!flag && nv)
+        result = csr_graph_get_tree_topo_sort(preorder, g, root_node_index);
+        if (result)
         {
-            int a, b, j;
-            tmp = u; u = v; v = tmp;
-            nu = nv;
-            nv = 0;
-            for (i = 0; !flag && i < nu; i++)
-            {
-                a = u[i];
-                preorder[npre++] = a;
-                for (j = g->indptr[a]; !flag && j < g->indptr[a+1]; j++)
-                {
-                    b = g->indices[j];
-                    if (visited[b])
-                    {
-                        flag = 1;
-                    }
-                    else
-                    {
-                        v[nv++] = b;
-                        visited[b] = 1;
-                    }
-                }
-            }
-        }
-        free(u);
-        free(v);
-        free(visited);
-        if (flag)
-        {
-            fprintf(stderr, "validate_edges: topo sort failed\n");
-            result = -1;
-            goto finish;
-        }
-        if (npre != n)
-        {
-            fprintf(stderr, "validate_edges: the topo sort contains ");
-            fprintf(stderr, "%d of the %d nodes\n", npre, n);
-            result = -1;
             goto finish;
         }
     }

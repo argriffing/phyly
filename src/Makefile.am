@@ -15,7 +15,9 @@ TESTS = $(check_PROGRAMS)
 CORE_SOURCES = \
 	dummy_module.c \
 	arbplfll.c \
-	arbplfll.h
+	arbplfll.h \
+	csr_graph.c \
+	csr_graph.h
 
 JSON_SOURCES = \
 	runjson.c \
