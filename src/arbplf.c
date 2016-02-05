@@ -1,49 +1,16 @@
 #include "Python.h"
 
+#include "jansson.h"
+
+#include "arbplfll.h"
+#include "runjson.h"
+
+
 /* The module doc string */
 PyDoc_STRVAR(arbplf__doc__, "phylogenetic likelihood evaluation");
 
 /* The function doc string */
 PyDoc_STRVAR(arbplf_ll__doc__, "json in -> json out");
-
-int
-py_string_script(string_hom_t hom)
-{
-  char *s_in = 0;
-  char *s_out = 0;
-  char name[] = "string->string wrapper";
-
-  /* read the string from stdin until we find eof */
-  s_in = fgets_dynamic(stdin);
-  if (!s_in) {
-    fprintf(stderr, "error: %s: failed to read string from stdin\n", name);
-    return -1;
-  }
-
-  /* call the string interface wrapper */
-  s_out = hom->f(hom->userdata, s_in);
-  /*
-  if (!s_out) {
-    fprintf(stderr, "error: %s: failed to get a response\n", name);
-    return -1;
-  }
-  */
-
-  /* free the input string */
-  free(s_in);
-
-  /* write the string to stdout */
-  /* free the string allocated by the script function */
-  if (s_out)
-  {
-      puts(s_out);
-      free(s_out);
-  }
-
-  /* return zero if no error */
-  return 0;
-}
-
 
 /* The wrapper to the underlying C function */
 static PyObject *
@@ -52,7 +19,6 @@ py_arbplf_ll(PyObject *self, PyObject *args)
     const char *s_in;
     char *s_out;
     PyObject *ret;
-    int retcode;
 
 	/* The ':arbplf_ll' is for error messages */
 	if (!PyArg_ParseTuple(args, "s:arbplf_ll", &s_in))
@@ -60,7 +26,6 @@ py_arbplf_ll(PyObject *self, PyObject *args)
 	
 	/* Call the C function */
     s_out = NULL;
-    retcode = arbplf_ll(s_in, &s_out);
 
 
     /* define the json->json map */
@@ -77,9 +42,8 @@ py_arbplf_ll(PyObject *self, PyObject *args)
         }
         free(s_hom);
     }
-    flint_cleanup();
 
-    if (retcode)
+    if (0)
     {
         PyErr_SetString(PyExc_RuntimeError, "arbplf likelihood error");
         ret = NULL;

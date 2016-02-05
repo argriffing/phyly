@@ -8,7 +8,7 @@ int main(void)
 
     hom->userdata = NULL;
     hom->clear = NULL;
-    hom->f = arbplf_ll;
+    hom->f = arbplf_ll_run;
 
     result = run_json_script(hom);
     return result;
