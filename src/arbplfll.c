@@ -435,6 +435,12 @@ json_t *arbplf_ll(void *userdata, json_t *root)
 {
     int result;
 
+    json_t *j_out = NULL;
+    json_t *model_and_data = NULL;
+    json_t *reductions = NULL;
+    int working_precision = 0;
+    const char *sum_product_strategy = NULL;
+
     if (userdata)
     {
         fprintf(stderr, "error: unexpected userdata\n");
@@ -461,11 +467,6 @@ json_t *arbplf_ll(void *userdata, json_t *root)
  * }
  * */
 
-    json_t *model_and_data = NULL;
-    json_t *reductions = NULL;
-    int working_precision = 0;
-    const char *sum_product_strategy = NULL;
-
     /* parse the json input */
     {
         json_error_t err;
@@ -490,10 +491,9 @@ json_t *arbplf_ll(void *userdata, json_t *root)
     result = validate_model_and_data(model_and_data);
     if (result) abort();
 
-    /* return new json object */
-    {
-        json_t *j_out;
-        j_out = json_pack("{s:s}", "hello", "world");
-        return j_out;
-    }
+    /* create new json object */
+    j_out = json_pack("{s:s}", "hello", "world");
+
+    flint_cleanup();
+    return j_out;
 }

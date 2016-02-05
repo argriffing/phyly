@@ -1,16 +1,15 @@
-#include "flint/flint.h"
-
-#include "arbplf_ll.h"
+#include "arbplfll.h"
 #include "runjson.h"
 
 int main(void)
 {
+    int result;
     json_hom_t hom;
+
     hom->userdata = NULL;
     hom->clear = NULL;
     hom->f = arbplf_ll;
-    int result = run_json_script(hom);
 
-    flint_cleanup();
+    result = run_json_script(hom);
     return result;
 }

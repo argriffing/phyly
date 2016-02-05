@@ -12,11 +12,15 @@ check_PROGRAMS = t-dummy_test
 
 TESTS = $(check_PROGRAMS)
 
-CORE_SOURCES = dummy_module.c
+CORE_SOURCES = \
+	dummy_module.c \
+	arbplfll.c \
+	arbplfll.h
 
 JSON_SOURCES = \
 	runjson.c \
 	runjson.h
+
 
 ALL_SOURCES = $(CORE_SOURCES) $(JSON_SOURCES)
 
