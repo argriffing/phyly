@@ -63,13 +63,25 @@ csr_graph_get_tree_topo_sort(
     int result;
 
     result = 0;
+    visited = NULL;
+    u = NULL;
+    v = NULL;
+
+    if (!(0 <= root_node_index && root_node_index < g->n))
+    {
+        fprintf(stderr, "validate_edges: invalid root node index: %d\n",
+                root_node_index);
+        result = -1;
+        goto finish;
+    }
+
     visited = calloc(g->n, sizeof(int));
     u = malloc(g->n * sizeof(int));
     v = malloc(g->n * sizeof(int));
     npre = 0;
     nv = 1;
     v[0] = root_node_index;
-    visited[0] = 1;
+    visited[root_node_index] = 1;
     while (nv)
     {
         int a, b, j;
@@ -85,7 +97,8 @@ csr_graph_get_tree_topo_sort(
                 b = g->indices[j];
                 if (visited[b])
                 {
-                    fprintf(stderr, "validate_edges: topo sort failed\n");
+                    fprintf(stderr, "validate_edges: topo sort failed: ");
+                    fprintf(stderr, "node index %d already visited\n", b);
                     result = -1;
                     goto finish;
                 }

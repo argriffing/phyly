@@ -257,3 +257,29 @@ def test_bad_rate_matrix_too_few_states():
              [[0.6, 0.2], [1,1], [1,0], [0,0]],
              [[0.6, 0.2], [1,1], [0,0], [0,0]]]
     yield _myfail, x
+
+def test_simplified_felsenstein_fig_16_4_example():
+    x = {
+     "model_and_data" : {
+         "edges" : [[5, 0], [5, 1], [5, 6], [6, 2], [6, 7], [7, 3], [7, 4]],
+         "edge_rate_coefficients" : [0.01, 0.2, 0.15, 0.3, 0.05, 0.3, 0.02],
+         "rate_matrix" : [
+             [0, 3, 3, 3],
+             [3, 0, 3, 3],
+             [3, 3, 0, 3],
+             [3, 3, 3, 0]],
+         "probability_array" : [[
+             [1, 0, 0, 0],
+             [0, 1, 0, 0],
+             [0, 1, 0, 0],
+             [0, 1, 0, 0],
+             [0, 0, 1, 0],
+             [0.25, 0.25, 0.25, 0.25],
+             [1, 1, 1, 1],
+             [1, 1, 1, 1]]]},
+     "reductions" : [{
+         "columns" : ["site"],
+         "aggregation" : "sum"}],
+     "working_precision" : 256,
+     "sum_product_strategy" : "dynamic_programming"}
+    arbplf_ll(json.dumps(x))

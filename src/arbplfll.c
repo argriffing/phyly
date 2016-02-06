@@ -264,17 +264,14 @@ validate_edge(int *pair, json_t *root)
 int
 validate_edges(model_and_data_t m, json_t *root)
 {
-    int root_node_index;
     int pair[2];
     int i, result;
     int *in_degree, *out_degree;
-    int *preorder;
     int edge_count, node_count;
     json_t *edge;
 
     in_degree = NULL;
     out_degree = NULL;
-    preorder = NULL;
     result = 0;
 
     if (!json_is_array(root))
@@ -329,14 +326,13 @@ validate_edges(model_and_data_t m, json_t *root)
     }
 
     /* require that only a single node has in-degree 0 */
-    root_node_index = -1;
     {
         int root_count = 0;
         for (i = 0; i < node_count; i++)
         {
             if (!in_degree[i])
             {
-                root_node_index = i;
+                m->root_node_index = i;
                 root_count++;
             }
         }
@@ -401,8 +397,15 @@ validate_edges(model_and_data_t m, json_t *root)
     {
         int n;
         n = node_count;
-        preorder = malloc(n * sizeof(int));
-        result = csr_graph_get_tree_topo_sort(preorder, m->g, root_node_index);
+        if (m->preorder)
+        {
+            fprintf(stderr, "validate_edges: expected NULL preorder\n");
+            result = -1;
+            goto finish;
+        }
+        m->preorder = malloc(n * sizeof(int));
+        result = csr_graph_get_tree_topo_sort(
+                m->preorder, m->g, m->root_node_index);
         if (result)
         {
             goto finish;
@@ -413,7 +416,6 @@ finish:
 
     free(in_degree);
     free(out_degree);
-    free(preorder);
     return result;
 }
 
