@@ -1,6 +1,55 @@
 #include "csr_graph.h"
 
 void
+csr_edge_mapper_pre_init(csr_edge_mapper_t g)
+{
+    g->n = 0;
+    g->accum_nnz = 0;
+    g->accum_out_degree = NULL;
+    g->order = NULL;
+}
+
+void
+csr_edge_mapper_init(csr_edge_mapper_t g, int node_count, int edge_count)
+{
+    g->n = node_count;
+    g->accum_nnz = 0;
+    g->accum_out_degree = calloc(node_count, sizeof(int));
+    g->order = calloc(edge_count, sizeof(int));
+}
+
+void
+csr_edge_mapper_clear(csr_edge_mapper_t g)
+{
+    free(g->order);
+    free(g->accum_out_degree);
+}
+
+void
+csr_edge_mapper_add_edge(csr_edge_mapper_t m, csr_graph_t g, int a, int b)
+{
+    int idx;
+    idx = g->indptr[a] + m->accum_out_degree[a];
+    if (idx >= g->indptr[a+1])
+    {
+        fprintf(stderr, "internal error (indptr) in edge mapping\n");
+        abort();
+    }
+    if (g->indices[idx] != b)
+    {
+        fprintf(stderr, "internal error (indices) in edge mapping\n");
+        abort();
+    }
+    m->order[m->accum_nnz] = idx;
+    m->accum_nnz++;
+    m->accum_out_degree[a]++;
+}
+
+
+
+
+
+void
 csr_graph_init(csr_graph_t g)
 {
     g->indices = NULL;

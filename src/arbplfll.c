@@ -65,7 +65,9 @@
  */
 #include "jansson.h"
 #include "flint/flint.h"
+
 #include "arb_mat.h"
+#include "arb.h"
 
 #include "runjson.h"
 #include "csr_graph.h"
@@ -79,19 +81,19 @@ typedef struct
 } dmat_struct;
 typedef dmat_struct dmat_t[1];
 
-static __inline__ int
+int
 dmat_nrows(dmat_t mat)
 {
     return mat->r;
 }
 
-static __inline__ int
+int
 dmat_ncols(dmat_t mat)
 {
     return mat->c;
 }
 
-static __inline__ double *
+double *
 dmat_entry(dmat_t mat, int i, int j)
 {
     return mat->data + i * mat->c + j;
@@ -192,7 +194,8 @@ typedef struct
     pmat_t p;
     int root_node_index;
     int *preorder;
-    int *edge_rate_coefficients;
+    double *edge_rate_coefficients;
+    csr_edge_mapper_t edge_map;
 } model_and_data_struct;
 typedef model_and_data_struct model_and_data_t[1];
 
@@ -205,6 +208,7 @@ model_and_data_init(model_and_data_t m)
     csr_graph_init(m->g);
     dmat_pre_init(m->mat);
     pmat_pre_init(m->p);
+    csr_edge_mapper_pre_init(m->edge_map);
 }
 
 void
@@ -215,6 +219,7 @@ model_and_data_clear(model_and_data_t m)
     csr_graph_clear(m->g);
     dmat_clear(m->mat);
     pmat_clear(m->p);
+    csr_edge_mapper_clear(m->edge_map);
 }
 
 
@@ -240,6 +245,69 @@ _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
         }
     }
 }
+
+
+void
+_arb_mat_addmul(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
+{
+    /*
+     * d = c + a*b
+     * c and d may be aliased with each other but not with a or b
+     * implementation inspired by @aaditya-thakkar's flint2 pull request
+     * https://github.com/wbhart/flint2/pull/215
+     *
+     * todo: it should be possible to do something like this
+     *       without making a temporary array
+     */
+
+    slong m, n;
+
+    m = a->r;
+    n = b->c;
+
+    arb_mat_t tmp;
+    arb_mat_init(tmp, m, n);
+
+    arb_mat_mul(tmp, a, b, prec);
+    arb_mat_add(d, c, tmp, prec);
+    arb_mat_clear(tmp);
+}
+
+void
+_prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
+{
+    /*
+     * d = c o a*b
+     * Analogous to _arb_mat_addmul
+     * except with entrywise product instead of entrywise addition.
+     */
+    slong m, n;
+
+    m = a->r;
+    n = b->c;
+
+    arb_mat_t tmp;
+    arb_mat_init(tmp, m, n);
+
+    arb_mat_mul(tmp, a, b, prec);
+    _arb_mat_mul_entrywise(d, c, tmp, prec);
+    arb_mat_clear(tmp);
+}
+
+
+void
+_arb_vec_printd(arb_struct *v, slong n, slong d)
+{
+    int i;
+    flint_printf("[");
+    for (i = 0; i < n; i++)
+    {
+        if (i) flint_printf(", ");
+        arb_printd(v+i, d);
+    }
+    flint_printf("]");
+}
+
 
 
 int
@@ -393,17 +461,31 @@ validate_edges(model_and_data_t m, json_t *root)
         csr_graph_stop_adding_edges(m->g);
     }
 
+    /*
+     * Define a map from json edge index to csr edge index.
+     * This will be used later when associating edge rate coefficients
+     * with edges of the tree.
+     */
+    {
+        csr_edge_mapper_init(m->edge_map, m->g->n, m->g->nnz);
+        for (i = 0; i < edge_count; i++)
+        {
+            edge = json_array_get(root, i);
+            result = validate_edge(pair, edge);
+            if (result) goto finish;
+            csr_edge_mapper_add_edge(m->edge_map, m->g, pair[0], pair[1]);
+        }
+    }
+
     /* define a topological ordering of the nodes */
     {
-        int n;
-        n = node_count;
         if (m->preorder)
         {
             fprintf(stderr, "validate_edges: expected NULL preorder\n");
             result = -1;
             goto finish;
         }
-        m->preorder = malloc(n * sizeof(int));
+        m->preorder = malloc(node_count * sizeof(int));
         result = csr_graph_get_tree_topo_sort(
                 m->preorder, m->g, m->root_node_index);
         if (result)
@@ -428,11 +510,10 @@ validate_edge_rate_coefficients(model_and_data_t m, json_t *root)
     int edge_count;
     json_t *x;
 
-    int *rates;
     int result;
+    double tmpd;
 
     edge_count = m->g->nnz;
-    rates = NULL;
     result = 0;
 
     if (!json_is_array(root))
@@ -452,7 +533,7 @@ validate_edge_rate_coefficients(model_and_data_t m, json_t *root)
         goto finish;
     }
 
-    rates = malloc(edge_count * sizeof(double));
+    m->edge_rate_coefficients = malloc(edge_count * sizeof(double));
     for (i = 0; i < edge_count; i++)
     {
         x = json_array_get(root, i);
@@ -463,12 +544,12 @@ validate_edge_rate_coefficients(model_and_data_t m, json_t *root)
             result = -1;
             goto finish;
         }
-        rates[i] = json_number_value(x);
+        tmpd = json_number_value(x);
+        m->edge_rate_coefficients[i] = tmpd;
     }
 
 finish:
 
-    free(rates);
     return result;
 }
 
@@ -480,6 +561,7 @@ validate_rate_matrix(model_and_data_t m, json_t *root)
     int n, col_count;
     json_t *x, *y;
     int result;
+    double tmpd;
 
     result = 0;
 
@@ -513,14 +595,15 @@ validate_rate_matrix(model_and_data_t m, json_t *root)
         }
         for (j = 0; j < n; j++)
         {
-            y = json_array_get(x, i);
+            y = json_array_get(x, j);
             if (!json_is_number(y))
             {
                 fprintf(stderr, "validate_rate_matrix: not a number\n");
                 result = -1;
                 goto finish;
             }
-            *dmat_entry(m->mat, i, j) = json_number_value(y);
+            tmpd = json_number_value(y);
+            *dmat_entry(m->mat, i, j) = tmpd;
         }
     }
 
@@ -616,19 +699,17 @@ finish:
 
 
 int
-validate_model_and_data(json_t *root)
+validate_model_and_data(model_and_data_t m, json_t *root)
 {
-    json_error_t err;
     json_t *edges;
     json_t *edge_rate_coefficients;
     json_t *rate_matrix;
     json_t *probability_array;
 
-    model_and_data_t m;
     int result;
+    json_error_t err;
     size_t flags;
 
-    model_and_data_init(m);
     result = 0;
     flags = JSON_STRICT;
 
@@ -642,37 +723,234 @@ validate_model_and_data(json_t *root)
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-        goto finish;
+        return result;
     }
 
-    /* edges */
-    {
-        result = validate_edges(m, edges);
-        if (result) goto finish;
-    }
+    result = validate_edges(m, edges);
+    if (result) return result;
 
-    /* edge_rate_coefficients */
-    {
-        result = validate_edge_rate_coefficients(m, edge_rate_coefficients);
-        if (result) goto finish;
-    }
+    result = validate_edge_rate_coefficients(m, edge_rate_coefficients);
+    if (result) return result;
 
-    /* rate_matrix */
-    {
-        result = validate_rate_matrix(m, rate_matrix);
-        if (result) goto finish;
-    }
+    result = validate_rate_matrix(m, rate_matrix);
+    if (result) return result;
 
-    /* probability_array */
-    {
-        result = validate_probability_array(m, probability_array);
-        if (result) goto finish;
-    }
+    result = validate_probability_array(m, probability_array);
+    if (result) return result;
 
-finish:
 
-    model_and_data_clear(m);
     return result;
+}
+
+
+int
+high_precision_analysis(model_and_data_t m, int site, slong prec)
+{
+    /* return nonzero if failed due to precision issues */
+
+    int u;
+    csr_graph_struct *g = m->g;
+    int a, b;
+    int i, j, k;
+    int node_count = g->n;
+    int edge_count = g->nnz;
+    int state_count = arb_mat_nrows(m->mat);
+    double tmpd;
+    arb_t tmpx;
+    arb_init(tmpx);
+
+    /*
+     * This is the csr graph index of edge (a, b).
+     * Given this index, node b is directly available
+     * from the csr data structure.
+     * The rate coefficient associated with the edge will also be available.
+     * On the other hand, the index of node 'a' will be available through
+     * the iteration order rather than directly from the index.
+     */
+    int idx;
+
+    /*
+     * Define the map from csr edge index to edge rate.
+     * The edge rate is represented in arbitrary precision.
+     */
+    if (!m->edge_map)
+    {
+        fprintf(stderr, "internal error: edge map is uninitialized\n");
+        abort();
+    }
+    if (!m->edge_map->order)
+    {
+        fprintf(stderr, "internal error: edge map order is uninitialized\n");
+        abort();
+    }
+    if (!m->edge_rate_coefficients)
+    {
+        fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
+        abort();
+    }
+    arb_struct * arb_rates;
+    arb_rates = _arb_vec_init(edge_count);
+    for (i = 0; i < edge_count; i++)
+    {
+        idx = m->edge_map->order[i];
+        tmpd = m->edge_rate_coefficients[i];
+        arb_set_d(arb_rates+idx, tmpd);
+    }
+
+    /* Initialize the unscaled arbitrary precision rate matrix. */
+    arb_mat_t rmat;
+    arb_mat_init(rmat, state_count, state_count);
+    for (j = 0; j < state_count; j++)
+    {
+        for (k = 0; k < state_count; k++)
+        {
+            double r;
+            r = *dmat_entry(m->mat, j, k);
+            arb_set_d(arb_mat_entry(rmat, j, k), r);
+        }
+    }
+
+    /*
+     * Modify the diagonals of the unscaled rate matrix
+     * so that each row sum is zero.
+     */
+    for (j = 0; j < state_count; j++)
+    {
+        arb_zero(arb_mat_entry(rmat, j, j));
+        for (k = 0; k < state_count; k++)
+        {
+            if (j != k)
+            {
+                arb_sub(
+                        arb_mat_entry(rmat, j, j),
+                        arb_mat_entry(rmat, j, j),
+                        arb_mat_entry(rmat, j, k), prec);
+            }
+        }
+    }
+
+
+    /*
+     * Initialize the array of arbitrary precision transition matrices.
+     * They will initially contain appropriately scaled rate matrices.
+     * Although the unscaled rates have zero arb radius and the
+     * scaling coefficients have zero arb radius, the entries of the
+     * scaled rate matrices will in general have positive arb radius.
+     */
+    arb_mat_struct * transition_matrices;
+    arb_mat_struct * tmat;
+    /* allocate transition matrices */
+    transition_matrices = flint_malloc(edge_count * sizeof(arb_mat_struct));
+    for (idx = 0; idx < edge_count; idx++)
+    {
+        tmat = transition_matrices + idx;
+        arb_mat_init(tmat, state_count, state_count);
+    }
+    /* initialize entries with scaled rates */
+    for (idx = 0; idx < edge_count; idx++)
+    {
+        tmat = transition_matrices + idx;
+        for (j = 0; j < state_count; j++)
+        {
+            for (k = 0; k < state_count; k++)
+            {
+                arb_mul(arb_mat_entry(tmat, j, k),
+                        arb_mat_entry(rmat, j, k),
+                        arb_rates + idx, prec);
+            }
+        }
+    }
+
+    /*
+     * Compute the matrix exponentials of the scaled transition rate matrices.
+     * Note that the arb matrix exponential function allows aliasing,
+     * so we do not need to allocate a temporary array (although a temporary
+     * array will be created by the arb function).
+     */
+    for (idx = 0; idx < edge_count; idx++)
+    {
+        tmat = transition_matrices + idx;
+        arb_mat_exp(tmat, tmat, prec);
+    }
+
+    /*
+     * Allocate an arbitrary precision column vector for each node.
+     * This will be used to accumulate conditional likelihoods.
+     */
+    arb_mat_struct * node_column_vectors;
+    node_column_vectors = flint_malloc(node_count * sizeof(arb_mat_struct));
+    arb_mat_struct * nmat;
+    arb_mat_struct * nmatb;
+    for (i = 0; i < node_count; i++)
+    {
+        nmat = node_column_vectors + i;
+        arb_mat_init(nmat, state_count, 1);
+    }
+
+    int start, stop;
+    int state;
+    for (u = 0; u < node_count; u++)
+    {
+        a = m->preorder[node_count - 1 - u];
+        nmat = node_column_vectors + a;
+        start = g->indptr[a];
+        stop = g->indptr[a+1];
+
+        /* initialize the state vector for node a */
+        for (state = 0; state < state_count; state++)
+        {
+            tmpd = *pmat_entry(m->p, site, a, state);
+            arb_set_d(arb_mat_entry(nmat, state, 0), tmpd);
+        }
+
+        /* Hadamard-accumulate matrix-vector products. */
+        for (idx = start; idx < stop; idx++)
+        {
+            b = g->indices[idx];
+
+            tmat = transition_matrices + idx;
+            nmatb = node_column_vectors + b;
+            /*
+             * At this point (a, b) is an edge from node a to node b
+             * in a post-order traversal of edges of the tree.
+             */
+            _prune_update(nmat, nmat, tmat, nmatb, prec);
+        }
+    }
+
+    /* Report the sum of state entries associated with the root. */
+    /* todo: check error bounds and use this to determine return value */
+    int root_node_index = m->preorder[0];
+    nmat = node_column_vectors + root_node_index;
+    arb_zero(tmpx);
+    for (state = 0; state < state_count; state++)
+    {
+        arb_add(tmpx, tmpx, arb_mat_entry(nmat, state, 0), prec);
+    }
+
+    flint_printf("likelihood: ");
+    arb_print(tmpx);
+    flint_printf("\n");
+    arb_printd(tmpx, 15);
+    flint_printf("\n\n");
+
+    _arb_vec_clear(arb_rates, edge_count);
+    arb_mat_clear(rmat);
+    arb_clear(tmpx);
+
+    for (idx = 0; idx < edge_count; idx++)
+    {
+        arb_mat_clear(transition_matrices + idx);
+    }
+    flint_free(transition_matrices);
+    
+    for (i = 0; i < node_count; i++)
+    {
+        arb_mat_clear(node_column_vectors + i);
+    }
+    flint_free(node_column_vectors);
+
+    return 0;
 }
 
 
@@ -684,6 +962,9 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     int working_precision = 0;
     const char *sum_product_strategy = NULL;
     int result = 0;
+    model_and_data_t m;
+
+    model_and_data_init(m);
 
     if (userdata)
     {
@@ -691,26 +972,6 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         result = -1;
         goto finish;
     }
-
-    /*
- * input format:
- * {
- * "model_and_data" : {
- *  "edges" : [[a, b], [c, d], ...],                 (#edges, 2)
- *  "edge_rate_coefficients" : [a, b, ...],          (#edges, )
- *  "rate_matrix" : [[a, b, ...], [c, d, ...], ...], (#states, #states)
- *  "probability_array" : [...]                      (#sites, #nodes, #states)
- * },
- * "reductions" : [
- * {
- *  "columns" : ["site"],
- *  "selection" : [a, b, c, ...], (optional)
- *  "aggregation" : {"sum" | "avg" | [a, b, c, ...]} (optional)
- * }], (optional)
- * "working_precision" : a, (optional)
- * "sum_product_strategy" : {"brute_force" | "dynamic_programming"} (optional)
- * }
- * */
 
     /* parse the json input */
     {
@@ -732,10 +993,25 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     }
 
     /* validate the model and data section of the json input */
-    result = validate_model_and_data(model_and_data);
-    if (result)
+    result = validate_model_and_data(m, model_and_data);
+    if (result) goto finish;
+
+    /* fixme: for now ignore the other json inputs */
+
+    /* repeat with increasing precision */
+    slong prec = 64;
+    int failed = 1;
+    int site;
+    int site_count;
+    site_count = pmat_nsites(m->p);
+    while (failed)
     {
-        goto finish;
+        failed = 0;
+        for (site = 0; site < site_count; site++)
+        {
+            failed |= high_precision_analysis(m, site, prec);
+        }
+        prec <<= 1;
     }
 
     /* create new json object */
@@ -745,6 +1021,7 @@ finish:
 
     *retcode = result;
 
+    model_and_data_clear(m);
     flint_cleanup();
     return j_out;
 }
