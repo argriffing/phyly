@@ -1270,7 +1270,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
             }
 
             /* if the log likelihood is fully evaluated then skip it */
-            if (r->agg_mode == AGG_NONE && _can_round(ll))
+            if (iter && r->agg_mode == AGG_NONE && _can_round(ll))
             {
                 continue;
             }
@@ -1326,19 +1326,23 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
  *  "data" : [[a, b], [c, d], ..., [y, z]] (# selected sites)
  * }
  *
- * output format (with aggregation of the "site" column):
- * {
- *  "columns" : ["value"],
- *  "data" : [a]
- * }
  * */
 
     if (r->agg_mode == AGG_NONE)
     {
-        /*
-         * fixme: not implemented...
-        j_out = json_pack("{s:O, s:O}", "columns", j_columns, "data", j_data);
-        */
+        double d;
+        json_t *j_data, *x;
+        j_data = json_array();
+        for (i = 0; i < r->selection_len; i++)
+        {
+            site = r->selection[i];
+            ll = site_log_likelihoods + site;
+            d = arf_get_d(arb_midref(ll), ARF_RND_NEAR);
+            x = json_pack("[i, f]", site, d);
+            json_array_append_new(j_data, x);
+        }
+        j_out = json_pack("{s:[s, s], s:o}",
+                "columns", "site", "value", "data", j_data);
     }
     else
     {

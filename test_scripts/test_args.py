@@ -54,6 +54,32 @@ def _myfail(d):
 def test_ok():
     arbplf_ll(json.dumps(good_input))
 
+def test_ok_reduction_deleted():
+    x = copy.deepcopy(good_input)
+    del x['site_reduction']
+    arbplf_ll(json.dumps(x))
+
+def test_ok_reduction_empty():
+    x = copy.deepcopy(good_input)
+    x['site_reduction'] = {}
+    arbplf_ll(json.dumps(x))
+
+def test_ok_reduction_avg_aggregation():
+    x = copy.deepcopy(good_input)
+    x['site_reduction'] = {"aggregation" : "avg"}
+    arbplf_ll(json.dumps(x))
+
+def test_ok_reduction_selection():
+    x = copy.deepcopy(good_input)
+    x['site_reduction'] = {"selection" : [0]}
+    arbplf_ll(json.dumps(x))
+
+def test_ok_reduction_selection_aggregation():
+    x = copy.deepcopy(good_input)
+    x['site_reduction'] = {"selection" : [0], "aggregation" : "sum"}
+    arbplf_ll(json.dumps(x))
+
+
 def test_bad_edge_not_array_but_dict():
     x = copy.deepcopy(good_input)
     x['model_and_data']['edges'][2] = {'hello' : 'world'}
