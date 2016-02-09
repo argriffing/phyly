@@ -20,6 +20,8 @@ myext = Extension(
             'csr_graph.c',
             'model.c',
             'parsemodel.c',
+            'reduction.c',
+            'parsereduction.c',
             ])
 
 setup(name="arbplf", version="0.0.1", ext_modules = [myext])

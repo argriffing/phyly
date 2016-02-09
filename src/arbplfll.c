@@ -63,15 +63,13 @@
 #include "arb.h"
 #include "arf.h"
 
-#include "runjson.h"
-#include "model.h"
-#include "parsemodel.h"
 #include "csr_graph.h"
+#include "model.h"
+#include "reduction.h"
 
-#define AGG_NONE 0
-#define AGG_AVG 1
-#define AGG_SUM 2
-#define AGG_WEIGHTED_SUM 3
+#include "parsemodel.h"
+#include "parsereduction.h"
+#include "runjson.h"
 
 int _can_round(arb_t x)
 {
@@ -358,184 +356,10 @@ _arb_vec_printd(arb_struct *v, slong n, slong d)
 }
 
 
-typedef struct
-{
-    int *selection;
-    int *weights;
-    int agg_mode;
-    int selection_len;
-} site_reduction_struct;
-typedef site_reduction_struct site_reduction_t[1];
-
-void
-site_reduction_init(site_reduction_t r)
-{
-    r->selection = NULL;
-    r->weights = NULL;
-    r->agg_mode = AGG_NONE;
-    r->selection_len = 0;
-}
-
-void
-site_reduction_clear(site_reduction_t r)
-{
-    free(r->selection);
-    free(r->weights);
-}
-
-int
-validate_site_selection(site_reduction_t r, int site_count, json_t *root)
-{
-    json_t *x;
-    int i, site;
-    if (!root)
-    {
-        r->selection_len = site_count;
-        r->selection = malloc(site_count * sizeof(int));
-        for (i = 0; i < site_count; i++)
-        {
-            r->selection[i] = i;
-        }
-    }
-    else
-    {
-        if (!json_is_array(root))
-        {
-            fprintf(stderr, "validate_site_selection: not an array\n");
-            return -1;
-        }
-        r->selection_len = json_array_size(root);
-        r->selection = malloc(r->selection_len * sizeof(int));
-        for (i = 0; i < r->selection_len; i++)
-        {
-            x = json_array_get(root, i);
-            if (!json_is_integer(x))
-            {
-                fprintf(stderr, "validate_site_selection: ");
-                fprintf(stderr, "the given site index is not an integer\n");
-                return -1;
-            }
-            site = json_integer_value(x);
-            if (site < 0)
-            {
-                fprintf(stderr, "validate_site_selection: ");
-                fprintf(stderr, "each site index must be positive\n");
-                return -1;
-            }
-            if (site >= site_count)
-            {
-                fprintf(stderr, "validate_site_selection: ");
-                fprintf(stderr, "each site index must be less than ");
-                fprintf(stderr, "the number of sites\n");
-                return -1;
-            }
-            r->selection[i] = site;
-        }
-    }
-    return 0;
-}
-
-int
-validate_site_aggregation(site_reduction_t r, json_t *root)
-{
-    json_t *x;
-    int i;
-    double weight;
-    int n;
-    if (!root)
-    {
-        r->agg_mode = AGG_NONE;
-    }
-    else if (json_is_string(root))
-    {
-        if (!strcmp(json_string_value(root), "sum"))
-        {
-            r->agg_mode = AGG_SUM;
-        }
-        else if (!strcmp(json_string_value(root), "avg"))
-        {
-            r->agg_mode = AGG_AVG;
-        }
-        else
-        {
-            fprintf(stderr, "validate_site_aggregation: ");
-            fprintf(stderr, "the only valid site aggregation strings are ");
-            fprintf(stderr, "\"sum\" and \"avg\"\n");
-            return -1;
-        }
-    }
-    else if (json_is_array(root))
-    {
-        r->agg_mode = AGG_WEIGHTED_SUM;
-        n = json_array_size(root);
-        if (n != r->selection_len)
-        {
-            fprintf(stderr, "validate_site_aggregation: ");
-            fprintf(stderr, "the number of weights must be equal to the ");
-            fprintf(stderr, "number of selected sites, ");
-            fprintf(stderr, "or to the total number of sites if no ");
-            fprintf(stderr, "selection was provided\n");
-            return -1;
-        }
-        r->weights = malloc(n * sizeof(double));
-        for (i = 0; i < n; i++)
-        {
-            x = json_array_get(root, i);
-            if (!json_is_number(x))
-            {
-                fprintf(stderr, "validate_site_selection: ");
-                fprintf(stderr, "the given site index is not an integer\n");
-                return -1;
-            }
-            weight = json_number_value(x);
-            r->weights[i] = weight;
-        }
-    }
-    else
-    {
-        fprintf(stderr, "validate_site_aggregation: ");
-        fprintf(stderr, "the optional site aggregation should be ");
-        fprintf(stderr, "either \"sum\" or \"avg\" or an array of weights\n");
-        return -1;
-    }
-    return 0;
-}
 
 
-int
-validate_site_reduction(site_reduction_t r, int site_count, json_t *root)
-{
-    json_t *selection = NULL;
-    json_t *aggregation = NULL;
 
-    int result;
-    json_error_t err;
-    size_t flags;
 
-    result = 0;
-    flags = JSON_STRICT;
-
-    if (root)
-    {
-        result = json_unpack_ex(root, &err, flags,
-                "{s?o, s?o}",
-                "selection", &selection,
-                "aggregation", &aggregation);
-        if (result)
-        {
-            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-            return result;
-        }
-    }
-
-    result = validate_site_selection(r, site_count, selection);
-    if (result) return result;
-
-    result = validate_site_aggregation(r, aggregation);
-    if (result) return result;
-
-    return result;
-}
 
 
 void
@@ -601,7 +425,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     int result = 0;
     int site_count = 0;
     model_and_data_t m;
-    site_reduction_t r;
+    column_reduction_t r;
     int *site_is_selected = NULL;
     arb_struct * site_likelihoods = NULL;
     arb_struct * site_log_likelihoods = NULL;
@@ -615,7 +439,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
     likelihood_ws_init(w, NULL, 0);
     model_and_data_init(m);
-    site_reduction_init(r);
+    column_reduction_init(r);
 
     if (userdata)
     {
@@ -649,7 +473,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     site_count = pmat_nsites(m->p);
 
     /* validate the (optional) site reduction section of the json input */
-    result = validate_site_reduction(r, site_count, site_reduction);
+    result = validate_column_reduction(r, site_count, "site", site_reduction);
     if (result) goto finish;
 
     int i;
@@ -773,7 +597,7 @@ finish:
     {
         _arb_vec_clear(site_log_likelihoods, site_count);
     }
-    site_reduction_clear(r);
+    column_reduction_clear(r);
     model_and_data_clear(m);
     likelihood_ws_clear(w);
     flint_cleanup();
