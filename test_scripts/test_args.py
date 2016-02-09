@@ -30,11 +30,9 @@ good_input = {
          "probability_array" : [
              [[0.6, 0.2, 0.2], [1, 1, 1], [1, 0, 0], [0, 0, 1]],
              [[0.6, 0.2, 0.2], [1, 1, 1], [0, 0, 1], [0, 0, 1]]]},
-     "reductions" : [{
-         "columns" : ["site"],
-         "aggregation" : "sum"}],
-     "working_precision" : 256,
-     "sum_product_strategy" : "brute_force"}
+     "site_reduction" : {
+         "aggregation" : "sum"},
+     }
 
 def runjson(args, d):
     s_in = json.dumps(d)
@@ -292,9 +290,6 @@ def test_simplified_felsenstein_fig_16_4_example():
              [0.25, 0.25, 0.25, 0.25],
              [1, 1, 1, 1],
              [1, 1, 1, 1]]]},
-     "reductions" : [{
-         "columns" : ["site"],
-         "aggregation" : "sum"}],
-     "working_precision" : 256,
-     "sum_product_strategy" : "dynamic_programming"}
+     "site_reduction" : {
+         "aggregation" : "sum"}}
     arbplf_ll(json.dumps(x))

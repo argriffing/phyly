@@ -2,12 +2,8 @@
  * Use arbitrary precision matrix operations to compute a log likelihood.
  * The JSON format is used for both input and output.
  * Arbitrary precision is used only internally;
- * error bounds are not available for the input or the output,
- * but instead double precision floating point representation is used.
- * If the precision level used for intermediate calculations
- * is determined to be insufficient for reporting an "mpfr"-like
- * output (as indicated by the arb function arb_can_round_mpfr)
- * then an error is reported instead.
+ * double precision floating point without error bounds
+ * is used for input and output.
  *
  * The "probability_array" is a semantically flexible structure that defines
  * both the root prior distribution and the observations at the leaves.
@@ -40,14 +36,11 @@
  *  "rate_matrix" : [[a, b, ...], [c, d, ...], ...], (#states, #states)
  *  "probability_array" : [...]                      (#sites, #nodes, #states)
  * },
- * "reductions" : [
+ * "site_reduction" :
  * {
- *  "columns" : ["site"],
  *  "selection" : [a, b, c, ...], (optional)
  *  "aggregation" : {"sum" | "avg" | [a, b, c, ...]} (optional)
- * }], (optional)
- * "working_precision" : a, (optional)
- * "sum_product_strategy" : {"brute_force" | "dynamic_programming"} (optional)
+ * } (optional)
  * }
  *
  * output format (without aggregation of the "site" column):
@@ -68,9 +61,20 @@
 
 #include "arb_mat.h"
 #include "arb.h"
+#include "arf.h"
 
 #include "runjson.h"
 #include "csr_graph.h"
+
+#define AGG_NONE 0
+#define AGG_AVG 1
+#define AGG_SUM 2
+#define AGG_WEIGHTED_SUM 3
+
+int _can_round(arb_t x)
+{
+    return arb_can_round_arf(x, 53, ARF_RND_NEAR);
+}
 
 
 typedef struct
@@ -187,6 +191,9 @@ pmat_clear(pmat_t mat)
 
 
 
+/*
+ * The object lifetime extends across precision levels and site evaluations.
+ */
 typedef struct
 {
     csr_graph_t g;
@@ -220,6 +227,200 @@ model_and_data_clear(model_and_data_t m)
     dmat_clear(m->mat);
     pmat_clear(m->p);
     csr_edge_mapper_clear(m->edge_map);
+}
+
+
+
+/*
+ * Likelihood workspace.
+ * The object lifetime is limited to only one level of precision,
+ * but it extends across site evaluations.
+ */
+typedef struct
+{
+    slong prec;
+    int node_count;
+    int edge_count;
+    int state_count;
+    arb_struct *edge_rates;
+    arb_mat_t rate_matrix;
+    arb_mat_struct *transition_matrices;
+    arb_mat_struct *node_column_vectors;
+} likelihood_ws_struct;
+typedef likelihood_ws_struct likelihood_ws_t[1];
+
+void
+likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
+{
+    csr_graph_struct *g;
+    int i, j, k;
+    arb_mat_struct * tmat;
+    arb_mat_struct * nmat;
+    double tmpd;
+
+    if (!m)
+    {
+        arb_mat_init(w->rate_matrix, 0, 0);
+        w->transition_matrices = NULL;
+        w->node_column_vectors = NULL;
+        w->edge_rates = NULL;
+        w->node_count = 0;
+        w->edge_count = 0;
+        w->state_count = 0;
+        w->prec = 0;
+        return;
+    }
+
+    g = m->g;
+
+    w->prec = prec;
+    w->node_count = g->n;
+    w->edge_count = g->nnz;
+    w->state_count = arb_mat_nrows(m->mat);
+
+    w->edge_rates = _arb_vec_init(w->edge_count);
+    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
+    w->transition_matrices = flint_malloc(
+            w->edge_count * sizeof(arb_mat_struct));
+    w->node_column_vectors = flint_malloc(
+            w->node_count * sizeof(arb_mat_struct));
+
+    /*
+     * This is the csr graph index of edge (a, b).
+     * Given this index, node b is directly available
+     * from the csr data structure.
+     * The rate coefficient associated with the edge will also be available.
+     * On the other hand, the index of node 'a' will be available through
+     * the iteration order rather than directly from the index.
+     */
+    int idx;
+
+    /*
+     * Define the map from csr edge index to edge rate.
+     * The edge rate is represented in arbitrary precision.
+     */
+    if (!m->edge_map)
+    {
+        fprintf(stderr, "internal error: edge map is uninitialized\n");
+        abort();
+    }
+    if (!m->edge_map->order)
+    {
+        fprintf(stderr, "internal error: edge map order is uninitialized\n");
+        abort();
+    }
+    if (!m->edge_rate_coefficients)
+    {
+        fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
+        abort();
+    }
+    for (i = 0; i < w->edge_count; i++)
+    {
+        idx = m->edge_map->order[i];
+        tmpd = m->edge_rate_coefficients[i];
+        arb_set_d(w->edge_rates + idx, tmpd);
+    }
+
+    /* Initialize the unscaled arbitrary precision rate matrix. */
+    for (j = 0; j < w->state_count; j++)
+    {
+        for (k = 0; k < w->state_count; k++)
+        {
+            double r;
+            r = *dmat_entry(m->mat, j, k);
+            arb_set_d(arb_mat_entry(w->rate_matrix, j, k), r);
+        }
+    }
+
+    /*
+     * Modify the diagonals of the unscaled rate matrix
+     * so that the sum of each row is zero.
+     */
+    arb_ptr p;
+    for (j = 0; j < w->state_count; j++)
+    {
+        p = arb_mat_entry(w->rate_matrix, j, j);
+        arb_zero(p);
+        for (k = 0; k < w->state_count; k++)
+        {
+            if (j != k)
+            {
+                arb_sub(p, p, arb_mat_entry(w->rate_matrix, j, k), w->prec);
+            }
+        }
+    }
+
+    /*
+     * Initialize the array of arbitrary precision transition matrices.
+     * They will initially contain appropriately scaled rate matrices.
+     * Although the unscaled rates have zero arb radius and the
+     * scaling coefficients have zero arb radius, the entries of the
+     * scaled rate matrices will in general have positive arb radius.
+     */
+    for (idx = 0; idx < w->edge_count; idx++)
+    {
+        tmat = w->transition_matrices + idx;
+        arb_mat_init(tmat, w->state_count, w->state_count);
+    }
+    for (idx = 0; idx < w->edge_count; idx++)
+    {
+        tmat = w->transition_matrices + idx;
+        for (j = 0; j < w->state_count; j++)
+        {
+            for (k = 0; k < w->state_count; k++)
+            {
+                arb_mul(arb_mat_entry(tmat, j, k),
+                        arb_mat_entry(w->rate_matrix, j, k),
+                        w->edge_rates + idx, w->prec);
+            }
+        }
+    }
+
+    /*
+     * Compute the matrix exponentials of the scaled transition rate matrices.
+     * Note that the arb matrix exponential function allows aliasing,
+     * so we do not need to allocate a temporary array (although a temporary
+     * array will be created by the arb function).
+     */
+    for (idx = 0; idx < w->edge_count; idx++)
+    {
+        tmat = w->transition_matrices + idx;
+        arb_mat_exp(tmat, tmat, w->prec);
+    }
+
+    /*
+     * Allocate an arbitrary precision column vector for each node.
+     * This will be used to accumulate conditional likelihoods.
+     */
+    for (i = 0; i < w->node_count; i++)
+    {
+        nmat = w->node_column_vectors + i;
+        arb_mat_init(nmat, w->state_count, 1);
+    }
+}
+
+void
+likelihood_ws_clear(likelihood_ws_t w)
+{
+    int i, idx;
+
+    if (w->edge_rates)
+    {
+        _arb_vec_clear(w->edge_rates, w->edge_count);
+    }
+    arb_mat_clear(w->rate_matrix);
+
+    for (idx = 0; idx < w->edge_count; idx++)
+    {
+        arb_mat_clear(w->transition_matrices + idx);
+    }
+    flint_free(w->transition_matrices);
+    
+    for (i = 0; i < w->node_count; i++)
+    {
+        arb_mat_clear(w->node_column_vectors + i);
+    }
+    flint_free(w->node_column_vectors);
 }
 
 
@@ -738,166 +939,213 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     result = validate_probability_array(m, probability_array);
     if (result) return result;
 
+    return result;
+}
+
+typedef struct
+{
+    int *selection;
+    int *weights;
+    int agg_mode;
+    int selection_len;
+} site_reduction_struct;
+typedef site_reduction_struct site_reduction_t[1];
+
+void
+site_reduction_init(site_reduction_t r)
+{
+    r->selection = NULL;
+    r->weights = NULL;
+    r->agg_mode = AGG_NONE;
+    r->selection_len = 0;
+}
+
+void
+site_reduction_clear(site_reduction_t r)
+{
+    free(r->selection);
+    free(r->weights);
+}
+
+int
+validate_site_selection(site_reduction_t r, int site_count, json_t *root)
+{
+    json_t *x;
+    int i, site;
+    if (!root)
+    {
+        r->selection_len = site_count;
+        r->selection = malloc(site_count * sizeof(int));
+        for (i = 0; i < site_count; i++)
+        {
+            r->selection[i] = i;
+        }
+    }
+    else
+    {
+        if (!json_is_array(root))
+        {
+            fprintf(stderr, "validate_site_selection: not an array\n");
+            return -1;
+        }
+        r->selection_len = json_array_size(root);
+        r->selection = malloc(r->selection_len * sizeof(int));
+        for (i = 0; i < r->selection_len; i++)
+        {
+            x = json_array_get(root, i);
+            if (!json_is_integer(x))
+            {
+                fprintf(stderr, "validate_site_selection: ");
+                fprintf(stderr, "the given site index is not an integer\n");
+                return -1;
+            }
+            site = json_integer_value(x);
+            if (site < 0)
+            {
+                fprintf(stderr, "validate_site_selection: ");
+                fprintf(stderr, "site indices must be positive\n");
+                return -1;
+            }
+            if (site >= site_count)
+            {
+                fprintf(stderr, "validate_site_selection: ");
+                fprintf(stderr, "site indices must be less than ");
+                fprintf(stderr, "the number of sites\n");
+                return -1;
+            }
+            r->selection[i] = site;
+        }
+    }
+    return 0;
+}
+
+int
+validate_site_aggregation(site_reduction_t r, json_t *root)
+{
+    json_t *x;
+    int i;
+    double weight;
+    int n;
+    if (!root)
+    {
+        r->agg_mode = AGG_NONE;
+    }
+    else if (json_is_string(root))
+    {
+        if (!strcmp(json_string_value(root), "sum"))
+        {
+            r->agg_mode = AGG_SUM;
+        }
+        else if (!strcmp(json_string_value(root), "avg"))
+        {
+            r->agg_mode = AGG_AVG;
+        }
+        else
+        {
+            fprintf(stderr, "validate_site_aggregation: ");
+            fprintf(stderr, "the only valid site aggregation strings are ");
+            fprintf(stderr, "\"sum\" and \"avg\"\n");
+            return -1;
+        }
+    }
+    else if (json_is_array(root))
+    {
+        r->agg_mode = AGG_WEIGHTED_SUM;
+        n = json_array_size(root);
+        if (n != r->selection_len)
+        {
+            fprintf(stderr, "validate_site_aggregation: ");
+            fprintf(stderr, "the number of weights must be equal to the ");
+            fprintf(stderr, "number of selected sites, ");
+            fprintf(stderr, "or to the total number of sites if no ");
+            fprintf(stderr, "selection was provided\n");
+            return -1;
+        }
+        r->weights = malloc(n * sizeof(double));
+        for (i = 0; i < n; i++)
+        {
+            x = json_array_get(root, i);
+            if (!json_is_number(x))
+            {
+                fprintf(stderr, "validate_site_selection: ");
+                fprintf(stderr, "the given site index is not an integer\n");
+                return -1;
+            }
+            weight = json_number_value(x);
+            r->weights[i] = weight;
+        }
+    }
+    else
+    {
+        fprintf(stderr, "validate_site_aggregation: ");
+        fprintf(stderr, "the optional site aggregation should be ");
+        fprintf(stderr, "either \"sum\" or \"avg\" or an array of weights\n");
+        return -1;
+    }
+    return 0;
+}
+
+
+int
+validate_site_reduction(site_reduction_t r, int site_count, json_t *root)
+{
+    json_t *selection = NULL;
+    json_t *aggregation = NULL;
+
+    int result;
+    json_error_t err;
+    size_t flags;
+
+    result = 0;
+    flags = JSON_STRICT;
+
+    if (root)
+    {
+        result = json_unpack_ex(root, &err, flags,
+                "{s?o, s?o}",
+                "selection", &selection,
+                "aggregation", &aggregation);
+        if (result)
+        {
+            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+            return result;
+        }
+    }
+
+    result = validate_site_selection(r, site_count, selection);
+    if (result) return result;
+
+    result = validate_site_aggregation(r, aggregation);
+    if (result) return result;
 
     return result;
 }
 
 
-int
-high_precision_analysis(model_and_data_t m, int site, slong prec)
+void
+evaluate_site_likelihood(
+        arb_t lhood, model_and_data_t m, likelihood_ws_t w, int site)
 {
-    /* return nonzero if failed due to precision issues */
-
-    int u;
-    csr_graph_struct *g = m->g;
-    int a, b;
-    int i, j, k;
-    int node_count = g->n;
-    int edge_count = g->nnz;
-    int state_count = arb_mat_nrows(m->mat);
-    double tmpd;
-    arb_t tmpx;
-    arb_init(tmpx);
-
-    /*
-     * This is the csr graph index of edge (a, b).
-     * Given this index, node b is directly available
-     * from the csr data structure.
-     * The rate coefficient associated with the edge will also be available.
-     * On the other hand, the index of node 'a' will be available through
-     * the iteration order rather than directly from the index.
-     */
-    int idx;
-
-    /*
-     * Define the map from csr edge index to edge rate.
-     * The edge rate is represented in arbitrary precision.
-     */
-    if (!m->edge_map)
-    {
-        fprintf(stderr, "internal error: edge map is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_map->order)
-    {
-        fprintf(stderr, "internal error: edge map order is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_rate_coefficients)
-    {
-        fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
-        abort();
-    }
-    arb_struct * arb_rates;
-    arb_rates = _arb_vec_init(edge_count);
-    for (i = 0; i < edge_count; i++)
-    {
-        idx = m->edge_map->order[i];
-        tmpd = m->edge_rate_coefficients[i];
-        arb_set_d(arb_rates+idx, tmpd);
-    }
-
-    /* Initialize the unscaled arbitrary precision rate matrix. */
-    arb_mat_t rmat;
-    arb_mat_init(rmat, state_count, state_count);
-    for (j = 0; j < state_count; j++)
-    {
-        for (k = 0; k < state_count; k++)
-        {
-            double r;
-            r = *dmat_entry(m->mat, j, k);
-            arb_set_d(arb_mat_entry(rmat, j, k), r);
-        }
-    }
-
-    /*
-     * Modify the diagonals of the unscaled rate matrix
-     * so that each row sum is zero.
-     */
-    for (j = 0; j < state_count; j++)
-    {
-        arb_zero(arb_mat_entry(rmat, j, j));
-        for (k = 0; k < state_count; k++)
-        {
-            if (j != k)
-            {
-                arb_sub(
-                        arb_mat_entry(rmat, j, j),
-                        arb_mat_entry(rmat, j, j),
-                        arb_mat_entry(rmat, j, k), prec);
-            }
-        }
-    }
-
-
-    /*
-     * Initialize the array of arbitrary precision transition matrices.
-     * They will initially contain appropriately scaled rate matrices.
-     * Although the unscaled rates have zero arb radius and the
-     * scaling coefficients have zero arb radius, the entries of the
-     * scaled rate matrices will in general have positive arb radius.
-     */
-    arb_mat_struct * transition_matrices;
-    arb_mat_struct * tmat;
-    /* allocate transition matrices */
-    transition_matrices = flint_malloc(edge_count * sizeof(arb_mat_struct));
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        tmat = transition_matrices + idx;
-        arb_mat_init(tmat, state_count, state_count);
-    }
-    /* initialize entries with scaled rates */
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        tmat = transition_matrices + idx;
-        for (j = 0; j < state_count; j++)
-        {
-            for (k = 0; k < state_count; k++)
-            {
-                arb_mul(arb_mat_entry(tmat, j, k),
-                        arb_mat_entry(rmat, j, k),
-                        arb_rates + idx, prec);
-            }
-        }
-    }
-
-    /*
-     * Compute the matrix exponentials of the scaled transition rate matrices.
-     * Note that the arb matrix exponential function allows aliasing,
-     * so we do not need to allocate a temporary array (although a temporary
-     * array will be created by the arb function).
-     */
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        tmat = transition_matrices + idx;
-        arb_mat_exp(tmat, tmat, prec);
-    }
-
-    /*
-     * Allocate an arbitrary precision column vector for each node.
-     * This will be used to accumulate conditional likelihoods.
-     */
-    arb_mat_struct * node_column_vectors;
-    node_column_vectors = flint_malloc(node_count * sizeof(arb_mat_struct));
-    arb_mat_struct * nmat;
-    arb_mat_struct * nmatb;
-    for (i = 0; i < node_count; i++)
-    {
-        nmat = node_column_vectors + i;
-        arb_mat_init(nmat, state_count, 1);
-    }
-
+    int u, a, b, idx;
     int start, stop;
     int state;
-    for (u = 0; u < node_count; u++)
+    double tmpd;
+    arb_mat_struct * nmat;
+    arb_mat_struct * nmatb;
+    arb_mat_struct * tmat;
+    csr_graph_struct *g;
+
+    g = m->g;
+
+    for (u = 0; u < w->node_count; u++)
     {
-        a = m->preorder[node_count - 1 - u];
-        nmat = node_column_vectors + a;
+        a = m->preorder[w->node_count - 1 - u];
+        nmat = w->node_column_vectors + a;
         start = g->indptr[a];
         stop = g->indptr[a+1];
 
         /* initialize the state vector for node a */
-        for (state = 0; state < state_count; state++)
+        for (state = 0; state < w->state_count; state++)
         {
             tmpd = *pmat_entry(m->p, site, a, state);
             arb_set_d(arb_mat_entry(nmat, state, 0), tmpd);
@@ -908,49 +1156,24 @@ high_precision_analysis(model_and_data_t m, int site, slong prec)
         {
             b = g->indices[idx];
 
-            tmat = transition_matrices + idx;
-            nmatb = node_column_vectors + b;
+            tmat = w->transition_matrices + idx;
+            nmatb = w->node_column_vectors + b;
             /*
              * At this point (a, b) is an edge from node a to node b
              * in a post-order traversal of edges of the tree.
              */
-            _prune_update(nmat, nmat, tmat, nmatb, prec);
+            _prune_update(nmat, nmat, tmat, nmatb, w->prec);
         }
     }
 
     /* Report the sum of state entries associated with the root. */
-    /* todo: check error bounds and use this to determine return value */
     int root_node_index = m->preorder[0];
-    nmat = node_column_vectors + root_node_index;
-    arb_zero(tmpx);
-    for (state = 0; state < state_count; state++)
+    nmat = w->node_column_vectors + root_node_index;
+    arb_zero(lhood);
+    for (state = 0; state < w->state_count; state++)
     {
-        arb_add(tmpx, tmpx, arb_mat_entry(nmat, state, 0), prec);
+        arb_add(lhood, lhood, arb_mat_entry(nmat, state, 0), w->prec);
     }
-
-    flint_printf("likelihood: ");
-    arb_print(tmpx);
-    flint_printf("\n");
-    arb_printd(tmpx, 15);
-    flint_printf("\n\n");
-
-    _arb_vec_clear(arb_rates, edge_count);
-    arb_mat_clear(rmat);
-    arb_clear(tmpx);
-
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        arb_mat_clear(transition_matrices + idx);
-    }
-    flint_free(transition_matrices);
-    
-    for (i = 0; i < node_count; i++)
-    {
-        arb_mat_clear(node_column_vectors + i);
-    }
-    flint_free(node_column_vectors);
-
-    return 0;
 }
 
 
@@ -958,13 +1181,25 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 {
     json_t *j_out = NULL;
     json_t *model_and_data = NULL;
-    json_t *reductions = NULL;
-    int working_precision = 0;
-    const char *sum_product_strategy = NULL;
+    json_t *site_reduction = NULL;
     int result = 0;
+    int site_count = 0;
     model_and_data_t m;
+    site_reduction_t r;
+    int *site_is_selected = NULL;
+    arb_struct * site_likelihoods = NULL;
+    arb_struct * site_log_likelihoods = NULL;
+    arb_t aggregate, tmp, weight;
+    likelihood_ws_t w;
+    int iter = 0;
 
+    arb_init(tmp);
+    arb_init(weight);
+    arb_init(aggregate);
+
+    likelihood_ws_init(w, NULL, 0);
     model_and_data_init(m);
+    site_reduction_init(r);
 
     if (userdata)
     {
@@ -980,11 +1215,10 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         
         flags = JSON_STRICT;
         result = json_unpack_ex(root, &err, flags,
-                "{s:o, s?o, s?i, s?s}",
+                "{s:o, s?o}",
                 "model_and_data", &model_and_data,
-                "reductions", &reductions,
-                "working_precision", &working_precision,
-                "sum_product_strategy", &sum_product_strategy);
+                "site_reduction", &site_reduction
+                );
         if (result)
         {
             fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
@@ -996,32 +1230,143 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     result = validate_model_and_data(m, model_and_data);
     if (result) goto finish;
 
-    /* fixme: for now ignore the other json inputs */
-
-    /* repeat with increasing precision */
-    slong prec = 64;
-    int failed = 1;
-    int site;
-    int site_count;
     site_count = pmat_nsites(m->p);
+
+    /* validate the (optional) site reduction section of the json input */
+    result = validate_site_reduction(r, site_count, site_reduction);
+    if (result) goto finish;
+
+    int i;
+    int site;
+    site_is_selected = calloc(site_count, sizeof(int));
+    for (i = 0; i < r->selection_len; i++)
+    {
+        site = r->selection[i];
+        site_is_selected[site] = 1;
+    }
+
+    site_likelihoods = _arb_vec_init(site_count);
+    site_log_likelihoods = _arb_vec_init(site_count);
+
+    /* repeat site evaluations with increasing precision */
+    slong prec = 4;
+    int failed = 1;
+    arb_ptr lhood, ll;
     while (failed)
     {
         failed = 0;
+        likelihood_ws_clear(w);
+        likelihood_ws_init(w, m, prec);
+        /* if any likelihood is exactly zero then return an error */
         for (site = 0; site < site_count; site++)
         {
-            failed |= high_precision_analysis(m, site, prec);
+            lhood = site_likelihoods + site;
+            ll = site_log_likelihoods + site;
+
+            /* if the site is not in the selection then skip it */
+            if (!site_is_selected[site])
+            {
+                continue;
+            }
+
+            /* if the log likelihood is fully evaluated then skip it */
+            if (r->agg_mode == AGG_NONE && _can_round(ll))
+            {
+                continue;
+            }
+
+            evaluate_site_likelihood(lhood, m, w, site);
+            if (arb_is_zero(lhood))
+            {
+                fprintf(stderr, "error: infeasible\n");
+                result = -1;
+                goto finish;
+            }
+            arb_log(ll, lhood, prec);
+            /* if no aggregation and still bad bounds then fail */
+            if (r->agg_mode == AGG_NONE && !_can_round(ll))
+            {
+                failed = 1;
+            }
+        }
+        /* compute the aggregate if any */
+        if (r->agg_mode != AGG_NONE)
+        {
+            arb_zero(aggregate);
+            arb_one(weight);
+            for (i = 0; i < r->selection_len; i++)
+            {
+                site = r->selection[i];
+                if (r->agg_mode == AGG_WEIGHTED_SUM)
+                {
+                    arb_set_d(weight, r->weights[i]);
+                }
+                ll = site_log_likelihoods + site;
+                arb_addmul(aggregate, ll, weight, prec);
+            }
+            if (r->agg_mode == AGG_AVG)
+            {
+                arb_div_si(aggregate, aggregate, r->selection_len, prec);
+            }
+            /* if aggregate has bad bounds then fail */
+            if (!_can_round(aggregate))
+            {
+                failed = 1;
+            }
         }
         prec <<= 1;
+        iter++;
     }
 
-    /* create new json object */
-    j_out = json_pack("{s:s}", "hello", "world");
+    /* create the json object */
+    /*
+ * output format (without aggregation of the "site" column):
+ * {
+ *  "columns" : ["site", "value"],
+ *  "data" : [[a, b], [c, d], ..., [y, z]] (# selected sites)
+ * }
+ *
+ * output format (with aggregation of the "site" column):
+ * {
+ *  "columns" : ["value"],
+ *  "data" : [a]
+ * }
+ * */
+
+    if (r->agg_mode == AGG_NONE)
+    {
+        /*
+         * fixme: not implemented...
+        j_out = json_pack("{s:O, s:O}", "columns", j_columns, "data", j_data);
+        */
+    }
+    else
+    {
+        j_out = json_pack("{s:[s], s:[f]}",
+                "columns", "value", "data",
+                arf_get_d(arb_midref(aggregate), ARF_RND_NEAR));
+    }
+
 
 finish:
 
     *retcode = result;
 
+    arb_clear(aggregate);
+    arb_clear(tmp);
+    arb_clear(weight);
+    free(site_is_selected);
+    if (site_likelihoods)
+    {
+        _arb_vec_clear(site_likelihoods, site_count);
+    }
+    if (site_log_likelihoods)
+    {
+        _arb_vec_clear(site_log_likelihoods, site_count);
+    }
+    site_reduction_clear(r);
     model_and_data_clear(m);
+    likelihood_ws_clear(w);
     flint_cleanup();
     return j_out;
 }

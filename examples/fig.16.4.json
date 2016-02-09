@@ -39,8 +39,5 @@
 		 [0.25, 0.25, 0.25, 0.25],
 		 [1, 1, 1, 1],
 		 [1, 1, 1, 1]]]},
- "reductions" : [{
-	 "columns" : ["site"],
-	 "aggregation" : "sum"}],
- "working_precision" : 256,
- "sum_product_strategy" : "dynamic_programming"}
+ "site_reduction" : {"aggregation" : "sum"}
+ }
