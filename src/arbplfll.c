@@ -830,7 +830,6 @@ validate_probability_array(model_and_data_t m, json_t *root)
 
     if (!json_is_array(root))
     {
-        fprintf(stderr, "validate_probability_array: ");
         fprintf(stderr, "validate_probability_array: expected an array\n");
         result = -1;
         goto finish;
@@ -1003,13 +1002,13 @@ validate_site_selection(site_reduction_t r, int site_count, json_t *root)
             if (site < 0)
             {
                 fprintf(stderr, "validate_site_selection: ");
-                fprintf(stderr, "site indices must be positive\n");
+                fprintf(stderr, "each site index must be positive\n");
                 return -1;
             }
             if (site >= site_count)
             {
                 fprintf(stderr, "validate_site_selection: ");
-                fprintf(stderr, "site indices must be less than ");
+                fprintf(stderr, "each site index must be less than ");
                 fprintf(stderr, "the number of sites\n");
                 return -1;
             }
@@ -1318,16 +1317,6 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         iter++;
     }
 
-    /* create the json object */
-    /*
- * output format (without aggregation of the "site" column):
- * {
- *  "columns" : ["site", "value"],
- *  "data" : [[a, b], [c, d], ..., [y, z]] (# selected sites)
- * }
- *
- * */
-
     if (r->agg_mode == AGG_NONE)
     {
         double d;
@@ -1350,7 +1339,6 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
                 "columns", "value", "data",
                 arf_get_d(arb_midref(aggregate), ARF_RND_NEAR));
     }
-
 
 finish:
 
