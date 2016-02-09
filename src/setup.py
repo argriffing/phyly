@@ -18,6 +18,8 @@ myext = Extension(
             'runjson.c',
             'arbplfll.c',
             'csr_graph.c',
+            'model.c',
+            'parsemodel.c',
             ])
 
 setup(name="arbplf", version="0.0.1", ext_modules = [myext])

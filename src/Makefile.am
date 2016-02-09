@@ -16,6 +16,10 @@ CORE_SOURCES = \
 	dummy_module.c \
 	arbplfll.c \
 	arbplfll.h \
+	parsemodel.c \
+	parsemodel.h \
+	model.c \
+	model.h \
 	csr_graph.c \
 	csr_graph.h
 
