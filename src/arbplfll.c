@@ -292,10 +292,10 @@ _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 }
 
 
+/*
 static void
 _arb_mat_addmul(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 {
-    /*
      * d = c + a*b
      * c and d may be aliased with each other but not with a or b
      * implementation inspired by @aaditya-thakkar's flint2 pull request
@@ -303,7 +303,6 @@ _arb_mat_addmul(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
      *
      * todo: it should be possible to do something like this
      *       without making a temporary array
-     */
 
     slong m, n;
 
@@ -317,6 +316,7 @@ _arb_mat_addmul(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
     arb_mat_add(d, c, tmp, prec);
     arb_mat_clear(tmp);
 }
+*/
 
 static void
 _prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
@@ -340,6 +340,7 @@ _prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 }
 
 
+/*
 static void
 _arb_vec_printd(arb_struct *v, slong n, slong d)
 {
@@ -352,6 +353,7 @@ _arb_vec_printd(arb_struct *v, slong n, slong d)
     }
     flint_printf("]");
 }
+*/
 
 
 static void

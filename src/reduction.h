@@ -15,7 +15,7 @@ extern "C" {
 typedef struct
 {
     int *selection;
-    int *weights;
+    double *weights;
     int agg_mode;
     int selection_len;
 } column_reduction_struct;
