@@ -1,32 +1,14 @@
 /*
- * Use arbitrary precision matrix operations to compute a log likelihood.
+ * Use arbitrary precision matrix operations to compute phylogenetic
+ * log likelihood derivatives with respect to edge rate coefficients.
+ *
  * The JSON format is used for both input and output.
  * Arbitrary precision is used only internally;
  * double precision floating point without error bounds
  * is used for input and output.
  *
- * The "probability_array" is a semantically flexible structure that defines
- * both the root prior distribution and the observations at the leaves.
- * Each site probability is the sum,
- * over all combinations of state assignments to nodes,
- * of the product of the state probabilities at nodes
- * times the product of transition probabilities on edges.
- *
- * For the log likelihood, the only available selection/aggregation
- * axis is the site axis. So the return value could consist of
- * an array of log likelihoods, or of summed, averaged, or linear
- * combinations of log likelihoods, optionally restricted to a
- * selection of sites.
- *
- * The output should be formatted in a way that is easily
- * readable as a data frame by the python module named pandas as follows:
- * >> import pandas as pd
- * >> f = open('output.json')
- * >> d = pd.read_json(f, orient='split', precise_float=True)
- *
- * On success, a json string is printed to stdout and the process terminates
- * with an exit status of zero.  On failure, information is written to stderr
- * and the process terminates with a nonzero exit status.
+ * See the arbplfll.c comments (or even the docs if they have
+ * been written by now...) for more details.
  *
  * input format:
  * {
@@ -40,19 +22,18 @@
  * {
  *  "selection" : [a, b, c, ...], (optional)
  *  "aggregation" : {"sum" | "avg" | [a, b, c, ...]} (optional)
+ * }, (optional)
+ * "edge_reduction" :
+ * {
+ *  "selection" : [a, b, c, ...], (optional)
+ *  "aggregation" : {"sum" | "avg" | [a, b, c, ...]} (optional)
  * } (optional)
  * }
  *
- * output format (without aggregation of the "site" column):
+ * output format (with no aggregation):
  * {
- *  "columns" : ["site", "value"],
- *  "data" : [[a, b], [c, d], ..., [y, z]] (# selected sites)
- * }
- *
- * output format (with aggregation of the "site" column):
- * {
- *  "columns" : ["value"],
- *  "data" : [a]
+ *  "columns" : ["site", "edge", "value"],
+ *  "data" : [[a, b, c], [d, e, f], ..., [x, y, z]]
  * }
  *
  */
@@ -70,12 +51,40 @@
 #include "parsemodel.h"
 #include "parsereduction.h"
 #include "runjson.h"
-#include "arbplfll.h"
+#include "arbplfderiv.h"
 
-static int
-_can_round(arb_t x)
+static int _can_round(arb_t x)
 {
     return arb_can_round_arf(x, 53, ARF_RND_NEAR);
+}
+
+/*
+ * Look at edges of the csr graph of the phylogenetic tree,
+ * tracking edge_index->initial_node_index and final_node_index->edge_index.
+ * Note that the edges do not need to be traversed in any particular order.
+ */
+static void
+_csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g)
+{
+    int idx;
+    int a, b;
+    int edge_count;
+    int node_count;
+    edge_count = g->nnz;
+    node_count = g->n;
+    for (b = 0; b < node_count; b++)
+    {
+        b_to_idx[b] = -1;
+    }
+    for (a = 0; a < node_count; a++)
+    {
+        for (idx = g->indptr[a]; idx < g->indptr[a+1]; idx++)
+        {
+            b = g->indices[idx];
+            idx_to_a[idx] = a;
+            b_to_idx[b] = idx;
+        }
+    }
 }
 
 
@@ -94,6 +103,7 @@ typedef struct
     arb_mat_t rate_matrix;
     arb_mat_struct *transition_matrices;
     arb_mat_struct *node_column_vectors;
+    arb_mat_struct *edge_column_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
@@ -409,7 +419,7 @@ evaluate_site_likelihood(
 }
 
 
-json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
+json_t *arbplf_deriv_run(void *userdata, json_t *root, int *retcode)
 {
     json_t *j_out = NULL;
     json_t *model_and_data = NULL;

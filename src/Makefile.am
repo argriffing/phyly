@@ -14,8 +14,6 @@ TESTS = $(check_PROGRAMS)
 
 CORE_SOURCES = \
 	dummy_module.c \
-	arbplfll.c \
-	arbplfll.h \
 	model.c \
 	model.h \
 	parsemodel.c \
@@ -31,13 +29,10 @@ JSON_SOURCES = \
 	runjson.c \
 	runjson.h
 
-
-ALL_SOURCES = $(CORE_SOURCES) $(JSON_SOURCES)
-
 t_dummy_test_SOURCES =  $(CORE_SOURCES) t-dummy_test.c
 
-arbplf_ll_SOURCES =  $(ALL_SOURCES) arbplf-ll.c
-arbplf_node_SOURCES =  $(ALL_SOURCES) arbplf-node.c
-arbplf_dwell_SOURCES =  $(ALL_SOURCES) arbplf-dwell.c
-arbplf_trans_SOURCES =  $(ALL_SOURCES) arbplf-trans.c
-arbplf_deriv_SOURCES =  $(ALL_SOURCES) arbplf-deriv.c
+arbplf_ll_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfll.c arbplfll.h arbplf-ll.c
+arbplf_node_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-node.c
+arbplf_dwell_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-dwell.c
+arbplf_trans_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-trans.c
+arbplf_deriv_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfderiv.c arbplfderiv.h arbplf-deriv.c

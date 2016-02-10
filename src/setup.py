@@ -17,6 +17,7 @@ myext = Extension(
             'arbplf.c',
             'runjson.c',
             'arbplfll.c',
+            'arbplfderiv.c',
             'csr_graph.c',
             'model.c',
             'parsemodel.c',
