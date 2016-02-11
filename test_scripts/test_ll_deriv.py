@@ -19,7 +19,9 @@ from arbplf import arbplf_ll
 from arbplf import arbplf_deriv
 
 
-good_input = {
+# 7 edges
+# 2 sites
+default_in = {
  "model_and_data" : {
      "edges" : [[5, 0], [5, 1], [5, 6], [6, 2], [6, 7], [7, 3], [7, 4]],
      "edge_rate_coefficients" : [0.01, 0.2, 0.15, 0.3, 0.05, 0.3, 0.02],
@@ -67,37 +69,163 @@ def myderiv(d):
     return df
 
 def test_default_ll():
-    myll(good_input)
+    myll(default_in)
 
 def test_default_deriv():
-    myderiv(good_input)
+    myderiv(default_in)
 
 def test_default_ll_vs_empty_reductions():
     f = myll
-    x = copy.deepcopy(good_input)
+    x = copy.deepcopy(default_in)
     x['site_reduction'] = {}
-    u = f(good_input)
+    u = f(default_in)
     v = f(x)
     assert_allclose(u.values, v.values)
 
 def test_default_deriv_vs_empty_reductions():
     f = myderiv
-    x = copy.deepcopy(good_input)
+    x = copy.deepcopy(default_in)
     x['site_reduction'] = {}
     x['edge_reduction'] = {}
-    v = f(good_input)
+    v = f(default_in)
     u = f(x)
     assert_allclose(u.values, v.values)
 
-def test_finite_differences():
-    site = 1
-    edge = 2
-    delta = 1e-8
-    dy = copy.deepcopy(good_input)
-    dy['model_and_data']['edge_rate_coefficients'][edge] += delta
-    x = myll(good_input).set_index('site').value[site]
-    y = myll(dy).set_index('site').value[site]
-    z = myderiv(good_input).set_index(['site', 'edge']).value[site, edge]
-    #print(x, y)
-    #print((y - x) / delta)
-    #print(z)
+
+def test_deriv_sum_over_sites():
+
+    # Create a full pandas DataFrame with columns 'site', 'edge', and 'value'.
+    # The 'site' and 'edge' columns contain indices,
+    # and the 'value' column contains floating point derivatives of the
+    # phylogenetic log likelihood.
+    full = myderiv(default_in)
+
+    # Reduce the table to a pandas Series, where entries are indexed
+    # by edge and whose values are floating point derivatives.
+    # Reduction is by summation.
+    #pd_sum = pd.pivot_table(full, 'value', columns='edge', aggfunc=np.sum)
+
+    # Alternatively, create a pandas Series.
+    # The values are summed over all axes except 'edge'.
+    pd_sum = full.groupby('edge').value.sum()
+
+    # Recompute the phylogenetic log likelihood derivatives,
+    # but this time aggregating sites by summation, using internal
+    # mechanisms of the arbplf_deriv C function that make use of
+    # linearity of summation and of error bounds.
+    # The result is a pandas Series.
+    # This method is potentially more accurate and efficient.
+    # Edges are selected in a weird order for the purpose of illustrating
+    # layout differences.
+    x = copy.deepcopy(default_in)
+    x['site_reduction'] = {'aggregation' : 'sum'}
+    x['edge_reduction'] = {'selection' : [4, 5, 6, 3, 2, 1, 0]}
+    phyly_sum = myderiv(x).set_index('edge').value
+
+    # These pandas Series objects should contain the same information,
+    # up to small numerical errors, but the underlying arrays are not
+    # directly comparable because the internal layouts are different.
+    assert_(not np.allclose(pd_sum.values, phyly_sum.values))
+
+    # Align the layouts of the two pandas Series objects,
+    # preparing to compare their values.
+    # This returns two new pandas Series objects.
+    u, v = pd_sum.align(phyly_sum)
+
+    assert_allclose(u.values, v.values)
+
+
+class TestDerivAggregation(TestCase):
+
+    def __init__(self, *args, **kwargs):
+        TestCase.__init__(self, *args, **kwargs)
+        self.f = myderiv(default_in)
+
+    def setUp(self):
+        self.x = copy.deepcopy(default_in)
+
+    def test_sum_over_sites(self):
+        self.x['site_reduction'] = {'aggregation' : 'sum'}
+        g = myderiv(self.x).set_index('edge').value
+        f = self.f.groupby('edge').value.sum()
+        u, v = f.align(g)
+        assert_allclose(u.values, v.values)
+
+    def test_sum_over_edges(self):
+        self.x['edge_reduction'] = {'aggregation' : 'sum'}
+        g = myderiv(self.x).set_index('site').value
+        f = self.f.groupby('site').value.sum()
+        u, v = f.align(g)
+        assert_allclose(u.values, v.values)
+
+    def test_avg_over_sites(self):
+        self.x['site_reduction'] = {'aggregation' : 'avg'}
+        g = myderiv(self.x).set_index('edge').value
+        f = self.f.groupby('edge').value.mean()
+        u, v = f.align(g)
+        assert_allclose(u.values, v.values)
+
+    def test_avg_over_edges(self):
+        self.x['edge_reduction'] = {'aggregation' : 'avg'}
+        g = myderiv(self.x).set_index('site').value
+        f = self.f.groupby('site').value.mean()
+        u, v = f.align(g)
+        assert_allclose(u.values, v.values)
+
+    def test_edge_sum_site_avg(self):
+        self.x['edge_reduction'] = {'aggregation' : 'sum'}
+        self.x['site_reduction'] = {'aggregation' : 'avg'}
+        g = myderiv(self.x).value[0]
+        f = self.f.groupby('site').value.sum().mean()
+        assert_allclose(g, f)
+
+    def test_edge_avg_site_sum(self):
+        self.x['edge_reduction'] = {'aggregation' : 'avg'}
+        self.x['site_reduction'] = {'aggregation' : 'sum'}
+        g = myderiv(self.x).value[0]
+        f = self.f.groupby('site').value.mean().sum()
+        assert_allclose(g, f)
+
+    def test_edge_sum_site_sum(self):
+        self.x['edge_reduction'] = {'aggregation' : 'sum'}
+        self.x['site_reduction'] = {'aggregation' : 'sum'}
+        g = myderiv(self.x).value[0]
+        f = self.f.groupby('site').value.sum().sum()
+        assert_allclose(g, f)
+
+    def test_edge_avg_site_avg(self):
+        self.x['edge_reduction'] = {'aggregation' : 'avg'}
+        self.x['site_reduction'] = {'aggregation' : 'avg'}
+        g = myderiv(self.x).value[0]
+        f = self.f.groupby('site').value.mean().mean()
+        assert_allclose(g, f)
+
+    def test_edge_weighted_sum_vs_sum(self):
+        self.x['edge_reduction'] = {'aggregation' : [1, 1, 1, 1, 1, 1, 1]}
+        g = myderiv(self.x).value
+        f = self.f.groupby('site').value.sum()
+        u, v = f.align(g)
+        assert_allclose(u, v)
+
+    def test_edge_weighted_sum_vs_avg(self):
+        p = 1 / 7
+        self.x['edge_reduction'] = {'aggregation' : [p, p, p, p, p, p, p]}
+        g = myderiv(self.x).value
+        f = self.f.groupby('site').value.mean()
+        u, v = f.align(g)
+        assert_allclose(u, v)
+
+    def test_site_weighted_sum_vs_sum(self):
+        self.x['site_reduction'] = {'aggregation' : [1, 1]}
+        g = myderiv(self.x).value
+        f = self.f.groupby('edge').value.sum()
+        u, v = f.align(g)
+        assert_allclose(u, v)
+
+    def test_edge_weighted_sum_vs_avg(self):
+        p = 1 / 2
+        self.x['site_reduction'] = {'aggregation' : [p, p]}
+        g = myderiv(self.x).value
+        f = self.f.groupby('edge').value.mean()
+        u, v = f.align(g)
+        assert_allclose(u, v)
