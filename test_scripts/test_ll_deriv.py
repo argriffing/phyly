@@ -135,48 +135,55 @@ def test_deriv_sum_over_sites():
     assert_allclose(u.values, v.values)
 
 
-class TestDerivAggregation(TestCase):
+class CheckDeriv(object):
 
-    def __init__(self, *args, **kwargs):
-        TestCase.__init__(self, *args, **kwargs)
+    def __init__(self):
         self.f = myderiv(default_in)
 
     def setUp(self):
         self.x = copy.deepcopy(default_in)
+        self.y = copy.deepcopy(default_in)
+
+
+class TestDerivAggregation(CheckDeriv, TestCase):
+
+    def __init__(self, *args, **kwargs):
+        TestCase.__init__(self, *args, **kwargs)
+        CheckDeriv.__init__(self)
 
     def test_sum_over_sites(self):
+        f = self.f.groupby('edge').value.sum()
         self.x['site_reduction'] = {'aggregation' : 'sum'}
         g = myderiv(self.x).set_index('edge').value
-        f = self.f.groupby('edge').value.sum()
         u, v = f.align(g)
         assert_allclose(u.values, v.values)
 
     def test_sum_over_edges(self):
+        f = self.f.groupby('site').value.sum()
         self.x['edge_reduction'] = {'aggregation' : 'sum'}
         g = myderiv(self.x).set_index('site').value
-        f = self.f.groupby('site').value.sum()
         u, v = f.align(g)
         assert_allclose(u.values, v.values)
 
     def test_avg_over_sites(self):
+        f = self.f.groupby('edge').value.mean()
         self.x['site_reduction'] = {'aggregation' : 'avg'}
         g = myderiv(self.x).set_index('edge').value
-        f = self.f.groupby('edge').value.mean()
         u, v = f.align(g)
         assert_allclose(u.values, v.values)
 
     def test_avg_over_edges(self):
+        f = self.f.groupby('site').value.mean()
         self.x['edge_reduction'] = {'aggregation' : 'avg'}
         g = myderiv(self.x).set_index('site').value
-        f = self.f.groupby('site').value.mean()
         u, v = f.align(g)
         assert_allclose(u.values, v.values)
 
     def test_edge_sum_site_avg(self):
+        f = self.f.groupby('site').value.sum().mean()
         self.x['edge_reduction'] = {'aggregation' : 'sum'}
         self.x['site_reduction'] = {'aggregation' : 'avg'}
         g = myderiv(self.x).value[0]
-        f = self.f.groupby('site').value.sum().mean()
         assert_allclose(g, f)
 
     def test_edge_avg_site_sum(self):
@@ -194,38 +201,130 @@ class TestDerivAggregation(TestCase):
         assert_allclose(g, f)
 
     def test_edge_avg_site_avg(self):
+        f = self.f.groupby('site').value.mean().mean()
         self.x['edge_reduction'] = {'aggregation' : 'avg'}
         self.x['site_reduction'] = {'aggregation' : 'avg'}
         g = myderiv(self.x).value[0]
-        f = self.f.groupby('site').value.mean().mean()
         assert_allclose(g, f)
 
     def test_edge_weighted_sum_vs_sum(self):
+        f = self.f.groupby('site').value.sum()
         self.x['edge_reduction'] = {'aggregation' : [1, 1, 1, 1, 1, 1, 1]}
         g = myderiv(self.x).value
-        f = self.f.groupby('site').value.sum()
         u, v = f.align(g)
         assert_allclose(u, v)
 
     def test_edge_weighted_sum_vs_avg(self):
         p = 1 / 7
+        f = self.f.groupby('site').value.mean()
         self.x['edge_reduction'] = {'aggregation' : [p, p, p, p, p, p, p]}
         g = myderiv(self.x).value
-        f = self.f.groupby('site').value.mean()
         u, v = f.align(g)
         assert_allclose(u, v)
 
     def test_site_weighted_sum_vs_sum(self):
+        f = self.f.groupby('edge').value.sum()
         self.x['site_reduction'] = {'aggregation' : [1, 1]}
         g = myderiv(self.x).value
-        f = self.f.groupby('edge').value.sum()
         u, v = f.align(g)
         assert_allclose(u, v)
 
     def test_edge_weighted_sum_vs_avg(self):
         p = 1 / 2
+        f = self.f.groupby('edge').value.mean()
         self.x['site_reduction'] = {'aggregation' : [p, p]}
         g = myderiv(self.x).value
-        f = self.f.groupby('edge').value.mean()
         u, v = f.align(g)
         assert_allclose(u, v)
+
+
+class TestDerivSelection(CheckDeriv, TestCase):
+
+    def __init__(self, *args, **kwargs):
+        TestCase.__init__(self, *args, **kwargs)
+        CheckDeriv.__init__(self)
+
+    def test_edge_selection(self):
+        f = self.f.loc[self.f['edge'].isin([2, 3, 4])]
+        f = f.set_index(['site', 'edge']).value
+        self.x['edge_reduction'] = {'selection' : [2, 4, 3]}
+        g = myderiv(self.x).set_index(['site', 'edge']).value
+        u, v = f.align(g)
+        assert_allclose(u.values, v.values)
+
+    def test_site_selection(self):
+        # Use pandas to select a subset of the results
+        # returned from the full arbplf calculations.
+        f = self.f.loc[self.f['site'].isin([1])]
+        f = f.set_index(['site', 'edge']).value
+
+        # Select using the internal mechanism of the arbplf library,
+        # avoiding calculation at unselected sites.
+        self.x['site_reduction'] = {'selection' : [1]}
+        g = myderiv(self.x).set_index(['site', 'edge']).value
+
+        # Check that the results are equal.
+        u, v = f.align(g)
+        assert_allclose(u.values, v.values)
+
+
+class TestDerivSelectionAggregation(CheckDeriv, TestCase):
+
+    def __init__(self, *args, **kwargs):
+        TestCase.__init__(self, *args, **kwargs)
+        CheckDeriv.__init__(self)
+
+    def test_site_selection_aggregation_sum(self):
+        self.x['site_reduction'] = {
+                'selection' : [1, 0, 1],
+                'aggregation' : 'sum'}
+        self.y['site_reduction'] = {
+                'aggregation' : [1, 2]}
+        f = myderiv(self.x).set_index('edge').value
+        g = myderiv(self.y).set_index('edge').value
+        u, v = f.align(g)
+        assert_allclose(g, f)
+
+    def test_edge_selection_aggregation_sum(self):
+        self.x['edge_reduction'] = {
+                'selection' : [2, 4, 6],
+                'aggregation' : 'sum'}
+        self.y['edge_reduction'] = {
+                'aggregation' : [0, 0, 1, 0, 1, 0, 1]}
+        f = myderiv(self.x).set_index('site').value
+        g = myderiv(self.y).set_index('site').value
+        u, v = f.align(g)
+        assert_allclose(g, f)
+
+    def test_edge_selection_aggregation_duplicate_sum(self):
+        self.x['edge_reduction'] = {
+                'selection' : [4, 4],
+                'aggregation' : 'sum'}
+        self.y['edge_reduction'] = {
+                'aggregation' : [0, 0, 0, 0, 2, 0, 0]}
+        f = myderiv(self.x).set_index('site').value
+        g = myderiv(self.y).set_index('site').value
+        u, v = f.align(g)
+        assert_allclose(g, f)
+
+    def test_edge_selection_aggregation_cancelling_sum(self):
+        self.x['edge_reduction'] = {
+                'selection' : [0, 0],
+                'aggregation' : [1, -1]}
+        self.y['edge_reduction'] = {
+                'aggregation' : [0, 0, 0, 0, 0, 0, 0]}
+        f = myderiv(self.x).set_index('site').value
+        g = myderiv(self.y).set_index('site').value
+        u, v = f.align(g)
+        assert_allclose(g, f)
+
+    def test_edge_selection_aggregation_weighted_sum(self):
+        self.x['edge_reduction'] = {
+                'selection' : [2, 6, 4],
+                'aggregation' : [3.14, 42, 5]}
+        self.y['edge_reduction'] = {
+                'aggregation' : [0, 0, 3.14, 0, 5, 0, 42]}
+        f = myderiv(self.x).set_index('site').value
+        g = myderiv(self.y).set_index('site').value
+        u, v = f.align(g)
+        assert_allclose(g, f)
