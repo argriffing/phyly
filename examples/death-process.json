@@ -1,0 +1,14 @@
+{
+	"model_and_data" : {
+		"edges" : [[0, 1]],
+		"edge_rate_coefficients" : [1],
+		"rate_matrix" : [
+			[0, 0, 0],
+			[1, 0, 0],
+			[0, 1, 0]],
+		"probability_array" : [
+			[[1, 1, 1], [0.04, 0.18, 0.78]]
+		]
+	},
+	"site_reduction" : {"aggregation" : "sum"}
+}
