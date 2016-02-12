@@ -6,7 +6,7 @@
 
 # https://www.gnu.org/software/autoconf-archive/ax_valgrind_check.html
 
-bin_PROGRAMS = arbplf-ll arbplf-node arbplf-dwell arbplf-trans arbplf-deriv
+bin_PROGRAMS = arbplf-ll arbplf-node arbplf-dwell arbplf-trans arbplf-deriv arbplf-hess
 
 check_PROGRAMS = t-dummy_test
 
@@ -14,6 +14,8 @@ TESTS = $(check_PROGRAMS)
 
 CORE_SOURCES = \
 	dummy_module.c \
+	util.c \
+	util.h \
 	model.c \
 	model.h \
 	parsemodel.c \
@@ -36,3 +38,4 @@ arbplf_node_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-node.c
 arbplf_dwell_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-dwell.c
 arbplf_trans_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-trans.c
 arbplf_deriv_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfderiv.c arbplfderiv.h arbplf-deriv.c
+arbplf_hess_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-hess.c

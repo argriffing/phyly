@@ -1,7 +1,8 @@
 #ifndef MODEL_H
 #define MODEL_H
 
-#include "jansson.h"
+#include "arb.h"
+#include "arb_mat.h"
 
 #include "csr_graph.h"
 
@@ -43,6 +44,7 @@ double * dmat_entry(dmat_t mat, int i, int j);
 void dmat_pre_init(dmat_t mat);
 void dmat_init(dmat_t mat, int r, int c);
 void dmat_clear(dmat_t mat);
+void dmat_get_arb_mat(arb_mat_t dst, dmat_t src);
 
 
 typedef struct

@@ -66,17 +66,12 @@
 #include "csr_graph.h"
 #include "model.h"
 #include "reduction.h"
+#include "util.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
 #include "runjson.h"
 #include "arbplfll.h"
-
-static int
-_can_round(arb_t x)
-{
-    return arb_can_round_arf(x, 53, ARF_RND_NEAR);
-}
 
 
 /*
@@ -170,33 +165,13 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     }
 
     /* Initialize the unscaled arbitrary precision rate matrix. */
-    for (j = 0; j < w->state_count; j++)
-    {
-        for (k = 0; k < w->state_count; k++)
-        {
-            double r;
-            r = *dmat_entry(m->mat, j, k);
-            arb_set_d(arb_mat_entry(w->rate_matrix, j, k), r);
-        }
-    }
+    dmat_get_arb_mat(w->rate_matrix, m->mat);
 
     /*
      * Modify the diagonals of the unscaled rate matrix
      * so that the sum of each row is zero.
      */
-    arb_ptr p;
-    for (j = 0; j < w->state_count; j++)
-    {
-        p = arb_mat_entry(w->rate_matrix, j, j);
-        arb_zero(p);
-        for (k = 0; k < w->state_count; k++)
-        {
-            if (j != k)
-            {
-                arb_sub(p, p, arb_mat_entry(w->rate_matrix, j, k), w->prec);
-            }
-        }
-    }
+    _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
 
     /*
      * Initialize the array of arbitrary precision transition matrices.
@@ -270,90 +245,6 @@ likelihood_ws_clear(likelihood_ws_t w)
     }
     flint_free(w->node_column_vectors);
 }
-
-
-static void
-_arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
-{
-    slong i, j, nr, nc;
-
-    nr = arb_mat_nrows(a);
-    nc = arb_mat_ncols(a);
-
-    for (i = 0; i < nr; i++)
-    {
-        for (j = 0; j < nc; j++)
-        {
-            arb_mul(arb_mat_entry(c, i, j),
-                    arb_mat_entry(a, i, j),
-                    arb_mat_entry(b, i, j), prec);
-        }
-    }
-}
-
-
-/*
-static void
-_arb_mat_addmul(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
-{
-     * d = c + a*b
-     * c and d may be aliased with each other but not with a or b
-     * implementation inspired by @aaditya-thakkar's flint2 pull request
-     * https://github.com/wbhart/flint2/pull/215
-     *
-     * todo: it should be possible to do something like this
-     *       without making a temporary array
-
-    slong m, n;
-
-    m = a->r;
-    n = b->c;
-
-    arb_mat_t tmp;
-    arb_mat_init(tmp, m, n);
-
-    arb_mat_mul(tmp, a, b, prec);
-    arb_mat_add(d, c, tmp, prec);
-    arb_mat_clear(tmp);
-}
-*/
-
-static void
-_prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
-{
-    /*
-     * d = c o a*b
-     * Analogous to _arb_mat_addmul
-     * except with entrywise product instead of entrywise addition.
-     */
-    slong m, n;
-
-    m = a->r;
-    n = b->c;
-
-    arb_mat_t tmp;
-    arb_mat_init(tmp, m, n);
-
-    arb_mat_mul(tmp, a, b, prec);
-    _arb_mat_mul_entrywise(d, c, tmp, prec);
-    arb_mat_clear(tmp);
-}
-
-
-/*
-static void
-_arb_vec_printd(arb_struct *v, slong n, slong d)
-{
-    int i;
-    flint_printf("[");
-    for (i = 0; i < n; i++)
-    {
-        if (i) flint_printf(", ");
-        arb_printd(v+i, d);
-    }
-    flint_printf("]");
-}
-*/
 
 
 static void

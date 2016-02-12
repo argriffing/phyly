@@ -1,4 +1,10 @@
-#include "parsemodel.h"
+#include "stdlib.h"
+#include "stdio.h"
+
+#include "arb.h"
+#include "arb_mat.h"
+
+#include "model.h"
 
 
 void
@@ -67,7 +73,26 @@ dmat_clear(dmat_t mat)
     free(mat->data);
 }
 
-
+void
+dmat_get_arb_mat(arb_mat_t dst, dmat_t src)
+{
+    int i, j;
+    int r, c;
+    r = dmat_nrows(src);
+    c = dmat_ncols(src);
+    if (r != arb_mat_nrows(dst) || c != arb_mat_ncols(dst))
+    {
+        fprintf(stderr, "internal error: matrix size mismatch\n");
+        abort();
+    }
+    for (i = 0; i < r; i++)
+    {
+        for (j = 0; j < c; j++)
+        {
+            arb_set_d(arb_mat_entry(dst, i, j), *dmat_entry(src, i, j));
+        }
+    }
+}
 
 
 

@@ -47,43 +47,13 @@
 #include "csr_graph.h"
 #include "model.h"
 #include "reduction.h"
+#include "util.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
 #include "runjson.h"
 #include "arbplfderiv.h"
 
-static int _can_round(arb_t x)
-{
-    return arb_can_round_arf(x, 53, ARF_RND_NEAR);
-}
-
-/*
- * Look at edges of the csr graph of the phylogenetic tree,
- * tracking edge_index->initial_node_index and final_node_index->edge_index.
- * Note that the edges do not need to be traversed in any particular order.
- */
-static void
-_csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g)
-{
-    int idx;
-    int a, b;
-    int node_count;
-    node_count = g->n;
-    for (b = 0; b < node_count; b++)
-    {
-        b_to_idx[b] = -1;
-    }
-    for (a = 0; a < node_count; a++)
-    {
-        for (idx = g->indptr[a]; idx < g->indptr[a+1]; idx++)
-        {
-            b = g->indices[idx];
-            idx_to_a[idx] = a;
-            b_to_idx[b] = idx;
-        }
-    }
-}
 
 
 /*
@@ -185,33 +155,13 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     }
 
     /* Initialize the unscaled arbitrary precision rate matrix. */
-    for (j = 0; j < w->state_count; j++)
-    {
-        for (k = 0; k < w->state_count; k++)
-        {
-            double r;
-            r = *dmat_entry(m->mat, j, k);
-            arb_set_d(arb_mat_entry(w->rate_matrix, j, k), r);
-        }
-    }
+    dmat_get_arb_mat(w->rate_matrix, m->mat);
 
     /*
      * Modify the diagonals of the unscaled rate matrix
      * so that the sum of each row is zero.
      */
-    arb_ptr p;
-    for (j = 0; j < w->state_count; j++)
-    {
-        p = arb_mat_entry(w->rate_matrix, j, j);
-        arb_zero(p);
-        for (k = 0; k < w->state_count; k++)
-        {
-            if (j != k)
-            {
-                arb_sub(p, p, arb_mat_entry(w->rate_matrix, j, k), w->prec);
-            }
-        }
-    }
+    _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
 
     /*
      * Initialize the array of arbitrary precision transition matrices.
@@ -318,46 +268,6 @@ likelihood_ws_clear(likelihood_ws_t w)
 }
 
 
-static void
-_arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
-{
-    slong i, j, nr, nc;
-
-    nr = arb_mat_nrows(a);
-    nc = arb_mat_ncols(a);
-
-    for (i = 0; i < nr; i++)
-    {
-        for (j = 0; j < nc; j++)
-        {
-            arb_mul(arb_mat_entry(c, i, j),
-                    arb_mat_entry(a, i, j),
-                    arb_mat_entry(b, i, j), prec);
-        }
-    }
-}
-
-
-static void
-_prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
-{
-    /*
-     * d = c o a*b
-     * Analogous to _arb_mat_addmul
-     * except with entrywise product instead of entrywise addition.
-     */
-    slong m, n;
-
-    m = a->r;
-    n = b->c;
-
-    arb_mat_t tmp;
-    arb_mat_init(tmp, m, n);
-
-    arb_mat_mul(tmp, a, b, prec);
-    _arb_mat_mul_entrywise(d, c, tmp, prec);
-    arb_mat_clear(tmp);
-}
 
 
 /* Calculate the likelihood, storing many intermediate calculations. */
@@ -540,146 +450,8 @@ evaluate_site_derivatives(arb_struct *derivatives,
 }
 
 
-static int
-_get_site_agg_weights(
-        arb_t weight_divisor, arb_struct * weights,
-        model_and_data_t m, column_reduction_t r, slong prec)
-{
-    int i, site;
-    int * site_selection_count = NULL;
-    int result = 0;
-    int site_count = pmat_nsites(m->p);
-
-    _arb_vec_zero(weights, site_count);
-
-    /* define site selection count if necessary */
-    if (r->agg_mode == AGG_SUM || r->agg_mode == AGG_AVG)
-    {
-        site_selection_count = calloc(site_count, sizeof(int));
-        for (i = 0; i < r->selection_len; i++)
-        {
-            site = r->selection[i];
-            site_selection_count[site]++;
-        }
-    }
-
-    if (r->agg_mode == AGG_WEIGHTED_SUM)
-    {
-        arb_t weight;
-        arb_init(weight);
-        for (i = 0; i < r->selection_len; i++)
-        {
-            site = r->selection[i];
-            arb_set_d(weight, r->weights[i]);
-            arb_add(weights+site, weights+site, weight, prec);
-        }
-        arb_clear(weight);
-        arb_one(weight_divisor);
-    }
-    else if (r->agg_mode == AGG_SUM)
-    {
-        for (site = 0; site < site_count; site++)
-        {
-            arb_set_si(weights+site, site_selection_count[site]);
-        }
-        arb_one(weight_divisor);
-    }
-    else if (r->agg_mode == AGG_AVG)
-    {
-        for (site = 0; site < site_count; site++)
-        {
-            arb_set_si(weights+site, site_selection_count[site]);
-        }
-        arb_set_si(weight_divisor, r->selection_len);
-    }
-    else
-    {
-        fprintf(stderr, "internal error: unexpected aggregation mode\n");
-        result = -1;
-        goto finish;
-    }
-
-finish:
-
-    free(site_selection_count);
-    return result;
-}
 
 
-/*
- * Given the user-provided edge reduction,
- * define an edge aggregation weight vector
- * whose indices are with respect to csr tree edges.
- * Also define a weight divisor that applies to all weights.
- */
-static int
-_get_edge_agg_weights(
-        arb_t weight_divisor, arb_struct * weights,
-        model_and_data_t m, column_reduction_t r, slong prec)
-{
-    int i, edge, idx;
-    int edge_count = 0;
-    int * edge_selection_count = NULL;
-    int result = 0;
-
-    edge_count = m->g->nnz;
-
-    _arb_vec_zero(weights, edge_count);
-
-    /* define edge selection count if necessary */
-    if (r->agg_mode == AGG_SUM || r->agg_mode == AGG_AVG)
-    {
-        edge_selection_count = calloc(edge_count, sizeof(int));
-        for (i = 0; i < r->selection_len; i++)
-        {
-            edge = r->selection[i];
-            idx = m->edge_map->order[edge];
-            edge_selection_count[idx]++;
-        }
-    }
-
-    if (r->agg_mode == AGG_WEIGHTED_SUM)
-    {
-        arb_t weight;
-        arb_init(weight);
-        for (i = 0; i < r->selection_len; i++)
-        {
-            edge = r->selection[i];
-            arb_set_d(weight, r->weights[i]);
-            idx = m->edge_map->order[edge];
-            arb_add(weights+idx, weights+idx, weight, prec);
-        }
-        arb_clear(weight);
-        arb_one(weight_divisor);
-    }
-    else if (r->agg_mode == AGG_SUM)
-    {
-        for (idx = 0; idx < edge_count; idx++)
-        {
-            arb_set_si(weights+idx, edge_selection_count[idx]);
-        }
-        arb_one(weight_divisor);
-    }
-    else if (r->agg_mode == AGG_AVG)
-    {
-        for (idx = 0; idx < edge_count; idx++)
-        {
-            arb_set_si(weights+idx, edge_selection_count[idx]);
-        }
-        arb_set_si(weight_divisor, r->selection_len);
-    }
-    else
-    {
-        fprintf(stderr, "internal error: unexpected aggregation mode\n");
-        result = -1;
-        goto finish;
-    }
-
-finish:
-
-    free(edge_selection_count);
-    return result;
-}
 
 
 static json_t *
@@ -742,13 +514,14 @@ _agg_site_edge_yy(
     for (failed=1, prec=4; failed; prec<<=1)
     {
         /* define edge aggregation weights with respect to csr indices */
-        result = _get_edge_agg_weights(
-                edge_weight_divisor, edge_weights, m, r_edge, prec);
+        result = get_edge_agg_weights(
+                edge_weight_divisor, edge_weights,
+                edge_count, m->edge_map->order, r_edge, prec);
         if (result) goto finish;
 
         /* define site aggregation weights */
-        result = _get_site_agg_weights(
-                site_weight_divisor, site_weights, m, r_site, prec);
+        result = get_site_agg_weights(
+                site_weight_divisor, site_weights, site_count, r_site, prec);
         if (result) goto finish;
 
         likelihood_ws_clear(w);
@@ -914,8 +687,8 @@ _agg_site_edge_yn(
     for (failed=1, prec=4; failed; prec<<=1)
     {
         /* define site aggregation weights */
-        result = _get_site_agg_weights(
-                site_weight_divisor, site_weights, m, r_site, prec);
+        result = get_site_agg_weights(
+                site_weight_divisor, site_weights, site_count, r_site, prec);
         if (result) goto finish;
 
         likelihood_ws_clear(w);
@@ -1005,6 +778,7 @@ _agg_site_edge_yn(
                     /*
                     printf("debug: cannot round idx=%d prec=%d\n",
                             idx, (int) prec);
+                    arb_printd(deriv_ll_accum + idx, 15); flint_printf("\n");
                     */
                     failed = 1;
                 }
@@ -1108,9 +882,10 @@ _agg_site_edge_ny(
     /* repeat with increasing precision until there is no precision failure */
     for (failed=1, prec=4; failed; prec<<=1)
     {
-        /* define edge aggregation weights */
-        result = _get_edge_agg_weights(
-                edge_weight_divisor, edge_weights, m, r_edge, prec);
+        /* define edge aggregation weights with respect to csr indices */
+        result = get_edge_agg_weights(
+                edge_weight_divisor, edge_weights,
+                edge_count, m->edge_map->order, r_edge, prec);
         if (result) goto finish;
 
         likelihood_ws_clear(w);
