@@ -6,7 +6,7 @@
 
 # https://www.gnu.org/software/autoconf-archive/ax_valgrind_check.html
 
-bin_PROGRAMS = arbplf-ll arbplf-node arbplf-dwell arbplf-trans arbplf-deriv arbplf-hess
+bin_PROGRAMS = arbplf-ll arbplf-node arbplf-dwell arbplf-trans arbplf-deriv arbplf-hess arbplf-newton-point
 
 check_PROGRAMS = t-dummy_test
 
@@ -39,3 +39,4 @@ arbplf_dwell_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-dwell.c
 arbplf_trans_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-trans.c
 arbplf_deriv_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfderiv.c arbplfderiv.h arbplf-deriv.c
 arbplf_hess_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-hess.c
+arbplf_newton_point_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-newton-point.c
