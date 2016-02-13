@@ -72,13 +72,6 @@ typedef struct
 typedef indirect_plane_struct indirect_plane_t[1];
 
 static void
-indirect_plane_pre_init(indirect_plane_t p)
-{
-    p->node_pvectors = NULL;
-    p->edge_pvectors = NULL;
-}
-
-static void
 indirect_plane_init(indirect_plane_t p, int node_count, int edge_count)
 {
     p->node_pvectors = flint_malloc(node_count * sizeof(arb_mat_struct *));
@@ -93,6 +86,136 @@ indirect_plane_clear(indirect_plane_t p)
 }
 
 
+/* second order approximation of a log likelihood */
+typedef struct
+{
+    int edge_count;
+    arb_t ll;
+    arb_struct * x;
+    arb_struct * ll_gradient;
+    arb_mat_t ll_hessian;
+} so_struct;
+typedef so_struct so_t[1];
+
+static void
+so_init(so_t so, int edge_count)
+{
+    so->edge_count = edge_count;
+    arb_init(so->ll);
+    so->x = _arb_vec_init(edge_count);
+    so->ll_gradient = _arb_vec_init(edge_count);
+    arb_mat_init(so->ll_hessian, edge_count, edge_count);
+}
+
+static void
+so_clear(so_t so)
+{
+    arb_clear(so->ll);
+    _arb_vec_clear(so->x, so->edge_count);
+    _arb_vec_clear(so->ll_gradient, so->edge_count);
+    arb_mat_clear(so->ll_hessian);
+}
+
+static void
+so_zero(so_t so)
+{
+    arb_zero(so->ll);
+    _arb_vec_zero(so->x, so->edge_count);
+    _arb_vec_zero(so->ll_gradient, so->edge_count);
+    arb_mat_zero(so->ll_hessian);
+}
+
+static void
+so_get_inv_hess(arb_mat_t A, so_t so, slong prec)
+{
+    int invertible;
+    slong i, j;
+
+    /* set A to the full hessian, not just the lower triangular part */
+    arb_mat_set(A, so->ll_hessian);
+    for (i = 0; i < arb_mat_nrows(A); i++)
+    {
+        for (j = i+1; j < arb_mat_ncols(A); j++)
+        {
+            arb_set(arb_mat_entry(A, i, j), arb_mat_entry(A, j, i));
+        }
+    }
+
+    invertible = arb_mat_inv(A, A, prec);
+    if (!invertible)
+    {
+        _arb_mat_indeterminate(A);
+    }
+
+    /*
+    printf("debug:\n");
+    arb_mat_printd(A, 4);
+    */
+}
+
+static void
+so_get_newton_delta(arb_struct * newton_delta, so_t so, slong prec)
+{
+    int i, j, n;
+    arb_mat_t grad;
+    arb_mat_t u;
+    n = so->edge_count;
+
+    /*
+    printf("debug:\n");
+    arb_mat_printd(so->ll_hessian, 4);
+    */
+
+    /* newton_delta = -u = -inv(hess)*grad */
+    arb_mat_init(u, n, 1);
+    arb_mat_init(grad, n, 1);
+    for (i = 0; i < n; i++)
+    {
+        arb_set(arb_mat_entry(grad, i, 0), so->ll_gradient + i);
+    }
+
+    /* set A to the full hessian, not just the lower triangular part */
+    {
+        int invertible;
+        arb_mat_t A;
+        arb_mat_init(A, n, n);
+        arb_mat_set(A, so->ll_hessian);
+        for (i = 0; i < arb_mat_nrows(A); i++)
+        {
+            for (j = i+1; j < arb_mat_ncols(A); j++)
+            {
+                arb_set(arb_mat_entry(A, i, j), arb_mat_entry(A, j, i));
+            }
+        }
+
+        invertible = arb_mat_solve(u, A, grad, prec);
+        if (!invertible)
+        {
+            _arb_mat_indeterminate(u);
+        }
+        arb_mat_clear(A);
+    }
+
+    for (i = 0; i < n; i++)
+    {
+        arb_neg(newton_delta + i, arb_mat_entry(u, i, 0));
+    }
+
+    arb_mat_clear(grad);
+    arb_mat_clear(u);
+}
+
+static void
+so_get_newton_point(arb_struct * newton_point, so_t so, slong prec)
+{
+    int n;
+    n = so->edge_count;
+    so_get_newton_delta(newton_point, so, prec);
+    _arb_vec_add(newton_point, so->x, newton_point, n, prec);
+}
+
+
+
 
 typedef struct
 {
@@ -102,15 +225,6 @@ typedef struct
     int edge_count;
 } plane_struct;
 typedef plane_struct plane_t[1];
-
-static void
-plane_pre_init(plane_t p)
-{
-    p->node_count = 0;
-    p->edge_count = 0;
-    p->node_vectors = NULL;
-    p->edge_vectors = NULL;
-}
 
 static void
 plane_init(plane_t p, int node_count, int edge_count, int state_count)
@@ -176,23 +290,6 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     int i, j, k;
     arb_mat_struct * tmat;
     double tmpd;
-
-    if (!m)
-    {
-        plane_pre_init(w->base_plane);
-        plane_pre_init(w->lhood_plane);
-        plane_pre_init(w->deriv_plane);
-        plane_pre_init(w->hess_plane);
-        indirect_plane_pre_init(w->indirect_plane);
-        arb_mat_init(w->rate_matrix, 0, 0);
-        w->transition_matrices = NULL;
-        w->edge_rates = NULL;
-        w->node_count = 0;
-        w->edge_count = 0;
-        w->state_count = 0;
-        w->prec = 0;
-        return;
-    }
 
     g = m->g;
 
@@ -481,10 +578,8 @@ evaluate_site_derivatives(arb_t derivative,
  * The calculations use a specified working precision.
  */
 static int
-_compute_second_order(
-        second_order_t so,
-        model_and_data_t m, column_reduction_t r_site,
-        int *site_selection_count, slong prec)
+_compute_second_order(so_t so,
+        model_and_data_t m, column_reduction_t r_site, slong prec)
 {
     likelihood_ws_t w;
     int result = 0;
@@ -493,10 +588,10 @@ _compute_second_order(
     int site_count = pmat_nsites(m->p);
     int edge_count = m->g->nnz;
     int node_count = m->g->n;
-    int state_count = arb_mat_nrows(m->mat);
 
     int *idx_to_a = NULL;
     int *b_to_idx = NULL;
+    int *site_selection_count = NULL;
 
     arb_t x;
     arb_t lhood;
@@ -513,8 +608,19 @@ _compute_second_order(
     arb_struct * site_weights;
     arb_t site_weight_divisor;
 
+    /* Initialize the outputs to zero, before accumulating across sites. */
+    so_zero(so);
+
     arb_init(site_weight_divisor);
     site_weights = _arb_vec_init(site_count);
+
+    /* Indicate which site indices are included in the selection. */
+    site_selection_count = calloc(site_count, sizeof(int));
+    for (i = 0; i < r_site->selection_len; i++)
+    {
+        site = r_site->selection[i];
+        site_selection_count[site]++;
+    }
 
     /* Get maps for navigating towards the root of the tree. */
     idx_to_a = malloc(edge_count * sizeof(int));
@@ -527,12 +633,7 @@ _compute_second_order(
     if (result) goto finish;
 
     likelihood_ws_init(w, m, prec);
-
-    /*
-     * Initialize the outputs to zero.
-     * These will accumulate across sites.
-     */
-    second_order_zero(so);
+    _arb_vec_set(so->x, w->edge_rates, edge_count);
 
     for (site = 0; site < site_count; site++)
     {
@@ -677,13 +778,10 @@ _compute_second_order(
         /* accumulate gradient of log likelihood */
         for (i = 0; i < edge_count; i++)
         {
-            for (state = 0; state < state_count; state++)
-            {
-                arb_addmul(
-                        so->ll_gradient + state,
-                        lhood_gradient + state,
-                        x, prec);
-            }
+            arb_addmul(
+                    so->ll_gradient + i,
+                    lhood_gradient + i,
+                    x, prec);
         }
 
         /* accumulate hessian of log likelihood */
@@ -705,97 +803,156 @@ finish:
 
     free(idx_to_a);
     free(b_to_idx);
+    free(site_selection_count);
 
     return result;
 }
 
 
-typedef struct
-{
-    int edge_count;
-    arb_t ll;
-    arb_struct * ll_gradient;
-    arb_mat_t ll_hessian;
-} second_order_struct;
-typedef second_order_struct second_order_t[1];
 
-static void
-second_order_init(second_order_t so, int edge_count)
+
+
+
+
+/*
+ * Parse model and data and site reduction,
+ * subject to requirements that are common to all second order queries.
+ */
+static int
+_parse_second_order(model_and_data_t m, column_reduction_t r, json_t *root)
 {
-    so->edge_count = edge_count;
-    arb_init(so->ll);
-    so->ll_gradient = _arb_vec_init(edge_count);
-    arb_mat_init(so->ll_hessian, edge_count, edge_count);
+    json_t *model_and_data = NULL;
+    json_t *site_reduction = NULL;
+    int site_count = 0;
+    int result = 0;
+    json_error_t err;
+    size_t flags;
+    flags = JSON_STRICT;
+
+    model_and_data_init(m);
+    column_reduction_init(r);
+
+    /* parse the json input */
+    /* Note that site reduction is required, and edge reduction is forbidden */
+    result = json_unpack_ex(root, &err, flags,
+            "{s:o, s:o}",
+            "model_and_data", &model_and_data,
+            "site_reduction", &site_reduction
+            );
+    if (result)
+    {
+        fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+        return result;
+    }
+
+    /* validate the model and data section of the json input */
+    result = validate_model_and_data(m, model_and_data);
+    if (result) return result;
+
+    site_count = pmat_nsites(m->p);
+
+    /* validate the site reduction section of the json input */
+    result = validate_column_reduction(r, site_count, "site", site_reduction);
+    if (result) return result;
+
+    if (r->agg_mode == AGG_NONE)
+    {
+        fprintf(stderr, "error: aggregation over sites is required\n");
+        return -1;
+    }
+
+    return 0;
 }
 
-static void
-second_order_clear(second_order_t so)
-{
-    arb_clear(so->ll);
-    _arb_vec_clear(so->ll_gradient, so->edge_count);
-    arb_mat_clear(so->ll_hessian);
-}
-
-static void
-second_order_zero(second_order_t so)
-{
-    arb_zero(so->ll);
-    _arb_vec_zero(so->ll_gradient, so->edge_count);
-    arb_mat_zero(so->ll, );
-}
-
-
-
-static json_t *
-_hess_agg_site_edge_yn(
-        model_and_data_t m,
-        column_reduction_t r_site, int *site_selection_count, int *result_out)
+json_t *
+inv_hess_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
 {
     json_t * j_out = NULL;
     int result = 0;
     int i, j;
     slong prec;
-    int failed;
+    arb_mat_t inv_ll_hessian;
+    so_t so;
+    int edge_count;
+
+    edge_count = m->g->nnz;
+    so_init(so, edge_count);
+    arb_mat_init(inv_ll_hessian, edge_count, edge_count);
+
+    /* repeat with increasing precision until there is no precision failure */
+    int success = 0;
+    for (prec=4; !success; prec <<= 1)
+    {
+        result = _compute_second_order(so, m, r_site, prec);
+        if (result) goto finish;
+
+        so_get_inv_hess(inv_ll_hessian, so, prec);
+
+        success = _arb_mat_can_round(inv_ll_hessian);
+    }
+
+    /* build the json output */
+    {
+        double d;
+        json_t *j_data, *x;
+        j_data = json_array();
+        int first_edge, second_edge;
+        for (first_edge = 0; first_edge < edge_count; first_edge++)
+        {
+            for (second_edge = 0; second_edge < edge_count; second_edge++)
+            {
+                arb_ptr p;
+                i = m->edge_map->order[first_edge];
+                j = m->edge_map->order[second_edge];
+                if (j < i)
+                {
+                    p = arb_mat_entry(inv_ll_hessian, i, j);
+                }
+                else
+                {
+                    p = arb_mat_entry(inv_ll_hessian, j, i);
+                }
+                d = arf_get_d(arb_midref(p), ARF_RND_NEAR);
+                x = json_pack("[i, i, f]", first_edge, second_edge, d);
+                json_array_append_new(j_data, x);
+            }
+        }
+        j_out = json_pack("{s:[s, s, s], s:o}",
+                "columns", "first_edge", "second_edge", "value",
+                "data", j_data);
+    }
+
+finish:
+
+    so_clear(so);
+    arb_mat_clear(inv_ll_hessian);
+
+    *result_out = result;
+    return j_out;
+}
+
+
+json_t *
+hess_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
+{
+    json_t * j_out = NULL;
+    int result = 0;
+    int i, j;
+    slong prec;
 
     int edge_count = m->g->nnz;
 
-    second_order_t so;
-    second_order_init(so, edge_count);
+    so_t so;
+    so_init(so, edge_count);
 
     /* repeat with increasing precision until there is no precision failure */
-    for (failed=1, prec=4; failed; prec<<=1)
+    int success = 0;
+    for (prec=4; !success; prec <<= 1)
     {
-
-        result = _compute_second_order(
-                so, m, r_site, site_selection_count, prec);
+        result = _compute_second_order(so, m, r_site, prec);
         if (result) goto finish;
 
-        /*
-         * Check for bounds failure of any entry of the hessian matrix.
-         * todo: check in a more fine-grained manner,
-         *       to avoid unnecessarily recomputing some hessian entries
-         *       at higher precision.
-         */
-        failed = 0;
-        for (i = 0; i < edge_count; i++)
-        {
-            for (j = 0; j <= i; j++)
-            {
-                arb_ptr p;
-                p = arb_mat_entry(so->ll_hessian, i, j);
-                if (!_can_round(p))
-                {
-                    failed = 1;
-                }
-            }
-        }
-    }
-
-    if (failed)
-    {
-        fprintf(stderr, "internal error: insufficient precision\n");
-        result = -1;
-        goto finish;
+        success = _arb_mat_can_round(so->ll_hessian);
     }
 
     /* build the json output */
@@ -831,92 +988,153 @@ _hess_agg_site_edge_yn(
 
 finish:
 
-    second_order_clear(so, edge_count);
+    so_clear(so);
 
     *result_out = result;
     return j_out;
 }
 
 
+json_t *
+newton_delta_query(
+        model_and_data_t m, column_reduction_t r_site, int *result_out)
+{
+    json_t * j_out = NULL;
+    int result = 0;
+    slong prec;
+    int i, edge_count;
+    so_t so;
+    arb_struct *newton_delta;
+    
+    edge_count = m->g->nnz;
+    so_init(so, edge_count);
+    newton_delta = _arb_vec_init(edge_count);
+
+    /* repeat with increasing precision until there is no precision failure */
+    int success = 0;
+    for (prec=4; !success; prec <<= 1)
+    {
+        result = _compute_second_order(so, m, r_site, prec);
+        if (result) goto finish;
+
+        so_get_newton_delta(newton_delta, so, prec);
+
+        success = _arb_vec_can_round(newton_delta, edge_count);
+    }
+
+    /* build the json output */
+    {
+        double d;
+        int idx;
+        json_t *j_data, *x;
+        j_data = json_array();
+        for (i = 0; i < edge_count; i++)
+        {
+            idx = m->edge_map->order[i];
+            d = arf_get_d(arb_midref(newton_delta + idx), ARF_RND_NEAR);
+            x = json_pack("[i, f]", i, d);
+            json_array_append_new(j_data, x);
+        }
+        j_out = json_pack("{s:[s, s], s:o}",
+                "columns", "edge", "value",
+                "data", j_data);
+    }
+
+finish:
+
+    so_clear(so);
+    _arb_vec_clear(newton_delta, edge_count);
+
+    *result_out = result;
+    return j_out;
+}
 
 
+json_t *
+newton_point_query(
+        model_and_data_t m, column_reduction_t r_site, int *result_out)
+{
+    json_t * j_out = NULL;
+    int result = 0;
+    slong prec;
+    int i, edge_count;
+    so_t so;
+    arb_struct *newton_point;
+    
+    edge_count = m->g->nnz;
+    so_init(so, edge_count);
+    newton_point = _arb_vec_init(edge_count);
 
-json_t *arbplf_hess_run(void *userdata, json_t *root, int *retcode)
+    /* repeat with increasing precision until there is no precision failure */
+    int success = 0;
+    for (prec=4; !success; prec <<= 1)
+    {
+        result = _compute_second_order(so, m, r_site, prec);
+        if (result) goto finish;
+
+        so_get_newton_point(newton_point, so, prec);
+
+        success = _arb_vec_can_round(newton_point, edge_count);
+    }
+
+    /* build the json output */
+    {
+        double d;
+        int idx;
+        json_t *j_data, *x;
+        j_data = json_array();
+        for (i = 0; i < edge_count; i++)
+        {
+            idx = m->edge_map->order[i];
+            d = arf_get_d(arb_midref(newton_point + idx), ARF_RND_NEAR);
+            x = json_pack("[i, f]", i, d);
+            json_array_append_new(j_data, x);
+        }
+        j_out = json_pack("{s:[s, s], s:o}",
+                "columns", "edge", "value",
+                "data", j_data);
+    }
+
+finish:
+
+    so_clear(so);
+    _arb_vec_clear(newton_point, edge_count);
+
+    *result_out = result;
+    return j_out;
+}
+
+
+json_t *arbplf_second_order_run(void *userdata, json_t *root, int *retcode)
 {
     json_t *j_out = NULL;
-    json_t *model_and_data = NULL;
-    json_t *site_reduction = NULL;
-    int site_count = 0;
-    int result = 0;
     model_and_data_t m;
     column_reduction_t r_site;
-    int i;
-    int site;
-    int *site_selection_count = NULL;
+    int result = 0;
+    second_order_query_t query;
+
+    if (!userdata)
+    {
+        fprintf(stderr, "internal error: unexpected a second order query\n");
+        result = -1;
+        goto finish;
+    }
+
+    query = userdata;
 
     model_and_data_init(m);
     column_reduction_init(r_site);
 
-    if (userdata)
-    {
-        fprintf(stderr, "error: unexpected userdata\n");
-        result = -1;
-        goto finish;
-    }
-
-    /* parse the json input */
-    /* Note that site reduction is required, and edge reduction is forbidden */
-    {
-        json_error_t err;
-        size_t flags;
-        
-        flags = JSON_STRICT;
-        result = json_unpack_ex(root, &err, flags,
-                "{s:o, s:o}",
-                "model_and_data", &model_and_data,
-                "site_reduction", &site_reduction
-                );
-        if (result)
-        {
-            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-            goto finish;
-        }
-    }
-
-    /* validate the model and data section of the json input */
-    result = validate_model_and_data(m, model_and_data);
+    result = _parse_second_order(m, r_site, root);
     if (result) goto finish;
 
-    site_count = pmat_nsites(m->p);
-
-    /* validate the site reduction section of the json input */
-    result = validate_column_reduction(
-            r_site, site_count, "site", site_reduction);
-    if (result) goto finish;
-
-    if (r_site->agg_mode == AGG_NONE)
-    {
-        fprintf(stderr, "error: aggregation over sites is required\n");
-        result = -1;
-        goto finish;
-    }
-
-    /* Indicate which site indices are included in the selection. */
-    site_selection_count = calloc(site_count, sizeof(int));
-    for (i = 0; i < r_site->selection_len; i++)
-    {
-        site = r_site->selection[i];
-        site_selection_count[site]++;
-    }
-
-    j_out = _hess_agg_site_edge_yn(m, r_site, site_selection_count, &result);
+    j_out = query(m, r_site, &result);
     if (result) goto finish;
 
 finish:
 
     *retcode = result;
 
-    free(site_selection_count);
     column_reduction_clear(r_site);
     model_and_data_clear(m);
 

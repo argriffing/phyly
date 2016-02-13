@@ -13,6 +13,7 @@ from numpy.testing import (
 
 from arbplf import arbplf_ll
 from arbplf import arbplf_deriv
+from arbplf import arbplf_newton_point
 
 
 def myll(d):
@@ -68,4 +69,3 @@ def main():
 
 
 main()
-
