@@ -13,6 +13,51 @@ int _can_round(arb_t x)
     return arb_rel_accuracy_bits(x) >= 53;
 }
 
+int
+_arb_vec_can_round(arb_struct * x, slong n)
+{
+    slong i;
+    for (i = 0; i < n; i++)
+    {
+        if (!_can_round(x + i))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int
+_arb_mat_can_round(arb_mat_t A)
+{
+    slong i, j;
+    for (i = 0; i < arb_mat_nrows(A); i++)
+    {
+        for (j = 0; j < arb_mat_nrows(A); j++)
+        {
+            if (!_can_round(arb_mat_entry(A, i, j)))
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+
+void
+_arb_mat_indeterminate(arb_mat_t m)
+{
+    slong i, j, r, c;
+    for (i = 0; i < arb_mat_nrows(m); i++)
+    {
+        for (j = 0; j < arb_mat_ncols(m); j++)
+        {
+            arb_indeterminate(arb_mat_entry(m, i, j));
+        }
+    }
+}
+
 void
 _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 {
