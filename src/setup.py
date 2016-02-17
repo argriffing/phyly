@@ -19,6 +19,7 @@ myext = Extension(
             'arbplfll.c',
             'arbplfderiv.c',
             'arbplfhess.c',
+            'arbplfmarginal.c',
             'csr_graph.c',
             'util.c',
             'model.c',

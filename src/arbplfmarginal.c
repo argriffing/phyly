@@ -231,6 +231,8 @@ nd_accum_init(nd_accum_t a, nd_axis_struct *axes, int ndim)
     /* allocate the data array */
     a->data = _arb_vec_init(a->size);
 
+    /* debug spam */
+    /*
     fprintf(stderr, "debug: ndim=%d\n", a->ndim);
     fprintf(stderr, "debug: size=%d\n", a->size);
 
@@ -247,6 +249,7 @@ nd_accum_init(nd_accum_t a, nd_axis_struct *axes, int ndim)
         fprintf(stderr, "%d ", a->strides[i]);
     }
     fprintf(stderr, "\n");
+    */
 }
 
 /* todo: do this more intelligently and update axis requests for precision */
@@ -301,7 +304,6 @@ nd_accum_accumulate(nd_accum_t a, int *coords, arb_struct *value, slong prec)
             offset += coord * stride;
         }
     }
-    /* debug */
     if (offset < 0)
     {
         fprintf(stderr, "internal error: negative offset\n");
@@ -697,10 +699,51 @@ evaluate_site_likelihood(arb_t lhood,
 }
 
 
+void
+_arb_mat_div_entrywise_marginal(
+        arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
+{
+    /*
+     * The justification for 0/0 = 0 in this function is that
+     * if the subtree likelihood conditional on a state is zero,
+     * then it is OK if that state has zero marginal probability
+     * at that node.
+     */
+    slong i, j, nr, nc;
+
+    nr = arb_mat_nrows(a);
+    nc = arb_mat_ncols(a);
+
+    for (i = 0; i < nr; i++)
+    {
+        for (j = 0; j < nc; j++)
+        {
+            if (arb_is_zero(arb_mat_entry(b, i, j)))
+            {
+                fprintf(stderr, "debug: 0/0 in marginal distribution\n");
+                if (!arb_is_zero(arb_mat_entry(a, i, j)))
+                {
+                    fprintf(stderr, "internal error: unexpected ratio\n");
+                    abort();
+                }
+                arb_zero(arb_mat_entry(c, i, j));
+            }
+            else
+            {
+                arb_div(arb_mat_entry(c, i, j),
+                        arb_mat_entry(a, i, j),
+                        arb_mat_entry(b, i, j), prec);
+            }
+        }
+    }
+}
+
+
 static void
 evaluate_marginal_distributions(
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,
+        arb_mat_struct *lhood_edge_vectors,
         arb_mat_struct *transition_matrices,
         csr_graph_t g, int *preorder,
         int node_count, int state_count, slong prec)
@@ -708,11 +751,12 @@ evaluate_marginal_distributions(
     int u, a, b;
     int idx;
     int start, stop;
-    arb_mat_struct *tmat, *lvec, *mvec, *mvecb;
-    arb_mat_t rvec;
+    arb_mat_struct *tmat, *lvec, *mvec, *mvecb, *evec;
+    arb_mat_t rvec, tmp;
     arb_t s;
 
     arb_mat_init(rvec, 1, state_count);
+    arb_mat_init(tmp, state_count, 1);
     arb_init(s);
 
     _arb_mat_ones(marginal_node_vectors + preorder[0]);
@@ -724,8 +768,6 @@ evaluate_marginal_distributions(
         mvec = marginal_node_vectors + a;
         start = g->indptr[a];
         stop = g->indptr[a+1];
-
-        /* todo: fix a conceptual bug in this code */
 
         /*
          * Entrywise multiply by the likelihood node vector
@@ -743,9 +785,16 @@ evaluate_marginal_distributions(
              * At this point (a, b) is an edge from node a to node b
              * in a pre-order traversal of edges of the tree.
              */
+            evec = lhood_edge_vectors + idx;
             mvecb = marginal_node_vectors + b;
-            arb_mat_transpose(rvec, mvec);
             tmat = transition_matrices + idx;
+
+            /* todo: if possible, rewrite the dynamic programming to
+             *       avoid this potentially destabilizing division
+             *       while maintaining efficiency
+             */
+            _arb_mat_div_entrywise_marginal(tmp, mvec, evec, prec);
+            arb_mat_transpose(rvec, tmp);
             arb_mat_mul(rvec, rvec, tmat, prec);
             arb_mat_transpose(mvecb, rvec);
 
@@ -753,7 +802,8 @@ evaluate_marginal_distributions(
         }
     }
 
-    arb_mat_clear(rvec);
+    arb_mat_clear(rvec); 
+    arb_mat_clear(tmp); 
     arb_clear(s);
 }
 
@@ -825,6 +875,7 @@ _nd_accum_update(nd_accum_t arr,
         evaluate_marginal_distributions(
                 w->marginal_node_vectors,
                 w->lhood_node_vectors,
+                w->lhood_edge_vectors,
                 w->transition_matrices,
                 m->g, m->preorder, w->node_count, w->state_count, prec);
 

@@ -91,6 +91,25 @@ _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 }
 
 void
+_arb_mat_div_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
+{
+    slong i, j, nr, nc;
+
+    nr = arb_mat_nrows(a);
+    nc = arb_mat_ncols(a);
+
+    for (i = 0; i < nr; i++)
+    {
+        for (j = 0; j < nc; j++)
+        {
+            arb_div(arb_mat_entry(c, i, j),
+                    arb_mat_entry(a, i, j),
+                    arb_mat_entry(b, i, j), prec);
+        }
+    }
+}
+
+void
 _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec)
 {
     slong i, j;

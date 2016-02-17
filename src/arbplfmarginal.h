@@ -1,5 +1,5 @@
-#ifndef ARBPLFHESS_H
-#define ARBPLFHESS_H
+#ifndef ARBPLFMARGINAL_H
+#define ARBPLFMARGINAL_H
 
 #include "jansson.h"
 
