@@ -88,16 +88,20 @@ typedef nd_axis_struct nd_axis_t[1];
 static void
 nd_axis_update_precision(nd_axis_t axis, column_reduction_t r, slong prec)
 {
-    result = get_column_agg_weights(
-            axis->agg_weight_divisor, axis->agg_weights, axis->n, r, prec);
-    if (result) abort();
+    int result;
+    if (axis->agg_weights)
+    {
+        result = get_column_agg_weights(
+                axis->agg_weight_divisor, axis->agg_weights, axis->n, r, prec);
+        if (result) abort();
+    }
 }
 
 static void
 nd_axis_init(nd_axis_t axis,
         const char *name, int total_count, column_reduction_t r, slong prec)
 {
-    int i, idx, result;
+    int i, idx;
 
     /* set the name */
     axis->name = malloc(strlen(name) + 1);
@@ -126,8 +130,15 @@ nd_axis_init(nd_axis_t axis,
     }
 
     /* initialize the arbitrary precision weight arrays */
-    arb_init(axis->agg_weight_divisor);
-    axis->agg_weights = arb_vec_init(axis->n);
+    if (r->agg_mode == AGG_NONE)
+    {
+        axis->agg_weights = NULL;
+    }
+    else
+    {
+        axis->agg_weights = _arb_vec_init(axis->n);
+        arb_init(axis->agg_weight_divisor);
+    }
 
     /* initialize weight values */
     nd_axis_update_precision(axis, r, prec);
@@ -141,8 +152,11 @@ nd_axis_clear(nd_axis_t axis)
     free(axis->is_selected);
     free(axis->request_update);
 
-    _arb_vec_clear(axis->agg_weights, axis->n);
-    arb_clear(axis->agg_divisor);
+    if (axis->agg_weights)
+    {
+        _arb_vec_clear(axis->agg_weights, axis->n);
+        arb_clear(axis->agg_weight_divisor);
+    }
 
     axis->n = 0;
     axis->k = 0;
@@ -178,6 +192,7 @@ nd_accum_init(nd_accum_t a, nd_axis_struct *axes, int ndim)
 {
     int i;
     int stride;
+    nd_axis_struct *axis;
 
     a->ndim = ndim;
     a->axes = axes;
@@ -186,13 +201,14 @@ nd_accum_init(nd_accum_t a, nd_axis_struct *axes, int ndim)
     a->shape = malloc(a->ndim * sizeof(int));
     for (i = 0; i < ndim; i++)
     {
-        if (a->axes[i]->agg_weights)
+        axis = a->axes + i;
+        if (axis->agg_weights)
         {
             a->shape[i] = 1;
         }
         else
         {
-            a->shape[i] = a->axes[i]->n;
+            a->shape[i] = axis->n;
         }
     }
 
@@ -205,7 +221,7 @@ nd_accum_init(nd_accum_t a, nd_axis_struct *axes, int ndim)
 
     /* determine the nd array strides, accounting for aggregation along axes */
     stride = 1;
-    a->shape = malloc(a->ndim * sizeof(int));
+    a->strides = malloc(a->ndim * sizeof(int));
     for (i = ndim-1; i >= 0; i--)
     {
         a->strides[i] = stride;
@@ -213,7 +229,24 @@ nd_accum_init(nd_accum_t a, nd_axis_struct *axes, int ndim)
     }
 
     /* allocate the data array */
-    a->data = _arb_vec_init(a->data, a->size);
+    a->data = _arb_vec_init(a->size);
+
+    fprintf(stderr, "debug: ndim=%d\n", a->ndim);
+    fprintf(stderr, "debug: size=%d\n", a->size);
+
+    fprintf(stderr, "debug: shape = ");
+    for (i = 0; i < ndim; i++)
+    {
+        fprintf(stderr, "%d ", a->shape[i]);
+    }
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, "debug: strides = ");
+    for (i = 0; i < ndim; i++)
+    {
+        fprintf(stderr, "%d ", a->strides[i]);
+    }
+    fprintf(stderr, "\n");
 }
 
 /* todo: do this more intelligently and update axis requests for precision */
@@ -243,27 +276,42 @@ static void
 nd_accum_accumulate(nd_accum_t a, int *coords, arb_struct *value, slong prec)
 {
     int axis_idx;
-    int i;
     int offset, coord, stride;
     nd_axis_struct *axis;
     arb_struct *p;
     arb_t x;
 
-    arb_init_set(x, value);
+    arb_init(x);
+    arb_set(x, value);
     offset = 0;
     for (axis_idx = 0; axis_idx < a->ndim; axis_idx++)
     {
+        axis = a->axes + axis_idx;
         coord = coords[axis_idx];
-        axis = a->axes[axis_idx];
         stride = a->strides[axis_idx];
         if (axis->agg_weights)
         {
-            arb_mul(x, x, axis->agg_weights[coord], prec);
+            arb_mul(x, x, axis->agg_weights + coord, prec);
 
             /* todo: delay this division */
             arb_div(x, x, axis->agg_weight_divisor, prec);
         }
-        offset += coord * stride;
+        else
+        {
+            offset += coord * stride;
+        }
+    }
+    /* debug */
+    if (offset < 0)
+    {
+        fprintf(stderr, "internal error: negative offset\n");
+        abort();
+    }
+    if (offset >= a->size)
+    {
+        fprintf(stderr, "internal error: offset=%d >= size=%d\n",
+                offset, a->size);
+        abort();
     }
     p = a->data + offset;
     arb_add(p, p, x, prec);
@@ -278,13 +326,13 @@ _nd_accum_recursively_zero_requested_cells(nd_accum_t a,
     nd_axis_struct *axis;
 
     /* define the current axis */
-    axis = a->axes[axis_idx];
+    axis = a->axes + axis_idx;
 
     /* terminate recursion */
     if (axis_idx == a->ndim)
     {
         arb_zero(a->data + offset);
-        return result;
+        return;
     }
 
     if (axis->agg_weights)
@@ -327,7 +375,7 @@ _nd_accum_recursively_build_json(nd_accum_t a,
     result = 0;
 
     /* define the current axis */
-    axis = a->axes[axis_idx];
+    axis = a->axes + axis_idx;
 
     /* terminate recursion */
     if (axis_idx == a->ndim)
@@ -344,7 +392,7 @@ _nd_accum_recursively_build_json(nd_accum_t a,
         {
             j_row_next = json_pack("[f]", d);
         }
-        json_array_append_new(j_data, j_row);
+        json_array_append_new(j_rows, j_row_next);
         return result;
     }
 
@@ -352,23 +400,22 @@ _nd_accum_recursively_build_json(nd_accum_t a,
     {
         /* skip aggregated axes */
         next_offset = offset;
-        j_row_next = j_row;
         result = _nd_accum_recursively_build_json(
                 a, j_rows, j_row, axis_idx+1, next_offset);
     }
     else
     {
         /* add selections to the row, and update the offset */
-        if (j_row)
-        {
-            j_row_next = json_deep_copy(j_row);
-        }
-        else
-        {
-            j_row_next = json_array();
-        }
         for (i = 0; i < axis->k; i++)
         {
+            if (j_row)
+            {
+                j_row_next = json_deep_copy(j_row);
+            }
+            else
+            {
+                j_row_next = json_array();
+            }
             idx = axis->selection[i];
             x = json_integer(idx);
             json_array_append_new(j_row_next, x);
@@ -376,6 +423,7 @@ _nd_accum_recursively_build_json(nd_accum_t a,
             result = _nd_accum_recursively_build_json(
                     a, j_rows, j_row_next, axis_idx+1, next_offset);
             if (result) return result;
+            json_decref(j_row_next);
         }
     }
     return result;
@@ -386,38 +434,46 @@ static json_t *
 nd_accum_get_json(nd_accum_t a, int *result_out)
 {
     int axis_idx;
-    double d;
-    int idx;
+    int offset;
     nd_axis_struct *axis;
-    json_t *j_data, *j_headers, *j_header, *x;
+    json_t *j_out, *j_headers, *j_rows;
     int result;
+
+    result = 0;
 
     /* build column header list */
     j_headers = json_array();
-    for (axis_idx = 0; axis_idx < a->ndim; axis_idx++)
     {
-        axis = axes[axis_idx];
-        if (axis->agg_weights)
+        json_t *j_header;
+        for (axis_idx = 0; axis_idx < a->ndim; axis_idx++)
         {
-            j_header = json_string(axis->name);
-            json_array_append_new(j_data, j_header);
+            axis = a->axes+axis_idx;
+            if (!axis->agg_weights)
+            {
+                j_header = json_string(axis->name);
+                json_array_append_new(j_headers, j_header);
+            }
         }
+        j_header = json_string("value");
+        json_array_append_new(j_headers, j_header);
     }
-    j_header = json_string("value");
-    json_array_append_new(j_header);
 
     /* recursively build the data array */
-    j_rows = json_array();
-    j_row = NULL;
-    axis_idx = 0;
-    offset = 0;
-    result = _nd_accum_recursively_build_json(
-            a, j_rows, j_row, axis_idx, offset);
+    {
+        json_t *j_row;
+        j_rows = json_array();
+        j_row = NULL;
+        axis_idx = 0;
+        offset = 0;
+        result = _nd_accum_recursively_build_json(
+                a, j_rows, j_row, axis_idx, offset);
+    }
+
     *result_out = result;
 
     j_out = json_pack("{s:o, s:o}",
         "columns", j_headers,
-        "data", j_data);
+        "data", j_rows);
     return j_out;
 }
 
@@ -442,9 +498,19 @@ static void
 likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
 {
     csr_graph_struct *g;
-    int i, n;
+    int i;
     arb_mat_struct *tmat;
     double tmpd;
+
+    /*
+     * This is the csr graph index of edge (a, b).
+     * Given this index, node b is directly available
+     * from the csr data structure.
+     * The rate coefficient associated with the edge will also be available.
+     * On the other hand, the index of node 'a' will be available through
+     * the iteration order rather than directly from the index.
+     */
+    int idx;
 
     g = m->g;
 
@@ -463,16 +529,6 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
         tmat = w->transition_matrices + idx;
         arb_mat_init(tmat, w->state_count, w->state_count);
     }
-
-    /*
-     * This is the csr graph index of edge (a, b).
-     * Given this index, node b is directly available
-     * from the csr data structure.
-     * The rate coefficient associated with the edge will also be available.
-     * On the other hand, the index of node 'a' will be available through
-     * the iteration order rather than directly from the index.
-     */
-    int idx;
 
     /*
      * Define the map from csr edge index to edge rate.
@@ -584,10 +640,10 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 /* Calculate the likelihood, storing many intermediate calculations. */
 static void
 evaluate_site_likelihood(arb_t lhood,
-        arb_struct *lhood_node_vectors,
-        arb_struct *lhood_edge_vectors,
-        arb_struct *base_node_vectors,
-        arb_struct *transition_matrices,
+        arb_mat_struct *lhood_node_vectors,
+        arb_mat_struct *lhood_edge_vectors,
+        arb_mat_struct *base_node_vectors,
+        arb_mat_struct *transition_matrices,
         csr_graph_struct *g, int *preorder, int node_count, slong prec)
 {
     int u, a, b, idx;
@@ -646,12 +702,13 @@ evaluate_marginal_distributions(
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *transition_matrices,
-        csr_graph *g, int *preorder,
+        csr_graph_t g, int *preorder,
         int node_count, int state_count, slong prec)
 {
-    int u, a;
+    int u, a, b;
+    int idx;
     int start, stop;
-    arb_mat_struct *lvec, *mvec, *mvecb;
+    arb_mat_struct *tmat, *lvec, *mvec, *mvecb;
     arb_mat_t rvec;
     arb_t s;
 
@@ -707,15 +764,18 @@ _nd_accum_update(nd_accum_t arr,
     arb_t lhood;
     arb_mat_struct *bvec, *nvec;
     nd_axis_struct *site_axis, *node_axis, *state_axis;
+    int site_count;
     int *coords;
 
     coords = malloc(arr->ndim * sizeof(int));
 
     arb_init(lhood);
 
-    site_axis = arr->axes[0];
-    node_axis = arr->axes[1];
-    state_axis = arr->axes[2];
+    site_count = pmat_nsites(m->p);
+
+    site_axis = arr->axes + 0;
+    node_axis = arr->axes + 1;
+    state_axis = arr->axes + 2;
 
     /* zero all requested cells of the array */
     nd_accum_zero_requested_cells(arr);
@@ -726,7 +786,7 @@ _nd_accum_update(nd_accum_t arr,
      * The nd array links to axis selection and aggregation information,
      * and the model and data are provided separately.
      */
-    for (site = 0; site < w->site_count; site++)
+    for (site = 0; site < site_count; site++)
     {
         /* skip sites that are not requested */
         if (!site_axis->request_update[site]) continue;
@@ -800,7 +860,8 @@ _query(model_and_data_t m,
 {
     json_t * j_out = NULL;
     slong prec;
-    int i, ndim, result;
+    int ndim, result;
+    int axis_idx;
     int site_count, node_count, state_count;
     nd_axis_struct axes[3];
     nd_accum_t arr;
@@ -820,11 +881,12 @@ _query(model_and_data_t m,
     likelihood_ws_init(w, m);
 
     /* initialize axes at zero precision */
-    nd_axis_init(axes+0, "site", site_count, site_r, 0);
-    nd_axis_init(axes+1, "node", node_count, node_r, 0);
-    nd_axis_init(axes+2, "state", state_count, state_r, 0);
+    nd_axis_init(axes+0, "site", site_count, r_site, 0);
+    nd_axis_init(axes+1, "node", node_count, r_node, 0);
+    nd_axis_init(axes+2, "state", state_count, r_state, 0);
 
     /* initialize nd accumulation array */
+    nd_accum_pre_init(arr);
     nd_accum_init(arr, axes, ndim);
 
     /* repeat with increasing precision until there is no precision failure */
@@ -839,9 +901,9 @@ _query(model_and_data_t m,
         likelihood_ws_update(w, m, prec);
 
         /* recompute axis reduction weights with increased precision */
-        nd_axis_update_precision(axes+0, site_r, prec);
-        nd_axis_update_precision(axes+1, node_r, prec);
-        nd_axis_update_precision(axes+2, state_r, prec);
+        nd_axis_update_precision(axes+0, r_site, prec);
+        nd_axis_update_precision(axes+1, r_node, prec);
+        nd_axis_update_precision(axes+2, r_state, prec);
 
         /*
          * Recompute the output array with increased working precision.
@@ -866,7 +928,7 @@ finish:
     /* clear axes */
     for (axis_idx = 0; axis_idx < 3; axis_idx++)
     {
-        nd_axis_clear(axes+i);
+        nd_axis_clear(axes + axis_idx);
     }
 
     /* clear nd accumulation array */

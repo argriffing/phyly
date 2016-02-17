@@ -19,7 +19,7 @@ _arb_mat_ones(arb_mat_t A)
     slong i, j;
     for (i = 0; i < arb_mat_nrows(A); i++)
     {
-        for (j = 0; j < arb_mat_nrows(A); j++)
+        for (j = 0; j < arb_mat_ncols(A); j++)
         {
             arb_one(arb_mat_entry(A, i, j));
         }
@@ -46,7 +46,7 @@ _arb_mat_can_round(arb_mat_t A)
     slong i, j;
     for (i = 0; i < arb_mat_nrows(A); i++)
     {
-        for (j = 0; j < arb_mat_nrows(A); j++)
+        for (j = 0; j < arb_mat_ncols(A); j++)
         {
             if (!_can_round(arb_mat_entry(A, i, j)))
             {
@@ -61,7 +61,7 @@ _arb_mat_can_round(arb_mat_t A)
 void
 _arb_mat_indeterminate(arb_mat_t m)
 {
-    slong i, j, r, c;
+    slong i, j;
     for (i = 0; i < arb_mat_nrows(m); i++)
     {
         for (j = 0; j < arb_mat_ncols(m); j++)
