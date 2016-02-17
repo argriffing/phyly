@@ -32,6 +32,19 @@ int get_site_agg_weights(
         arb_t weight_divisor, arb_struct * weights,
         int site_count, column_reduction_t r, slong prec);
 
+int get_state_agg_weights(
+        arb_t weight_divisor, arb_struct * weights,
+        int state_count, column_reduction_t r, slong prec);
+
+int get_node_agg_weights(
+        arb_t weight_divisor, arb_struct * weights,
+        int node_count, column_reduction_t r, slong prec);
+
+int get_column_agg_weights(
+        arb_t weight_divisor, arb_struct * weights,
+        int column_count, column_reduction_t r, slong prec);
+
+
 #ifdef __cplusplus
 }
 #endif

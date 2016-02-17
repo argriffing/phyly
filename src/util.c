@@ -153,7 +153,8 @@ _csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g)
     }
 }
 
-void _arb_mat_sum(arb_t dst, arb_mat_t src, slong prec)
+void
+_arb_mat_sum(arb_t dst, arb_mat_t src, slong prec)
 {
     slong i, j, r, c;
     r = arb_mat_nrows(src);
@@ -165,5 +166,38 @@ void _arb_mat_sum(arb_t dst, arb_mat_t src, slong prec)
         {
             arb_add(dst, dst, arb_mat_entry(src, i, j), prec);
         }
+    }
+}
+
+void
+_arb_vec_mul_arb_mat(
+        arb_struct *z, const arb_struct *x, const arb_mat_t y, slong prec)
+{
+    slong nr, nc;
+    slong i, j;
+    arb_struct *w;
+
+    nr = arb_mat_nrows(y);
+    nc = arb_mat_ncols(y);
+    if (z == x)
+    {
+        w = _arb_vec_init(nc);
+    }
+    else
+    {
+        w = z;
+    }
+    for (j = 0; j < nc; j++)
+    {
+        arb_zero(w+j);
+        for (i = 0; i < nr; i++)
+        {
+            arb_addmul(w+j, x+i, arb_mat_entry(y, i, j), prec);
+        }
+    }
+    if (z == x)
+    {
+        _arb_vec_set(z, w, nc);
+        _arb_vec_clear(w, nc);
     }
 }
