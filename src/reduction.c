@@ -94,24 +94,25 @@ finish:
 }
 
 
-int get_site_agg_weights(
+int
+get_column_agg_weights(
         arb_t weight_divisor, arb_struct * weights,
-        int site_count, column_reduction_t r, slong prec)
+        int total_len, column_reduction_t r, slong prec)
 {
-    int i, site;
-    int * site_selection_count = NULL;
+    int i, idx;
+    int * idx_selection_count = NULL;
     int result = 0;
 
-    _arb_vec_zero(weights, site_count);
+    _arb_vec_zero(weights, total_len);
 
-    /* define site selection count if necessary */
+    /* define idx selection count if necessary */
     if (r->agg_mode == AGG_SUM || r->agg_mode == AGG_AVG)
     {
-        site_selection_count = calloc(site_count, sizeof(int));
+        idx_selection_count = calloc(total_len, sizeof(int));
         for (i = 0; i < r->selection_len; i++)
         {
-            site = r->selection[i];
-            site_selection_count[site]++;
+            idx = r->selection[i];
+            idx_selection_count[idx]++;
         }
     }
 
@@ -121,26 +122,26 @@ int get_site_agg_weights(
         arb_init(weight);
         for (i = 0; i < r->selection_len; i++)
         {
-            site = r->selection[i];
+            idx = r->selection[i];
             arb_set_d(weight, r->weights[i]);
-            arb_add(weights+site, weights+site, weight, prec);
+            arb_add(weights+idx, weights+idx, weight, prec);
         }
         arb_clear(weight);
         arb_one(weight_divisor);
     }
     else if (r->agg_mode == AGG_SUM)
     {
-        for (site = 0; site < site_count; site++)
+        for (idx = 0; idx < total_len; idx++)
         {
-            arb_set_si(weights+site, site_selection_count[site]);
+            arb_set_si(weights+idx, idx_selection_count[idx]);
         }
         arb_one(weight_divisor);
     }
     else if (r->agg_mode == AGG_AVG)
     {
-        for (site = 0; site < site_count; site++)
+        for (idx = 0; idx < total_len; idx++)
         {
-            arb_set_si(weights+site, site_selection_count[site]);
+            arb_set_si(weights+idx, idx_selection_count[idx]);
         }
         arb_set_si(weight_divisor, r->selection_len);
     }
@@ -153,6 +154,34 @@ int get_site_agg_weights(
 
 finish:
 
-    free(site_selection_count);
+    free(idx_selection_count);
     return result;
+}
+
+
+int
+get_site_agg_weights(
+        arb_t weight_divisor, arb_struct * weights,
+        int site_count, column_reduction_t r, slong prec)
+{
+    return get_column_agg_weights(
+            weight_divisor, weights, site_count, r, prec);
+}
+
+int
+get_node_agg_weights(
+        arb_t weight_divisor, arb_struct * weights,
+        int node_count, column_reduction_t r, slong prec)
+{
+    return get_column_agg_weights(
+            weight_divisor, weights, node_count, r, prec);
+}
+
+int
+get_state_agg_weights(
+        arb_t weight_divisor, arb_struct * weights,
+        int state_count, column_reduction_t r, slong prec)
+{
+    return get_column_agg_weights(
+            weight_divisor, weights, state_count, r, prec);
 }
