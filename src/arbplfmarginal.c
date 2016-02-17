@@ -725,6 +725,8 @@ evaluate_marginal_distributions(
         start = g->indptr[a];
         stop = g->indptr[a+1];
 
+        /* todo: fix a conceptual bug in this code */
+
         /*
          * Entrywise multiply by the likelihood node vector
          * and then normalize the distribution.
