@@ -51,10 +51,6 @@
 #include "runjson.h"
 #include "arbplfmarginal.h"
 
-#define SITE_AXIS 0
-#define NODE_AXIS 1
-#define STATE_AXIS 2
-
 
 typedef struct
 {
@@ -241,6 +237,37 @@ nd_accum_clear(nd_accum_t a)
     free(a->shape);
     free(a->strides);
     _arb_vec_clear(a->data, a->size);
+}
+
+static void
+nd_accum_accumulate(nd_accum_t a, int *coords, arb_struct *value, slong prec)
+{
+    int axis_idx;
+    int i;
+    int offset, coord, stride;
+    nd_axis_struct *axis;
+    arb_struct *p;
+    arb_t x;
+
+    arb_init_set(x, value);
+    offset = 0;
+    for (axis_idx = 0; axis_idx < a->ndim; axis_idx++)
+    {
+        coord = coords[axis_idx];
+        axis = a->axes[axis_idx];
+        stride = a->strides[axis_idx];
+        if (axis->agg_weights)
+        {
+            arb_mul(x, x, axis->agg_weights[coord], prec);
+
+            /* todo: delay this division */
+            arb_div(x, x, axis->agg_weight_divisor, prec);
+        }
+        offset += coord * stride;
+    }
+    p = a->data + offset;
+    arb_add(p, p, x, prec);
+    arb_clear(x);
 }
 
 static void
@@ -615,6 +642,64 @@ evaluate_site_likelihood(arb_t lhood,
 
 
 static void
+evaluate_marginal_distributions(
+        arb_mat_struct *marginal_node_vectors,
+        arb_mat_struct *lhood_node_vectors,
+        arb_mat_struct *transition_matrices,
+        csr_graph *g, int *preorder,
+        int node_count, int state_count, slong prec)
+{
+    int u, a;
+    int start, stop;
+    arb_mat_struct *lvec, *mvec, *mvecb;
+    arb_mat_t rvec;
+    arb_t s;
+
+    arb_mat_init(rvec, 1, state_count);
+    arb_init(s);
+
+    _arb_mat_ones(marginal_node_vectors + preorder[0]);
+
+    for (u = 0; u < node_count; u++)
+    {
+        a = preorder[u];
+        lvec = lhood_node_vectors + a;
+        mvec = marginal_node_vectors + a;
+        start = g->indptr[a];
+        stop = g->indptr[a+1];
+
+        /*
+         * Entrywise multiply by the likelihood node vector
+         * and then normalize the distribution.
+         */
+        _arb_mat_mul_entrywise(mvec, mvec, lvec, prec);
+        _arb_mat_sum(s, mvec, prec);
+        arb_mat_scalar_div_arb(mvec, mvec, s, prec);
+
+        /* initialize neighboring downstream marginal vectors */
+        for (idx = start; idx < stop; idx++)
+        {
+            b = g->indices[idx];
+            /*
+             * At this point (a, b) is an edge from node a to node b
+             * in a pre-order traversal of edges of the tree.
+             */
+            mvecb = marginal_node_vectors + b;
+            arb_mat_transpose(rvec, mvec);
+            tmat = transition_matrices + idx;
+            arb_mat_mul(rvec, rvec, tmat, prec);
+            arb_mat_transpose(mvecb, rvec);
+
+            /* todo: rewrite to avoid explicit transposes */
+        }
+    }
+
+    arb_mat_clear(rvec);
+    arb_clear(s);
+}
+
+
+static void
 _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, model_and_data_t m, slong prec)
 {
@@ -679,7 +764,7 @@ _nd_accum_update(nd_accum_t arr,
                 w->marginal_node_vectors,
                 w->lhood_node_vectors,
                 w->transition_matrices,
-                m->g, m->preorder, w->node_count, prec);
+                m->g, m->preorder, w->node_count, w->state_count, prec);
 
         /* update the nd accumulator */
         for (i = 0; i < w->node_count; i++)
@@ -703,6 +788,7 @@ _nd_accum_update(nd_accum_t arr,
     }
 
     arb_clear(lhood);
+    free(coords);
 }
 
 

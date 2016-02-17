@@ -13,6 +13,19 @@ int _can_round(arb_t x)
     return arb_rel_accuracy_bits(x) >= 53;
 }
 
+void
+_arb_mat_ones(arb_mat_t A)
+{
+    slong i, j;
+    for (i = 0; i < arb_mat_nrows(A); i++)
+    {
+        for (j = 0; j < arb_mat_nrows(A); j++)
+        {
+            arb_one(arb_mat_entry(A, i, j));
+        }
+    }
+}
+
 int
 _arb_vec_can_round(arb_struct * x, slong n)
 {
