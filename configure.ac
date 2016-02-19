@@ -22,6 +22,9 @@ AC_SEARCH_LIBS(json_equal, [jansson], [], [AC_MSG_ERROR(
 AC_SEARCH_LIBS(__gmpz_set, [gmp], [], [AC_MSG_ERROR(
 	[unable to find the __gmpz_set() function (gmp library missing?)])])
 
+AC_SEARCH_LIBS(mpfr_get_version, [mpfr], [], [AC_MSG_ERROR(
+	[unable to find the mpfr_get_version() function (mpfr library missing?)])])
+
 AC_SEARCH_LIBS(fmpz_init, [flint], [], [AC_MSG_ERROR(
 	[unable to find the fmpz_init() function (flint library missing?)])])
 
