@@ -56,6 +56,7 @@
 #include "model.h"
 #include "reduction.h"
 #include "util.h"
+#include "evaluate_site_lhood.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -416,70 +417,6 @@ likelihood_ws_clear(likelihood_ws_t w)
     flint_free(w->transition_matrices);
 }
 
-
-/* Calculate the likelihood, storing many intermediate calculations. */
-static void
-evaluate_site_likelihood(arb_t lhood,
-        csr_graph_struct *g, int *preorder,
-        likelihood_ws_t w)
-{
-    int u, a, b, idx;
-    int start, stop;
-    arb_mat_struct * nmat;
-    arb_mat_struct * nmatb;
-    arb_mat_struct * tmat;
-    arb_mat_struct * emat;
-    plane_struct * plane;
-
-    plane = w->lhood_plane;
-
-    /*
-     * Fill all of the per-node and per-edge likelihood-related vectors.
-     * Note that because edge derivatives are requested,
-     * the vectors on edges are stored explicitly.
-     * In the likelihood-only variant of this function, these per-edge
-     * vectors are temporary variables whose lifespan is only long enough
-     * to update the vector associated with the parent node of the edge.
-     */
-    for (u = 0; u < w->node_count; u++)
-    {
-        a = preorder[w->node_count - 1 - u];
-        nmat = plane->node_vectors + a;
-        start = g->indptr[a];
-        stop = g->indptr[a+1];
-
-        /* create all of the state vectors on edges outgoing from this node */
-        for (idx = start; idx < stop; idx++)
-        {
-            b = g->indices[idx];
-            /*
-             * At this point (a, b) is an edge from node a to node b
-             * in a post-order traversal of edges of the tree.
-             */
-            tmat = w->transition_matrices + idx;
-            nmatb = plane->node_vectors + b;
-            emat = plane->edge_vectors + idx;
-            arb_mat_mul(emat, tmat, nmatb, w->prec);
-        }
-
-        /* initialize the state vector for node a */
-        arb_mat_set(nmat, w->base_plane->node_vectors + a);
-
-        /* multiplicatively accumulate state vectors at this node */
-        for (idx = start; idx < stop; idx++)
-        {
-            emat = plane->edge_vectors + idx;
-            _arb_mat_mul_entrywise(nmat, nmat, emat, w->prec);
-        }
-    }
-
-    /* Report the sum of state entries associated with the root. */
-    int root_node_index = preorder[0];
-    nmat = plane->node_vectors + root_node_index;
-    _arb_mat_sum(lhood, nmat, w->prec);
-}
-
-
 /*
  * Evaluate derivatives of likelihood with respect to edge rate coefficients.
  *
@@ -670,7 +607,12 @@ _compute_second_order(so_t so,
             w->indirect_plane->edge_pvectors[idx] = NULL;
         }
 
-        evaluate_site_likelihood(lhood, m->g, m->preorder, w);
+        evaluate_site_lhood(lhood,
+                w->lhood_plane->node_vectors,
+                w->lhood_plane->edge_vectors,
+                w->base_plane->node_vectors,
+                w->transition_matrices,
+                m->g, m->preorder, w->node_count, w->prec);
 
         /*
          * If any site likelihood is exactly zero
