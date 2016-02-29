@@ -45,6 +45,7 @@
 #include "model.h"
 #include "reduction.h"
 #include "util.h"
+#include "evaluate_site_lhood.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -639,66 +640,6 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 }
 
 
-/* Calculate the likelihood, storing many intermediate calculations. */
-static void
-evaluate_site_likelihood(arb_t lhood,
-        arb_mat_struct *lhood_node_vectors,
-        arb_mat_struct *lhood_edge_vectors,
-        arb_mat_struct *base_node_vectors,
-        arb_mat_struct *transition_matrices,
-        csr_graph_struct *g, int *preorder, int node_count, slong prec)
-{
-    int u, a, b, idx;
-    int start, stop;
-    arb_mat_struct *nmat, *nmatb, *tmat, *emat;
-
-    /*
-     * Fill all of the per-node and per-edge likelihood-related vectors.
-     * Note that because edge derivatives are requested,
-     * the vectors on edges are stored explicitly.
-     * In the likelihood-only variant of this function, these per-edge
-     * vectors are temporary variables whose lifespan is only long enough
-     * to update the vector associated with the parent node of the edge.
-     */
-    for (u = 0; u < node_count; u++)
-    {
-        a = preorder[node_count - 1 - u];
-        nmat = lhood_node_vectors + a;
-        start = g->indptr[a];
-        stop = g->indptr[a+1];
-
-        /* create all of the state vectors on edges outgoing from this node */
-        for (idx = start; idx < stop; idx++)
-        {
-            b = g->indices[idx];
-            /*
-             * At this point (a, b) is an edge from node a to node b
-             * in a post-order traversal of edges of the tree.
-             */
-            tmat = transition_matrices + idx;
-            nmatb = lhood_node_vectors + b;
-            emat = lhood_edge_vectors + idx;
-            arb_mat_mul(emat, tmat, nmatb, prec);
-        }
-
-        /* initialize the state vector for node a */
-        arb_mat_set(nmat, base_node_vectors + a);
-
-        /* multiplicatively accumulate state vectors at this node */
-        for (idx = start; idx < stop; idx++)
-        {
-            emat = lhood_edge_vectors + idx;
-            _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
-        }
-    }
-
-    /* Report the sum of state entries associated with the root. */
-    int root_node_index = preorder[0];
-    nmat = lhood_node_vectors + root_node_index;
-    _arb_mat_sum(lhood, nmat, prec);
-}
-
-
 void
 _arb_mat_div_entrywise_marginal(
         arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
@@ -861,7 +802,7 @@ _nd_accum_update(nd_accum_t arr,
          * Actually the likelihood vectors on edges are not used.
          * This is a backward pass from the leaves to the root.
          */
-        evaluate_site_likelihood(lhood,
+        evaluate_site_lhood(lhood,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
                 w->base_node_vectors,

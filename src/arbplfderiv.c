@@ -48,6 +48,7 @@
 #include "model.h"
 #include "reduction.h"
 #include "util.h"
+#include "evaluate_site_lhood.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -70,6 +71,7 @@ typedef struct
     arb_struct *edge_rates;
     arb_mat_t rate_matrix;
     arb_mat_struct *transition_matrices;
+    arb_mat_struct *base_node_column_vectors;
     arb_mat_struct *lhood_node_column_vectors;
     arb_mat_struct *lhood_edge_column_vectors;
     arb_mat_struct *deriv_node_column_vectors;
@@ -89,6 +91,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     {
         arb_mat_init(w->rate_matrix, 0, 0);
         w->transition_matrices = NULL;
+        w->base_node_column_vectors = NULL;
         w->lhood_node_column_vectors = NULL;
         w->lhood_edge_column_vectors = NULL;
         w->deriv_node_column_vectors = NULL;
@@ -111,6 +114,8 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
     w->transition_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
+    w->base_node_column_vectors = flint_malloc(
+            w->node_count * sizeof(arb_mat_struct));
     w->lhood_edge_column_vectors = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
     w->lhood_node_column_vectors = flint_malloc(
@@ -202,6 +207,17 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     }
 
     /*
+     * Workspace for state distributions at nodes.
+     * The contents of these vectors can depend on the prior distribution
+     * or on data, for example.
+     */
+    for (i = 0; i < w->node_count; i++)
+    {
+        nmat = w->base_node_column_vectors + i;
+        arb_mat_init(nmat, w->state_count, 1);
+    }
+
+    /*
      * Allocate an arbitrary precision column vector for each node.
      * This will be used to accumulate conditional likelihoods.
      */
@@ -268,77 +284,49 @@ likelihood_ws_clear(likelihood_ws_t w)
 }
 
 
-
-
-/* Calculate the likelihood, storing many intermediate calculations. */
+/* helper function to update base node probabilities at a site */
 static void
-evaluate_site_likelihood(arb_t lhood,
+_update_base_node_vectors(
+        arb_mat_struct *base_node_vectors,
+        pmat_t p, slong site)
+{
+    slong i, j;
+    slong node_count, state_count;
+    arb_mat_struct *bvec;
+    node_count = pmat_nrows(p);
+    state_count = pmat_ncols(p);
+    for (i = 0; i < node_count; i++)
+    {
+        bvec = base_node_vectors + i;
+        for (j = 0; j < state_count; j++)
+        {
+            arb_set_d(arb_mat_entry(bvec, j, 0), *pmat_entry(p, site, i, j));
+        }
+    }
+}
+
+
+/* Helper function to update likelihood-related vectors at a site. */
+static int
+_update_lhood_vectors(arb_t lhood,
         model_and_data_t m, likelihood_ws_t w, int site)
 {
-    int u, a, b, idx;
-    int start, stop;
-    int state;
-    double tmpd;
-    arb_mat_struct * nmat;
-    arb_mat_struct * nmatb;
-    arb_mat_struct * tmat;
-    arb_mat_struct * emat;
-    csr_graph_struct *g;
+    _update_base_node_vectors(w->base_node_column_vectors, m->p, site);
 
-    g = m->g;
+    evaluate_site_lhood(lhood,
+            w->lhood_node_column_vectors,
+            w->lhood_edge_column_vectors,
+            w->base_node_column_vectors,
+            w->transition_matrices,
+            m->g, m->preorder, w->node_count, w->prec);
 
-    /*
-     * Fill all of the per-node and per-edge likelihood-related vectors.
-     * Note that because edge derivatives are requested,
-     * the vectors on edges are stored explicitly.
-     * In the likelihood-only variant of this function, these per-edge
-     * vectors are temporary variables whose lifespan is only long enough
-     * to update the vector associated with the parent node of the edge.
-     */
-    for (u = 0; u < w->node_count; u++)
+    if (arb_is_zero(lhood))
     {
-        a = m->preorder[w->node_count - 1 - u];
-        start = g->indptr[a];
-        stop = g->indptr[a+1];
-
-        /* create all of the state vectors on edges outgoing from this node */
-        for (idx = start; idx < stop; idx++)
-        {
-            b = g->indices[idx];
-            /*
-             * At this point (a, b) is an edge from node a to node b
-             * in a post-order traversal of edges of the tree.
-             */
-            tmat = w->transition_matrices + idx;
-            nmatb = w->lhood_node_column_vectors + b;
-            emat = w->lhood_edge_column_vectors + idx;
-            arb_mat_mul(emat, tmat, nmatb, w->prec);
-        }
-
-        /* initialize the state vector for node a */
-        nmat = w->lhood_node_column_vectors + a;
-        for (state = 0; state < w->state_count; state++)
-        {
-            tmpd = *pmat_entry(m->p, site, a, state);
-            arb_set_d(arb_mat_entry(nmat, state, 0), tmpd);
-        }
-
-        /* multiplicatively accumulate state vectors at this node */
-        for (idx = start; idx < stop; idx++)
-        {
-            emat = w->lhood_edge_column_vectors + idx;
-            _arb_mat_mul_entrywise(nmat, nmat, emat, w->prec);
-        }
+        fprintf(stderr, "error: infeasible\n");
+        return -1;
     }
 
-    /* Report the sum of state entries associated with the root. */
-    int root_node_index = m->preorder[0];
-    nmat = w->lhood_node_column_vectors + root_node_index;
-    arb_zero(lhood);
-    for (state = 0; state < w->state_count; state++)
-    {
-        arb_add(lhood, lhood, arb_mat_entry(nmat, state, 0), w->prec);
-    }
+    return 0;
 }
 
 
@@ -386,9 +374,8 @@ evaluate_site_derivatives(arb_struct *derivatives,
     for (deriv_idx = 0; deriv_idx < w->edge_count; deriv_idx++)
     {
         if (!edge_is_requested[deriv_idx])
-        {
             continue;
-        }
+
         curr_idx = deriv_idx;
         while (curr_idx != -1)
         {
@@ -532,32 +519,11 @@ _agg_site_edge_yy(
 
         for (site = 0; site < site_count; site++)
         {
-            /* skip sites that are not selected */
             if (!site_selection_count[site])
-            {
                 continue;
-            }
 
-            /*
-             * Evaluate the site likelihood and compute the per-node and
-             * per-edge vectors that will be reused for computing
-             * the derivatives.
-             */
-            evaluate_site_likelihood(site_likelihood, m, w, site);
-
-            /*
-             * If any site likelihood is exactly zero
-             * then we do not need to continue.
-             * todo: if the site likelihood interval includes zero
-             *       then this could be handled at this point,
-             *       for example by immediately requesting higher precision
-             */
-            if (arb_is_zero(site_likelihood))
-            {
-                fprintf(stderr, "error: infeasible\n");
-                result = -1;
-                goto finish;
-            }
+            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            if (result) goto finish;
 
             /*
              * Evaluate derivatives of site likelihood
@@ -699,32 +665,11 @@ _agg_site_edge_yn(
 
         for (site = 0; site < site_count; site++)
         {
-            /* skip sites that are not selected */
             if (!site_selection_count[site])
-            {
                 continue;
-            }
 
-            /*
-             * Evaluate the site likelihood and compute the per-node and
-             * per-edge vectors that will be reused for computing
-             * the derivatives.
-             */
-            evaluate_site_likelihood(site_likelihood, m, w, site);
-
-            /*
-             * If any site likelihood is exactly zero
-             * then we do not need to continue.
-             * todo: if the site likelihood interval includes zero
-             *       then this could be handled at this point,
-             *       for example by immediately requesting higher precision
-             */
-            if (arb_is_zero(site_likelihood))
-            {
-                fprintf(stderr, "error: infeasible\n");
-                result = -1;
-                goto finish;
-            }
+            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            if (result) goto finish;
 
             /*
              * Evaluate derivatives of site likelihood
@@ -894,25 +839,21 @@ _agg_site_edge_ny(
         /* update edge derivative accumulations at requested sites */
         for (site = 0; site < site_count; site++)
         {
-            if (site_is_requested[site])
-            {
-                evaluate_site_likelihood(site_likelihood, m, w, site);
-                if (arb_is_zero(site_likelihood))
-                {
-                    fprintf(stderr, "error: infeasible\n");
-                    result = -1;
-                    goto finish;
-                }
-                evaluate_site_derivatives(
-                        derivatives,
-                        edge_selection_count,
-                        m, w,
-                        idx_to_a, b_to_idx, site);
-                p = final + site;
-                _arb_vec_dot(p, derivatives, edge_weights, edge_count, prec);
-                arb_div(p, p, edge_weight_divisor, prec);
-                arb_div(p, p, site_likelihood, prec);
-            }
+            if (!site_is_requested[site])
+                continue;
+
+            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            if (result) goto finish;
+
+            evaluate_site_derivatives(
+                    derivatives,
+                    edge_selection_count,
+                    m, w,
+                    idx_to_a, b_to_idx, site);
+            p = final + site;
+            _arb_vec_dot(p, derivatives, edge_weights, edge_count, prec);
+            arb_div(p, p, edge_weight_divisor, prec);
+            arb_div(p, p, site_likelihood, prec);
         }
 
         /* check bounds */
@@ -1027,27 +968,23 @@ _agg_site_edge_nn(
         /* update requested sites */
         for (site = 0; site < site_count; site++)
         {
-            if (site_is_requested[site])
+            if (!site_is_requested[site])
+                continue;
+
+            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            if (result) goto finish;
+
+            evaluate_site_derivatives(
+                    derivatives,
+                    edge_is_requested,
+                    m, w,
+                    idx_to_a, b_to_idx, site);
+            for (idx = 0; idx < edge_count; idx++)
             {
-                evaluate_site_likelihood(site_likelihood, m, w, site);
-                if (arb_is_zero(site_likelihood))
+                if (edge_is_requested[idx])
                 {
-                    fprintf(stderr, "error: infeasible\n");
-                    result = -1;
-                    goto finish;
-                }
-                evaluate_site_derivatives(
-                        derivatives,
-                        edge_is_requested,
-                        m, w,
-                        idx_to_a, b_to_idx, site);
-                for (idx = 0; idx < edge_count; idx++)
-                {
-                    if (edge_is_requested[idx])
-                    {
-                        arb_div(arb_mat_entry(final, site, idx),
-                                derivatives + idx, site_likelihood, prec);
-                    }
+                    arb_div(arb_mat_entry(final, site, idx),
+                            derivatives + idx, site_likelihood, prec);
                 }
             }
         }

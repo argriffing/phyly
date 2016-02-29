@@ -20,6 +20,8 @@ CORE_SOURCES = \
 	util.h \
 	model.c \
 	model.h \
+	evaluate_site_lhood.c \
+	evaluate_site_lhood.h \
 	parsemodel.c \
 	parsemodel.h \
 	reduction.c \

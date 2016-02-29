@@ -1,5 +1,5 @@
 Rebuild the 'configure' and 'Makefile.in' files:
-$ autoreconf --install
+$ ./autogen.sh
 
 Put the rebuilt files through some paces:
 $ rm -r build
