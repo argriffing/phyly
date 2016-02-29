@@ -138,13 +138,50 @@ _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec)
 
 
 void
-_prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
+_prune_update(arb_mat_t D, arb_mat_t C, arb_mat_t A, arb_mat_t B, slong prec)
 {
     /*
-     * d = c o a*b
+     * D = C o (A * B)
      * Analogous to _arb_mat_addmul
      * except with entrywise product instead of entrywise addition.
      */
+    arb_t accum;
+    arb_init(accum);
+    slong i, j, k;
+    slong r, s, t;
+    r = arb_mat_nrows(A);
+    s = arb_mat_ncols(A);
+    t = arb_mat_ncols(B);
+    if ((arb_mat_nrows(B) != s) ||
+        (arb_mat_nrows(D) != r) || (arb_mat_ncols(D) != t) ||
+        (arb_mat_nrows(C) != r) || (arb_mat_ncols(C) != t))
+    {
+        flint_fprintf(stderr, "internal error: incompatible dimensions\n");
+        abort();
+    }
+    if (D == A || D == B || C == A || C == B)
+    {
+        flint_fprintf(stderr, "internal error: unsupported aliasing\n");
+        abort();
+    }
+    for (i = 0; i < r; i++)
+    {
+        for (j = 0; j < t; j++)
+        {
+            arb_zero(accum);
+            for (k = 0; k < s; k++)
+            {
+                arb_addmul(accum,
+                        arb_mat_entry(A, i, k),
+                        arb_mat_entry(B, k, j), prec);
+            }
+            arb_mul(arb_mat_entry(D, i, j),
+                    arb_mat_entry(C, i, j), accum, prec);
+        }
+    }
+
+
+    /*
     slong m, n;
 
     m = a->r;
@@ -156,6 +193,8 @@ _prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
     arb_mat_mul(tmp, a, b, prec);
     _arb_mat_mul_entrywise(d, c, tmp, prec);
     arb_mat_clear(tmp);
+    */
+    arb_clear(accum);
 }
 
 /*
