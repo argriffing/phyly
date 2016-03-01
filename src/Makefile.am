@@ -20,6 +20,8 @@ CORE_SOURCES = \
 	util.h \
 	model.c \
 	model.h \
+	ndaccum.c \
+	ndaccum.h \
 	evaluate_site_lhood.c \
 	evaluate_site_lhood.h \
 	parsemodel.c \

@@ -23,6 +23,7 @@ myext = Extension(
             'csr_graph.c',
             'util.c',
             'model.c',
+            'ndaccum.c',
             'evaluate_site_lhood.c',
             'parsemodel.c',
             'reduction.c',
