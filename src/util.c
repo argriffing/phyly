@@ -179,21 +179,6 @@ _prune_update(arb_mat_t D, arb_mat_t C, arb_mat_t A, arb_mat_t B, slong prec)
                     arb_mat_entry(C, i, j), accum, prec);
         }
     }
-
-
-    /*
-    slong m, n;
-
-    m = a->r;
-    n = b->c;
-
-    arb_mat_t tmp;
-    arb_mat_init(tmp, m, n);
-
-    arb_mat_mul(tmp, a, b, prec);
-    _arb_mat_mul_entrywise(d, c, tmp, prec);
-    arb_mat_clear(tmp);
-    */
     arb_clear(accum);
 }
 

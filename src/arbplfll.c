@@ -67,6 +67,7 @@
 #include "model.h"
 #include "reduction.h"
 #include "util.h"
+#include "evaluate_site_lhood.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -88,7 +89,8 @@ typedef struct
     arb_struct *edge_rates;
     arb_mat_t rate_matrix;
     arb_mat_struct *transition_matrices;
-    arb_mat_struct *node_column_vectors;
+    arb_mat_struct *base_node_column_vectors;
+    arb_mat_struct *lhood_node_column_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
@@ -105,7 +107,8 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     {
         arb_mat_init(w->rate_matrix, 0, 0);
         w->transition_matrices = NULL;
-        w->node_column_vectors = NULL;
+        w->base_node_column_vectors = NULL;
+        w->lhood_node_column_vectors = NULL;
         w->edge_rates = NULL;
         w->node_count = 0;
         w->edge_count = 0;
@@ -125,7 +128,9 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
     w->transition_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
-    w->node_column_vectors = flint_malloc(
+    w->base_node_column_vectors = flint_malloc(
+            w->node_count * sizeof(arb_mat_struct));
+    w->lhood_node_column_vectors = flint_malloc(
             w->node_count * sizeof(arb_mat_struct));
 
     /*
@@ -213,11 +218,21 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
 
     /*
      * Allocate an arbitrary precision column vector for each node.
+     * These are for base likelihoods involving data or the prior.
+     */
+    for (i = 0; i < w->node_count; i++)
+    {
+        nmat = w->base_node_column_vectors + i;
+        arb_mat_init(nmat, w->state_count, 1);
+    }
+
+    /*
+     * Allocate an arbitrary precision column vector for each node.
      * This will be used to accumulate conditional likelihoods.
      */
     for (i = 0; i < w->node_count; i++)
     {
-        nmat = w->node_column_vectors + i;
+        nmat = w->lhood_node_column_vectors + i;
         arb_mat_init(nmat, w->state_count, 1);
     }
 }
@@ -241,63 +256,36 @@ likelihood_ws_clear(likelihood_ws_t w)
     
     for (i = 0; i < w->node_count; i++)
     {
-        arb_mat_clear(w->node_column_vectors + i);
+        arb_mat_clear(w->base_node_column_vectors + i);
     }
-    flint_free(w->node_column_vectors);
+    flint_free(w->base_node_column_vectors);
+
+    for (i = 0; i < w->node_count; i++)
+    {
+        arb_mat_clear(w->lhood_node_column_vectors + i);
+    }
+    flint_free(w->lhood_node_column_vectors);
 }
 
 
+/* helper function to update base node probabilities at a site */
 static void
-evaluate_site_likelihood(
-        arb_t lhood, model_and_data_t m, likelihood_ws_t w, int site)
+_update_base_node_vectors(
+        arb_mat_struct *base_node_vectors,
+        pmat_t p, slong site)
 {
-    int u, a, b, idx;
-    int start, stop;
-    int state;
-    double tmpd;
-    arb_mat_struct * nmat;
-    arb_mat_struct * nmatb;
-    arb_mat_struct * tmat;
-    csr_graph_struct *g;
-
-    g = m->g;
-
-    for (u = 0; u < w->node_count; u++)
+    slong i, j;
+    slong node_count, state_count;
+    arb_mat_struct *bvec;
+    node_count = pmat_nrows(p);
+    state_count = pmat_ncols(p);
+    for (i = 0; i < node_count; i++)
     {
-        a = m->preorder[w->node_count - 1 - u];
-        nmat = w->node_column_vectors + a;
-        start = g->indptr[a];
-        stop = g->indptr[a+1];
-
-        /* initialize the state vector for node a */
-        for (state = 0; state < w->state_count; state++)
+        bvec = base_node_vectors + i;
+        for (j = 0; j < state_count; j++)
         {
-            tmpd = *pmat_entry(m->p, site, a, state);
-            arb_set_d(arb_mat_entry(nmat, state, 0), tmpd);
+            arb_set_d(arb_mat_entry(bvec, j, 0), *pmat_entry(p, site, i, j));
         }
-
-        /* Hadamard-accumulate matrix-vector products. */
-        for (idx = start; idx < stop; idx++)
-        {
-            b = g->indices[idx];
-
-            tmat = w->transition_matrices + idx;
-            nmatb = w->node_column_vectors + b;
-            /*
-             * At this point (a, b) is an edge from node a to node b
-             * in a post-order traversal of edges of the tree.
-             */
-            _prune_update(nmat, nmat, tmat, nmatb, w->prec);
-        }
-    }
-
-    /* Report the sum of state entries associated with the root. */
-    int root_node_index = m->preorder[0];
-    nmat = w->node_column_vectors + root_node_index;
-    arb_zero(lhood);
-    for (state = 0; state < w->state_count; state++)
-    {
-        arb_add(lhood, lhood, arb_mat_entry(nmat, state, 0), w->prec);
     }
 }
 
@@ -390,17 +378,21 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
             /* if the site is not in the selection then skip it */
             if (!site_is_selected[site])
-            {
                 continue;
-            }
 
             /* if the log likelihood is fully evaluated then skip it */
             if (iter && r->agg_mode == AGG_NONE && _can_round(ll))
-            {
                 continue;
-            }
 
-            evaluate_site_likelihood(lhood, m, w, site);
+            _update_base_node_vectors(w->base_node_column_vectors, m->p, site);
+
+            evaluate_site_lhood(lhood,
+                    w->lhood_node_column_vectors,
+                    NULL,
+                    w->base_node_column_vectors,
+                    w->transition_matrices,
+                    m->g, m->preorder, w->node_count, w->prec);
+
             if (arb_is_zero(lhood))
             {
                 fprintf(stderr, "error: infeasible\n");
