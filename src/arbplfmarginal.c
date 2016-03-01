@@ -693,10 +693,9 @@ evaluate_marginal_distributions(
     int idx;
     int start, stop;
     arb_mat_struct *tmat, *lvec, *mvec, *mvecb, *evec;
-    arb_mat_t rvec, tmp;
+    arb_mat_t tmp;
     arb_t s;
 
-    arb_mat_init(rvec, 1, state_count);
     arb_mat_init(tmp, state_count, 1);
     arb_init(s);
 
@@ -730,20 +729,15 @@ evaluate_marginal_distributions(
             mvecb = marginal_node_vectors + b;
             tmat = transition_matrices + idx;
 
-            /* todo: if possible, rewrite the dynamic programming to
+            /* todo: look into rewriting the dynamic programming to
              *       avoid this potentially destabilizing division
              *       while maintaining efficiency
              */
             _arb_mat_div_entrywise_marginal(tmp, mvec, evec, prec);
-            arb_mat_transpose(rvec, tmp);
-            arb_mat_mul(rvec, rvec, tmat, prec);
-            arb_mat_transpose(mvecb, rvec);
-
-            /* todo: rewrite to avoid explicit transposes */
+            _arb_mat_mul_AT_B(mvecb, tmat, tmp, prec);
         }
     }
 
-    arb_mat_clear(rvec); 
     arb_mat_clear(tmp); 
     arb_clear(s);
 }

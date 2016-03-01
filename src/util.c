@@ -1,9 +1,9 @@
 #include "flint.h"
 
-#include "util.h"
-
 #include "arb.h"
 #include "arf.h"
+
+#include "util.h"
 
 
 int _can_round(arb_t x)
@@ -255,5 +255,41 @@ _arb_vec_mul_arb_mat(
     {
         _arb_vec_set(z, w, nc);
         _arb_vec_clear(w, nc);
+    }
+}
+
+void
+_arb_mat_mul_AT_B(arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec)
+{
+    slong i, j, k;
+    slong r, s, t;
+    r = arb_mat_ncols(A);
+    s = arb_mat_nrows(A);
+    t = arb_mat_ncols(B);
+    if (arb_mat_nrows(B) != s ||
+        arb_mat_nrows(C) != r ||
+        arb_mat_ncols(C) != t)
+    {
+        flint_fprintf(stderr, "internal error: incompatible dimensions\n");
+        abort();
+    }
+    if (C == A || C == B)
+    {
+        flint_fprintf(stderr, "internal error: unsupported aliasing\n");
+        abort();
+    }
+    arb_mat_zero(C);
+    for (i = 0; i < r; i++)
+    {
+        for (j = 0; j < t; j++)
+        {
+            for (k = 0; k < s; k++)
+            {
+                arb_addmul(
+                        arb_mat_entry(C, i, j),
+                        arb_mat_entry(A, k, i),
+                        arb_mat_entry(B, j, k), prec);
+            }
+        }
     }
 }
