@@ -117,6 +117,24 @@ def test_marginal_sum_over_sites():
     _assert_allclose_series(pd_sum, phyly_sum)
 
 
+def test_marginal_weighted_sum_over_states():
+    full = mymarginal(default_in)
+    state_weights = [0.1, 0.2, 0.3, 0.4]
+
+    # weighted sum over states
+    s = full.copy()
+    s['value'] = s['value'] * [state_weights[x] for x in s['state']]
+    pd_sum = s.groupby(['node']).sum().value
+
+    # Use the more accurate and efficient built-in aggregation mechanism.
+    x = copy.deepcopy(default_in)
+    x['site_reduction'] = {'aggregation' : 'sum'}
+    x['state_reduction'] = {'aggregation' : state_weights}
+    phyly_sum = mymarginal(x).set_index('node').value
+
+    _assert_allclose_series(pd_sum, phyly_sum)
+
+
 def test_marginal_via_likelihood():
     # A marginal state distribution at a node can be computed
     # inefficiently using only a likelihood calculation.

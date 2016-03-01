@@ -118,15 +118,34 @@ get_column_agg_weights(
 
     if (r->agg_mode == AGG_WEIGHTED_SUM)
     {
-        arb_t weight;
-        arb_init(weight);
-        for (i = 0; i < r->selection_len; i++)
+        if (!r->weights) abort(); /* assert */
+        if (prec)
         {
-            idx = r->selection[i];
-            arb_set_d(weight, r->weights[i]);
-            arb_add(weights+idx, weights+idx, weight, prec);
+            arb_t tmp;
+            arb_init(tmp);
+            for (i = 0; i < r->selection_len; i++)
+            {
+                idx = r->selection[i];
+                arb_set_d(tmp, r->weights[i]);
+                /*
+                flint_printf("debug: prec=%wd\n", prec);
+                flint_printf("weight : ");
+                arb_printd(weight, 15); flint_printf("\n");
+                flint_printf("weights[idx] : ");
+                arb_printd(weights + idx, 15); flint_printf("\n");
+                */
+                arb_add(weights+idx, weights+idx, tmp, prec);
+            }
+            arb_clear(tmp);
         }
-        arb_clear(weight);
+        else
+        {
+            for (i = 0; i < r->selection_len; i++)
+            {
+                idx = r->selection[i];
+                arb_indeterminate(weights + idx);
+            }
+        }
         arb_one(weight_divisor);
     }
     else if (r->agg_mode == AGG_SUM)
