@@ -213,7 +213,7 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 }
 
 
-void
+static void
 _arb_mat_div_entrywise_marginal(
         arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 {

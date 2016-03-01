@@ -180,6 +180,7 @@ likelihood_ws_clear(likelihood_ws_t w)
     /* clear unscaled rate matrix */
     arb_mat_clear(w->rate_matrix);
 
+    /* todo: skip frechet matrices on unselected edges */
     /* clear per-edge matrices */
     for (idx = 0; idx < w->edge_count; idx++)
     {
@@ -227,7 +228,7 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 }
 
 
-void
+static void
 _arb_mat_div_entrywise_marginal(
         arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
 {
@@ -336,7 +337,6 @@ evaluate_edge_expectations(
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
-        arb_mat_struct *transition_matrices,
         arb_mat_struct *frechet_matrices,
         csr_graph_t g, int *preorder,
         int node_count, int state_count, slong prec)
@@ -355,7 +355,6 @@ evaluate_edge_expectations(
     for (u = 0; u < node_count; u++)
     {
         a = preorder[u];
-        lvec = lhood_node_vectors + a;
         mvec = marginal_node_vectors + a;
         start = g->indptr[a];
         stop = g->indptr[a+1];
@@ -375,14 +374,14 @@ evaluate_edge_expectations(
             for (state = 0; state < state_count; state++)
             {
                 /* See arbplfmarginal.c regarding the zero case. */
-                if (!arb_is_zero(arb_mat_entry(evec, i, 0)))
+                if (!arb_is_zero(arb_mat_entry(evec, state, 0)))
                 {
                     arb_div(tmp,
                             arb_mat_entry(fvec, state, 0),
                             arb_mat_entry(evec, state, 0), prec);
                     arb_addmul(
                             edge_expectations + idx,
-                            mvec + state,
+                            arb_mat_entry(mvec, state, 0),
                             tmp, prec);
                 }
             }
@@ -398,10 +397,10 @@ static void
 _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, model_and_data_t m, slong prec)
 {
-    int site, i, j;
+    int state, site, edge, idx, i, j;
     arb_t lhood;
-    arb_mat_struct *bvec, *nvec;
-    nd_axis_struct *site_axis, *node_axis, *state_axis;
+    arb_mat_struct *bvec;
+    nd_axis_struct *state_axis, *site_axis, *edge_axis;
     int site_count;
     int *coords;
 
@@ -413,7 +412,7 @@ _nd_accum_update(nd_accum_t arr,
 
     state_axis = arr->axes + 0;
     site_axis = arr->axes + 1;
-    node_axis = arr->axes + 2;
+    edge_axis = arr->axes + 2;
 
     /* zero all requested cells of the array */
     nd_accum_zero_requested_cells(arr);
@@ -429,23 +428,30 @@ _nd_accum_update(nd_accum_t arr,
         if (!state_axis->request_update[state]) continue;
         coords[0] = state;
 
-        /* update the frechet matrix for each edge */
+        /*
+         * Update the frechet matrix for each edge.
+         * At this point the rate matrix has been normalized
+         * to have zero row sums, but it has not been scaled
+         * by the edge rate coefficients.
+         */
         {
-            arb_mat_t P, L;
+            arb_mat_t P, L, Q;
             arb_mat_init(P, w->state_count, w->state_count);
             arb_mat_init(L, w->state_count, w->state_count);
+            arb_mat_init(Q, w->state_count, w->state_count);
             arb_mat_zero(L);
             arb_one(arb_mat_entry(L, state, state));
             for (idx = 0; idx < w->edge_count; idx++)
             {
                 arb_mat_struct *fmat;
                 fmat = w->frechet_matrices + idx;
-                arb_mat_scalar_mul_arb(fmat,
+                arb_mat_scalar_mul_arb(Q,
                         w->rate_matrix, w->edge_rates + idx, prec);
-                _arb_mat_exp_frechet(P, fmat, w->rate_matrix, L);
+                _arb_mat_exp_frechet(P, fmat, Q, L, prec);
             }
-            arb_mat_clear(L);
             arb_mat_clear(P);
+            arb_mat_clear(L);
+            arb_mat_clear(Q);
         }
 
         for (site = 0; site < site_count; site++)
@@ -489,32 +495,41 @@ _nd_accum_update(nd_accum_t arr,
                     w->transition_matrices,
                     m->g, m->preorder, w->node_count, w->state_count, prec);
 
-            /* Update the state expectation at each edge. */
+            /* Update expectations at edges. */
             evaluate_edge_expectations(
                     w->edge_expectations,
                     w->marginal_node_vectors,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
-                    w->transition_matrices,
                     w->frechet_matrices,
                     m->g, m->preorder, w->node_count, w->state_count, prec);
 
-            /* todo: clarify 'user indices' of edges vs.
-             *       'csr indices' of edges. for nodes these coincide,
-             *       but for edges they may not.
-             *       also make sure that it is handled the same way as for
-             *       edge weights. maybe add an index typedef... */
             /* Update the nd accumulator. */
-            for (i = 0; i < w->edge_count; i++)
+            for (edge = 0; edge < w->edge_count; edge++)
             {
                 /* skip nodes that are not requested */
-                if (!edge_axis->request_update[i]) continue;
-                coords[2] = i;
+                if (!edge_axis->request_update[edge]) continue;
+                coords[2] = edge;
 
-                /* accumulate */
+                /*
+                flint_printf("debug: coords = %d %d %d\n",
+                        coords[0],
+                        coords[1],
+                        coords[2]);
+                */
+
+                /*
+                 * Accumulate.
+                 * Note that the axes, accumulator, and json interface
+                 * work with "user" edge indices,
+                 * whereas the workspace arrays work with
+                 * tree graph preorder edge indices.
+                 */
+                idx = m->edge_map->order[edge];
                 nd_accum_accumulate(arr,
-                        coords, w->edge_expectations + i, prec);
+                        coords, w->edge_expectations + idx, prec);
             }
+        }
     }
 
     arb_clear(lhood);
@@ -524,15 +539,17 @@ _nd_accum_update(nd_accum_t arr,
 
 static json_t *
 _query(model_and_data_t m,
+        column_reduction_t r_state,
         column_reduction_t r_site,
-        column_reduction_t r_node,
-        column_reduction_t r_state, int *result_out)
+        column_reduction_t r_edge,
+        int *result_out)
 {
     json_t * j_out = NULL;
     slong prec;
     int ndim, result;
     int axis_idx;
-    int site_count, node_count, state_count;
+    int state_count, site_count, edge_count;
+    int node_count;
     nd_axis_struct axes[3];
     nd_accum_t arr;
     likelihood_ws_t w;
@@ -546,14 +563,15 @@ _query(model_and_data_t m,
     site_count = pmat_nsites(m->p);
     node_count = pmat_nrows(m->p);
     state_count = pmat_ncols(m->p);
+    edge_count = node_count - 1;
 
     /* initialize likelihood workspace */
     likelihood_ws_init(w, m);
 
     /* initialize axes at zero precision */
-    nd_axis_init(axes+0, "site", site_count, r_site, 0);
-    nd_axis_init(axes+1, "node", node_count, r_node, 0);
-    nd_axis_init(axes+2, "state", state_count, r_state, 0);
+    nd_axis_init(axes+0, "state", state_count, r_state, 0);
+    nd_axis_init(axes+1, "site", site_count, r_site, 0);
+    nd_axis_init(axes+2, "edge", edge_count, r_edge, 0);
 
     /* initialize nd accumulation array */
     nd_accum_pre_init(arr);
@@ -571,9 +589,9 @@ _query(model_and_data_t m,
         likelihood_ws_update(w, m, prec);
 
         /* recompute axis reduction weights with increased precision */
-        nd_axis_update_precision(axes+0, r_site, prec);
-        nd_axis_update_precision(axes+1, r_node, prec);
-        nd_axis_update_precision(axes+2, r_state, prec);
+        nd_axis_update_precision(axes+0, r_state, prec);
+        nd_axis_update_precision(axes+1, r_site, prec);
+        nd_axis_update_precision(axes+2, r_edge, prec);
 
         /*
          * Recompute the output array with increased working precision.
@@ -611,15 +629,16 @@ finish:
 
 static int
 _parse(model_and_data_t m,
+        column_reduction_t r_state,
         column_reduction_t r_site,
-        column_reduction_t r_node,
-        column_reduction_t r_state, json_t *root)
+        column_reduction_t r_edge, json_t *root)
 {
     json_t *model_and_data = NULL;
-    json_t *site_reduction = NULL;
-    json_t *node_reduction = NULL;
     json_t *state_reduction = NULL;
-    int site_count, node_count, state_count;
+    json_t *site_reduction = NULL;
+    json_t *edge_reduction = NULL;
+    int state_count, site_count, edge_count;
+    int node_count;
     int result;
 
     result = 0;
@@ -632,9 +651,9 @@ _parse(model_and_data_t m,
         result = json_unpack_ex(root, &err, flags,
                 "{s:o, s?o, s?o, s?o}",
                 "model_and_data", &model_and_data,
+                "state_reduction", &state_reduction,
                 "site_reduction", &site_reduction,
-                "node_reduction", &node_reduction,
-                "state_reduction", &state_reduction
+                "edge_reduction", &edge_reduction
                 );
         if (result)
         {
@@ -651,39 +670,40 @@ _parse(model_and_data_t m,
     site_count = pmat_nsites(m->p);
     node_count = pmat_nrows(m->p);
     state_count = pmat_ncols(m->p);
-
-    /* validate the site reduction section of the json input */
-    result = validate_column_reduction(
-            r_site, site_count, "site", site_reduction);
-    if (result) return result;
-
-    /* validate the node reduction section of the json input */
-    result = validate_column_reduction(
-            r_node, node_count, "node", node_reduction);
-    if (result) return result;
+    edge_count = node_count - 1;
 
     /* validate the state reduction section of the json input */
     result = validate_column_reduction(
             r_state, state_count, "state", state_reduction);
     if (result) return result;
 
+    /* validate the site reduction section of the json input */
+    result = validate_column_reduction(
+            r_site, site_count, "site", site_reduction);
+    if (result) return result;
+
+    /* validate the edge reduction section of the json input */
+    result = validate_column_reduction(
+            r_edge, edge_count, "edge", edge_reduction);
+    if (result) return result;
+
     return result;
 }
 
 
-json_t *arbplf_marginal_run(void *userdata, json_t *root, int *retcode)
+json_t *arbplf_dwell_run(void *userdata, json_t *root, int *retcode)
 {
     json_t *j_out = NULL;
     model_and_data_t m;
-    column_reduction_t r_site;
-    column_reduction_t r_node;
     column_reduction_t r_state;
+    column_reduction_t r_site;
+    column_reduction_t r_edge;
     int result = 0;
 
     model_and_data_init(m);
-    column_reduction_init(r_site);
-    column_reduction_init(r_node);
     column_reduction_init(r_state);
+    column_reduction_init(r_site);
+    column_reduction_init(r_edge);
 
     if (userdata)
     {
@@ -692,10 +712,10 @@ json_t *arbplf_marginal_run(void *userdata, json_t *root, int *retcode)
         goto finish;
     }
 
-    result = _parse(m, r_site, r_node, r_state, root);
+    result = _parse(m, r_state, r_site, r_edge, root);
     if (result) goto finish;
 
-    j_out = _query(m, r_site, r_node, r_state, &result);
+    j_out = _query(m, r_state, r_site, r_edge, &result);
     if (result) goto finish;
 
 finish:
@@ -703,9 +723,9 @@ finish:
     *retcode = result;
 
     model_and_data_clear(m);
-    column_reduction_clear(r_site);
-    column_reduction_clear(r_node);
     column_reduction_clear(r_state);
+    column_reduction_clear(r_site);
+    column_reduction_clear(r_edge);
 
     flint_cleanup();
     return j_out;
