@@ -29,6 +29,8 @@ void _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec);
 void _arb_vec_mul_arb_mat(
         arb_struct *z, const arb_struct *x, const arb_mat_t y, slong prec);
 void _arb_mat_mul_AT_B(arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec);
+void _arb_mat_exp_frechet(arb_mat_t P, arb_mat_t F,
+        const arb_mat_t Q, const arb_mat_t L, slong prec);
 
 #ifdef __cplusplus
 }

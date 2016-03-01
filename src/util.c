@@ -293,3 +293,41 @@ _arb_mat_mul_AT_B(arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec)
         }
     }
 }
+
+void
+_arb_mat_exp_frechet(arb_mat_t P, arb_mat_t F,
+        const arb_mat_t Q, const arb_mat_t L, slong prec)
+{
+    slong n, i, j;
+    arb_mat_t M;
+
+    n = arb_mat_nrows(Q);
+    arb_mat_init(M, 2*n, 2*n);
+
+    /* Copy Q and L to matrix blocks of M */
+    arb_mat_zero(M);
+    for (i = 0; i < n; i++)
+    {
+        for (j = 0; j < n; j++)
+        {
+            arb_set(arb_mat_entry(M, i, j), arb_mat_entry(Q, i, j));
+            arb_set(arb_mat_entry(M, n+i, n+j), arb_mat_entry(Q, i, j));
+            arb_set(arb_mat_entry(M, i, n+j), arb_mat_entry(L, i, j));
+        }
+    }
+
+    /* Compute the matrix exponential of M */
+    arb_mat_exp(M, M, prec);
+
+    /* Copy matrix blocks from M to P and from M to F */
+    for (i = 0; i < n; i++)
+    {
+        for (j = 0; j < n; j++)
+        {
+            arb_set(arb_mat_entry(P, i, j), arb_mat_entry(M, i, j));
+            arb_set(arb_mat_entry(F, i, j), arb_mat_entry(M, i, n+j));
+        }
+    }
+
+    arb_mat_clear(M);
+}
