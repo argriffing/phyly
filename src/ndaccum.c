@@ -197,6 +197,20 @@ nd_accum_accumulate(nd_accum_t a, int *coords, arb_struct *value, slong prec)
         axis = a->axes + axis_idx;
         coord = coords[axis_idx];
         stride = a->strides[axis_idx];
+
+        /*
+        flint_printf("debug:\n");
+        flint_printf("ndim=%wd axis=%d coord=%d\n", a->ndim, axis_idx, coord);
+        flint_printf("strides:\n");
+        {
+            int j;
+            for (j = 0; j < a->ndim; j++)
+            {
+                flint_printf("%d : %d\n", j, a->strides[j]);
+            }
+        }
+        */
+
         if (axis->agg_weights)
         {
             arb_mul(x, x, axis->agg_weights + coord, prec);

@@ -465,7 +465,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
     {
         /* skip sites that are not requested */
         if (!site_axis->request_update[site]) continue;
-        coords[0] = site;
+        coords[SITE_AXIS] = site;
 
         /* update base node vectors */
         for (i = 0; i < w->node_count; i++)
@@ -516,7 +516,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
         {
             /* skip edges that are not requested */
             if (!edge_axis->request_update[edge]) continue;
-            coords[1] = edge;
+            coords[EDGE_AXIS] = edge;
 
             /*
              * Accumulate.
@@ -569,7 +569,7 @@ _nd_accum_update(nd_accum_t arr,
     for (state = 0; state < w->state_count; state++)
     {
         if (!state_axis->request_update[state]) continue;
-        coords[0] = state;
+        coords[STATE_AXIS] = state;
 
         /*
          * Update the frechet matrix for each edge.
@@ -601,7 +601,7 @@ _nd_accum_update(nd_accum_t arr,
         {
             /* skip sites that are not requested */
             if (!site_axis->request_update[site]) continue;
-            coords[1] = site;
+            coords[SITE_AXIS] = site;
 
             /* update base node vectors */
             for (i = 0; i < w->node_count; i++)
@@ -652,7 +652,7 @@ _nd_accum_update(nd_accum_t arr,
             {
                 /* skip edges that are not requested */
                 if (!edge_axis->request_update[edge]) continue;
-                coords[2] = edge;
+                coords[EDGE_AXIS] = edge;
 
                 /*
                  * Accumulate.
