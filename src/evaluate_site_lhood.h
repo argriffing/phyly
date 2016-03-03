@@ -1,7 +1,7 @@
 #ifndef EVALUATE_SITE_LHOOD_H
 #define EVALUATE_SITE_LHOOD_H
 
-#include "flint.h"
+#include "flint/flint.h"
 #include "arb.h"
 #include "arb_mat.h"
 #include "csr_graph.h"

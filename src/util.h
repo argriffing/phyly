@@ -1,7 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "flint.h"
+#include "flint/flint.h"
 
 #include "arb.h"
 #include "arb_mat.h"

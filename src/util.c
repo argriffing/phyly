@@ -1,4 +1,4 @@
-#include "flint.h"
+#include "flint/flint.h"
 
 #include "arb.h"
 #include "arf.h"
