@@ -29,7 +29,7 @@
  *
  * output format without aggregation:
  * {
- *  "columns" : ["site", "node", "state", "value"],
+ *  "columns" : ["site", "edge", "state", "value"],
  *  "data" : [[a, b, c, d], [e, f, g, h], ..., [w, x, y, z]]
  * }
  *

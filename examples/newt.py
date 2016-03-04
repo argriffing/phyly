@@ -12,17 +12,16 @@ from numpy.testing import (
         assert_, assert_equal, assert_raises, assert_allclose, TestCase)
 
 from arbplf import (
-        arbplf_newton_point, arbplf_newton_delta, arbplf_deriv)
-
-def mynewt(d):
-    s = arbplf_newton_point(json.dumps(d))
-    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
-    return df
+        arbplf_newton_point,
+        arbplf_newton_delta,
+        arbplf_deriv,
+        arbplf_coeff_expect)
 
 def main():
     d = json.loads(sys.stdin.read())
-    for i in range(10):
-        s = arbplf_newton_point(json.dumps(d))
+    for i in range(1000):
+        #s = arbplf_newton_point(json.dumps(d))
+        s = arbplf_coeff_expect(json.dumps(d))
         df = pd.read_json(StringIO(s), orient='split', precise_float=True)
         r = list(df.value)
         print(r)

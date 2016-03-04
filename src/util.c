@@ -5,6 +5,15 @@
 
 #include "util.h"
 
+/* from arb arb_poly zeta_series.c */
+void
+_arb_vec_printd(arb_srcptr vec, slong len, slong digits)
+{
+    slong i;
+    for (i = 0; i < len; i++)
+        arb_printd(vec + i, digits), flint_printf("\n");
+}
+
 
 int _can_round(arb_t x)
 {
@@ -221,6 +230,27 @@ _arb_mat_sum(arb_t dst, arb_mat_t src, slong prec)
         for (j = 0; j < c; j++)
         {
             arb_add(dst, dst, arb_mat_entry(src, i, j), prec);
+        }
+    }
+}
+
+void
+_arb_mat_row_sums(arb_struct *dest, arb_mat_t src, slong prec)
+{
+    slong i, j, r, c;
+
+    if (arb_mat_is_empty(src))
+        return;
+
+    r = arb_mat_nrows(src);
+    c = arb_mat_ncols(src);
+
+    for (i = 0; i < r; i++)
+    {
+        arb_zero(dest + i);
+        for (j = 0; j < c; j++)
+        {
+            arb_add(dest + i, dest + i, arb_mat_entry(src, i, j), prec);
         }
     }
 }

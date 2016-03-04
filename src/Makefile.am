@@ -8,7 +8,7 @@
 
 bin_PROGRAMS = arbplf-ll arbplf-marginal arbplf-dwell arbplf-trans \
 	       arbplf-deriv arbplf-hess arbplf-inv-hess \
-	       arbplf-newton-point arbplf-newton-delta
+	       arbplf-coeff-expect arbplf-newton-point arbplf-newton-delta
 
 check_PROGRAMS = t-dummy_test
 
@@ -42,6 +42,7 @@ t_dummy_test_SOURCES =  $(CORE_SOURCES) t-dummy_test.c
 arbplf_ll_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfll.c arbplfll.h arbplf-ll.c
 arbplf_marginal_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfmarginal.c arbplfmarginal.h arbplf-marginal.c
 arbplf_dwell_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfdwell.c arbplfdwell.h arbplf-dwell.c
+arbplf_coeff_expect_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfcoeffexpect.c arbplfcoeffexpect.h arbplf-coeff-expect.c
 arbplf_trans_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplf-trans.c
 arbplf_deriv_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfderiv.c arbplfderiv.h arbplf-deriv.c
 arbplf_hess_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-hess.c

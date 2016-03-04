@@ -13,12 +13,15 @@
 extern "C" {
 #endif
 
+void _arb_vec_printd(arb_srcptr vec, slong len, slong digits);
+
 int _can_round(arb_t x);
 int _arb_vec_can_round(arb_struct * x, slong n);
 int _arb_mat_can_round(arb_mat_t A);
 
 void _arb_mat_indeterminate(arb_mat_t m);
 void _arb_mat_sum(arb_t dst, arb_mat_t src, slong prec);
+void _arb_mat_row_sums(arb_struct *dest, arb_mat_t src, slong prec);
 void _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 void _arb_mat_div_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 void _arb_mat_ones(arb_mat_t A);
