@@ -18,6 +18,14 @@ from arbplf import (
         arbplf_deriv,
         arbplf_coeff_expect)
 
+def summarize(d):
+    print('newton delta:')
+    print(arbplf_newton_delta(json.dumps(d)))
+    print('deriv:')
+    print(arbplf_deriv(json.dumps(d)))
+    print('ll:')
+    print(arbplf_ll(json.dumps(d)))
+
 def main():
     d = json.loads(sys.stdin.read())
     for i in range(4):
@@ -28,13 +36,15 @@ def main():
         print(r)
         d['model_and_data']['edge_rate_coefficients'] = r
 
-    print('newton delta:')
-    print(arbplf_newton_delta(json.dumps(d)))
+    summarize(d)
 
-    print('deriv:')
-    print(arbplf_deriv(json.dumps(d)))
+    for i in range(6):
+        s = arbplf_newton_point(json.dumps(d))
+        df = pd.read_json(StringIO(s), orient='split', precise_float=True)
+        r = list(df.value)
+        print(r)
+        d['model_and_data']['edge_rate_coefficients'] = r
 
-    print('ll:')
-    print(arbplf_ll(json.dumps(d)))
+    summarize(d)
 
 main()

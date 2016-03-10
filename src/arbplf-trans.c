@@ -1,18 +1,15 @@
-#include "dummy_module.h"
+#include "arbplftrans.h"
+#include "runjson.h"
 
 int main(void)
 {
-    /*
+    int result;
     json_hom_t hom;
+
     hom->userdata = NULL;
     hom->clear = NULL;
-    hom->f = run;
-    int result = run_json_script(hom);
+    hom->f = arbplf_trans_run;
 
-    flint_cleanup();
+    result = run_json_script(hom);
     return result;
-    */
-    int i;
-    i = 0;
-    return add_two_ints(i, i);
 }
