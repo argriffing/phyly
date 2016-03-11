@@ -7,6 +7,7 @@
  * 2) computing the inverse of the hessian matrix
  * 3) computing the newton delta
  * 4) computing the newton point
+ * 5) certifying a local optimum using the interval newton method
  *
  * The JSON format is used for both input and output.
  * Arbitrary precision is used only internally;
@@ -62,6 +63,27 @@
 #include "parsereduction.h"
 #include "runjson.h"
 #include "arbplfhess.h"
+
+
+static int
+_arb_vec_contains(const arb_struct *a, const arb_struct *b, slong n)
+{
+    slong i;
+    for (i = 0; i < n; i++)
+        if (!arb_contains(a + i, b + i))
+            return 0;
+    return 1;
+}
+
+static int
+_arb_vec_overlaps(const arb_struct *a, const arb_struct *b, slong n)
+{
+    slong i;
+    for (i = 0; i < n; i++)
+        if (!arb_overlaps(a + i, b + i))
+            return 0;
+    return 1;
+}
 
 
 /* this struct does not own its vectors */
@@ -127,6 +149,15 @@ so_zero(so_t so)
 }
 
 static void
+so_indeterminate(so_t so)
+{
+    arb_indeterminate(so->ll);
+    _arb_vec_indeterminate(so->x, so->edge_count);
+    _arb_vec_indeterminate(so->ll_gradient, so->edge_count);
+    _arb_mat_indeterminate(so->ll_hessian);
+}
+
+static void
 so_get_inv_hess(arb_mat_t A, so_t so, slong prec)
 {
     int invertible;
@@ -147,11 +178,42 @@ so_get_inv_hess(arb_mat_t A, so_t so, slong prec)
     {
         _arb_mat_indeterminate(A);
     }
+}
+
+static int
+so_hessian_is_negative_definite(so_t so, slong prec)
+{
+    int ret;
+    slong n, i, j;
+    arb_mat_t A, L;
+
+    n = arb_mat_nrows(so->ll_hessian);
+
+    arb_mat_init(A, n, n);
+    arb_mat_init(L, n, n);
+
+    /* Get the negative of the hessian matrix. */
+    arb_mat_neg(A, so->ll_hessian);
+    for (i = 0; i < n; i++)
+    {
+        for (j = i+1; j < n; j++)
+        {
+            arb_set(arb_mat_entry(A, i, j), arb_mat_entry(A, j, i));
+        }
+    }
+
+    /* Is the cholesky decomposition even possible. */
+    ret = arb_mat_cho(L, A, prec);
 
     /*
     printf("debug:\n");
     arb_mat_printd(A, 4);
     */
+
+    arb_mat_clear(A);
+    arb_mat_clear(L);
+
+    return ret;
 }
 
 static void
@@ -215,6 +277,61 @@ so_get_newton_point(arb_struct * newton_point, so_t so, slong prec)
     _arb_vec_add(newton_point, so->x, newton_point, n, prec);
 }
 
+/*
+ * The Hessian is computed with the wide interval.
+ * The other values are computed with the narrow interval.
+ * The final interval is still 'wide' but is hoped to be a contraction.
+ * "On the Newton Method in Interval Analysis"
+ * Karl Nickel
+ * March 1971
+ */
+static void
+_interval_newton_delta(arb_struct * newton_delta,
+        so_t so_narrow, so_t so_wide, slong prec)
+{
+    int i, j, n;
+    arb_mat_t grad;
+    arb_mat_t u;
+    n = so_narrow->edge_count;
+
+    /* newton_delta = -u = -inv(hess)*grad */
+    arb_mat_init(u, n, 1);
+    arb_mat_init(grad, n, 1);
+    for (i = 0; i < n; i++)
+    {
+        arb_set(arb_mat_entry(grad, i, 0), so_narrow->ll_gradient + i);
+    }
+
+    /* set A to the full hessian, not just the lower triangular part */
+    {
+        int invertible;
+        arb_mat_t A;
+        arb_mat_init(A, n, n);
+        arb_mat_set(A, so_wide->ll_hessian);
+        for (i = 0; i < arb_mat_nrows(A); i++)
+        {
+            for (j = i+1; j < arb_mat_ncols(A); j++)
+            {
+                arb_set(arb_mat_entry(A, i, j), arb_mat_entry(A, j, i));
+            }
+        }
+
+        invertible = arb_mat_solve(u, A, grad, prec);
+        if (!invertible)
+        {
+            _arb_mat_indeterminate(u);
+        }
+        arb_mat_clear(A);
+    }
+
+    for (i = 0; i < n; i++)
+    {
+        arb_neg(newton_delta + i, arb_mat_entry(u, i, 0));
+    }
+
+    arb_mat_clear(grad);
+    arb_mat_clear(u);
+}
 
 
 
@@ -285,7 +402,8 @@ typedef struct
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
 static void
-likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
+likelihood_ws_init(likelihood_ws_t w, model_and_data_t m,
+        const arb_struct *edge_rates, slong prec)
 {
     csr_graph_struct *g;
     int i, j, k;
@@ -333,11 +451,18 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
         fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
         abort();
     }
-    for (i = 0; i < w->edge_count; i++)
+    if (edge_rates)
     {
-        idx = m->edge_map->order[i];
-        tmpd = m->edge_rate_coefficients[i];
-        arb_set_d(w->edge_rates + idx, tmpd);
+        _arb_vec_set(w->edge_rates, edge_rates, w->edge_count);
+    }
+    else
+    {
+        for (i = 0; i < w->edge_count; i++)
+        {
+            idx = m->edge_map->order[i];
+            tmpd = m->edge_rate_coefficients[i];
+            arb_set_d(w->edge_rates + idx, tmpd);
+        }
     }
 
     /*
@@ -383,6 +508,19 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     {
         tmat = w->transition_matrices + idx;
         arb_mat_exp(tmat, tmat, w->prec);
+
+        /* For debugging, check if the transition matrix bounds are finite. */
+        /*
+        {
+            mag_t b;
+            mag_init(b);
+            arb_mat_bound_inf_norm(b, tmat);
+            flint_printf("debug: transition matrix norm bound: ");
+            mag_printd(b, 4);
+            flint_printf("\n");
+            mag_clear(b);
+        }
+        */
     }
 
     plane_init(w->base_plane, w->node_count, w->edge_count, w->state_count);
@@ -510,13 +648,13 @@ evaluate_site_derivatives(arb_t derivative,
 }
 
 
-/*
- * Second order log likelihood computations aggregated over sites.
- * The calculations use a specified working precision.
- */
+
+/* Optionally allow custom edge rate coefficients. */
 static int
-_compute_second_order(so_t so,
-        model_and_data_t m, column_reduction_t r_site, slong prec)
+_recompute_second_order(so_t so,
+        model_and_data_t m, column_reduction_t r_site,
+        const arb_struct *edge_rates,
+        slong prec)
 {
     likelihood_ws_t w;
     int result = 0;
@@ -569,7 +707,7 @@ _compute_second_order(so_t so,
             site_weight_divisor, site_weights, site_count, r_site, prec);
     if (result) goto finish;
 
-    likelihood_ws_init(w, m, prec);
+    likelihood_ws_init(w, m, edge_rates, prec);
     _arb_vec_set(so->x, w->edge_rates, edge_count);
 
     for (site = 0; site < site_count; site++)
@@ -617,14 +755,22 @@ _compute_second_order(so_t so,
         /*
          * If any site likelihood is exactly zero
          * then we do not need to continue.
-         * todo: if the site likelihood interval includes zero
-         *       then this could be handled at this point,
-         *       for example by immediately requesting higher precision
          */
         if (arb_is_zero(lhood))
         {
             fprintf(stderr, "error: infeasible\n");
             result = -1;
+            goto finish;
+        }
+
+        /*
+         * If the site likelihood interval includes zero
+         * then this could be handled at this point,
+         * for example by immediately requesting higher precision.
+         */
+        if (arb_contains_zero(lhood))
+        {
+            so_indeterminate(so);
             goto finish;
         }
 
@@ -750,6 +896,16 @@ finish:
     return result;
 }
 
+/*
+ * Second order log likelihood computations aggregated over sites.
+ * The calculations use a specified working precision.
+ */
+static int
+_compute_second_order(so_t so,
+        model_and_data_t m, column_reduction_t r_site, slong prec)
+{
+    return _recompute_second_order(so, m, r_site, NULL, prec);
+}
 
 
 
@@ -1046,6 +1202,235 @@ finish:
     return j_out;
 }
 
+json_t *
+opt_cert_query(
+        model_and_data_t m, column_reduction_t r_site, int *result_out)
+{
+    json_t * j_out = NULL;
+    int result = 0;
+    slong prec;
+    int i, edge_count;
+    so_t so_wide, so_narrow;
+    arb_struct *newton_interval, *newton_delta;
+    arb_struct *x_wide, *x_narrow;
+    mag_t rtmp;
+    int success;
+    slong log2_rtol;
+
+    mag_init(rtmp);
+    edge_count = m->g->nnz;
+    so_init(so_wide, edge_count);
+    so_init(so_narrow, edge_count);
+    newton_delta = _arb_vec_init(edge_count);
+    newton_interval = _arb_vec_init(edge_count);
+    x_wide = _arb_vec_init(edge_count);
+    x_narrow = _arb_vec_init(edge_count);
+
+    /*
+     * Initially assume that the user has provided a good guess.
+     * If there is provably no local optimum near the guess,
+     * gradually widen the search to allow rate coefficients further from the
+     * values provided by the user.
+     */
+    success = 0;
+    for (log2_rtol = -20; !success; log2_rtol += 4)
+    {
+        int nozero;
+        /*
+         * Keep increasing precision until we rule out the possibility
+         * of an optimum near the guess provided by the user,
+         * or until we find a certified optimum.
+         * If the input values are garbage,
+         * this loop will keep trying increasing precision without bounds.
+         * A more sophisticated search would try subdivision or
+         * various branch-and-bound methods, but this is approaching
+         * global optimization rather than certification of a local optimum.
+         */
+        flint_fprintf(stderr, "debug: log2_rtol=%wd\n", log2_rtol);
+        nozero = 0;
+        for (prec = 4; !success && !nozero; prec <<= 1)
+        {
+            flint_fprintf(stderr, "debug: prec=%wd\n", prec);
+
+            /* Extract initial edge rates. */
+            {
+                slong edge_count;
+                slong idx;
+                double tmpd;
+                edge_count = m->g->nnz;
+                for (i = 0; i < edge_count; i++)
+                {
+                    idx = m->edge_map->order[i];
+                    tmpd = m->edge_rate_coefficients[i];
+                    arb_set_d(x_wide + idx, tmpd);
+                    arb_set_d(x_narrow + idx, tmpd);
+                }
+            }
+
+            /*
+             * Inflate the wide intervals by a fixed proportion
+             * of the rate coefficient, without regard for the level of precision.
+             */
+            for (i = 0; i < edge_count; i++)
+            {
+                arb_get_mag(rtmp, x_wide + i);
+                mag_mul_2exp_si(rtmp, rtmp, log2_rtol);
+                mag_add(arb_radref(x_wide + i), arb_radref(x_wide + i), rtmp);
+            }
+
+            while (1)
+            {
+                if (!_arb_vec_overlaps(x_wide, x_narrow, edge_count))
+                {
+                    flint_fprintf(stderr, "internal error: overlap fail");
+                    abort();
+                }
+
+                result = _recompute_second_order(so_narrow,
+                        m, r_site, x_narrow, prec);
+                if (result) goto finish;
+
+                result = _recompute_second_order(so_wide,
+                        m, r_site, x_wide, prec);
+                if (result) goto finish;
+
+                /* Do an iteration of the interval Newton method. */
+                _interval_newton_delta(newton_delta, so_narrow, so_wide, prec);
+                _arb_vec_add(newton_interval,
+                        x_narrow, newton_delta, edge_count, prec);
+
+                /* print stuff for debugging */
+                {
+                    flint_fprintf(stderr, "debug:\n");
+
+                    flint_fprintf(stderr, "narrow interval:\n");
+                    _arb_vec_printd(x_narrow, edge_count, 15);
+                    flint_fprintf(stderr, "\n");
+
+                    flint_fprintf(stderr, "wide interval:\n");
+                    _arb_vec_printd(x_wide, edge_count, 15);
+                    flint_fprintf(stderr, "\n");
+
+                    flint_fprintf(stderr, "interval newton delta:\n");
+                    _arb_vec_printd(newton_delta, edge_count, 15);
+                    flint_fprintf(stderr, "\n");
+
+                    flint_fprintf(stderr, "interval newton point:\n");
+                    _arb_vec_printd(newton_interval, edge_count, 15);
+                    flint_fprintf(stderr, "\n");
+                }
+
+                /*
+                 * Update the wide interval by intersecting with the
+                 * Newton interval.
+                 * If the wide interval is already contained within
+                 * the Newton interval then we are not working
+                 * with sufficient precision,
+                 * so break from this loop and restart with higher precision.
+                 */
+                if (_arb_vec_contains(newton_interval, x_wide, edge_count))
+                {
+                    flint_fprintf(stderr, "debug: newton interval step "
+                                          "is an expansion\n");
+                    break;
+                }
+
+                /*
+                 * If the newton interval does not overlap the input interval,
+                 * then the input interval does not contain a zero.
+                 */
+                if (!_arb_vec_overlaps(newton_interval, x_wide, edge_count))
+                {
+                    flint_fprintf(stderr, "debug: newton interval step "
+                                          "has no overlap\n");
+                    nozero = 1;
+                    break;
+                }
+
+                /* 
+                 * Update the wide interval according to the intersection
+                 * of the newton interval and the input interval.
+                 */
+                for (i = 0; i < edge_count; i++)
+                {
+                    arf_t alow, ahigh, blow, bhigh;
+                    arf_t low, high;
+                    arf_init(alow);
+                    arf_init(ahigh);
+                    arf_init(blow);
+                    arf_init(bhigh);
+                    arf_init(low);
+                    arf_init(high);
+                    arb_get_interval_arf(alow, ahigh, x_wide + i, prec);
+                    arb_get_interval_arf(blow, bhigh, newton_interval + i, prec);
+                    arf_max(low, alow, blow);
+                    arf_min(high, ahigh, bhigh);
+                    arb_set_interval_arf(x_wide + i, low, high, prec);
+                    arf_clear(alow);
+                    arf_clear(ahigh);
+                    arf_clear(blow);
+                    arf_clear(bhigh);
+                    arf_clear(low);
+                    arf_clear(high);
+                }
+
+                /*
+                 * If even the wide interval has small enough relative error,
+                 * then this is enough to certify that the minimum has been found,
+                 * as long as the hessian is negative definite.
+                 */
+                if (_arb_vec_can_round(x_wide, edge_count))
+                {
+                    if (so_hessian_is_negative_definite(so_wide, prec))
+                    {
+                        success = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf(stderr, "opt cert fail: log likelihood shape\n");
+                        result = -1;
+                        goto finish;
+                    }
+                }
+
+                /* Do an iteration of the point (non-interval) Newton method. */
+                so_get_newton_point(x_narrow, so_narrow, prec);
+            }
+        }
+    }
+
+    /* build the json output */
+    {
+        double d;
+        int idx;
+        json_t *j_data, *x;
+        j_data = json_array();
+        for (i = 0; i < edge_count; i++)
+        {
+            idx = m->edge_map->order[i];
+            d = arf_get_d(arb_midref(x_wide + idx), ARF_RND_NEAR);
+            x = json_pack("[i, f]", i, d);
+            json_array_append_new(j_data, x);
+        }
+        j_out = json_pack("{s:[s, s], s:o}",
+                "columns", "edge", "value",
+                "data", j_data);
+    }
+
+finish:
+
+    so_clear(so_wide);
+    so_clear(so_narrow);
+    _arb_vec_clear(newton_interval, edge_count);
+    _arb_vec_clear(newton_delta, edge_count);
+    _arb_vec_clear(x_wide, edge_count);
+    _arb_vec_clear(x_narrow, edge_count);
+
+    *result_out = result;
+    return j_out;
+}
+
 
 json_t *arbplf_second_order_run(void *userdata, json_t *root, int *retcode)
 {
@@ -1057,7 +1442,7 @@ json_t *arbplf_second_order_run(void *userdata, json_t *root, int *retcode)
 
     if (!userdata)
     {
-        fprintf(stderr, "internal error: unexpected a second order query\n");
+        fprintf(stderr, "internal error: unexpected second order query\n");
         result = -1;
         goto finish;
     }
