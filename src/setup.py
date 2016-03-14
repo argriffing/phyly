@@ -31,6 +31,7 @@ myext = Extension(
             'parsemodel.c',
             'reduction.c',
             'parsereduction.c',
+            'arb_vec_extras.c',
             ])
 
 setup(name="arbplf", version="0.0.1", ext_modules = [myext])

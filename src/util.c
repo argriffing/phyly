@@ -5,16 +5,6 @@
 
 #include "util.h"
 
-/* from arb arb_poly zeta_series.c */
-void
-_arb_vec_printd(arb_srcptr vec, slong len, slong digits)
-{
-    slong i;
-    for (i = 0; i < len; i++)
-        arb_printd(vec + i, digits), flint_printf("\n");
-}
-
-
 int _can_round(arb_t x)
 {
     /* This cannot deal with values like -1 +/- 1e-1000000000000 */

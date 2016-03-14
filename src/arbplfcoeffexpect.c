@@ -41,6 +41,7 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
+#include "arb_vec_extras.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"

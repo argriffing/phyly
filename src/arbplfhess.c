@@ -58,6 +58,7 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
+#include "arb_vec_extras.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -65,25 +66,6 @@
 #include "arbplfhess.h"
 
 
-static int
-_arb_vec_contains(const arb_struct *a, const arb_struct *b, slong n)
-{
-    slong i;
-    for (i = 0; i < n; i++)
-        if (!arb_contains(a + i, b + i))
-            return 0;
-    return 1;
-}
-
-static int
-_arb_vec_overlaps(const arb_struct *a, const arb_struct *b, slong n)
-{
-    slong i;
-    for (i = 0; i < n; i++)
-        if (!arb_overlaps(a + i, b + i))
-            return 0;
-    return 1;
-}
 
 
 /* this struct does not own its vectors */
@@ -1351,27 +1333,12 @@ opt_cert_query(
                  * Update the wide interval according to the intersection
                  * of the newton interval and the input interval.
                  */
-                for (i = 0; i < edge_count; i++)
+                result = _arb_vec_intersection(x_wide,
+                        x_wide, newton_interval, edge_count, prec);
+                if (!result)
                 {
-                    arf_t alow, ahigh, blow, bhigh;
-                    arf_t low, high;
-                    arf_init(alow);
-                    arf_init(ahigh);
-                    arf_init(blow);
-                    arf_init(bhigh);
-                    arf_init(low);
-                    arf_init(high);
-                    arb_get_interval_arf(alow, ahigh, x_wide + i, prec);
-                    arb_get_interval_arf(blow, bhigh, newton_interval + i, prec);
-                    arf_max(low, alow, blow);
-                    arf_min(high, ahigh, bhigh);
-                    arb_set_interval_arf(x_wide + i, low, high, prec);
-                    arf_clear(alow);
-                    arf_clear(ahigh);
-                    arf_clear(blow);
-                    arf_clear(bhigh);
-                    arf_clear(low);
-                    arf_clear(high);
+                    flint_fprintf(stderr, "internal error: vec intersection\n");
+                    abort();
                 }
 
                 /*
