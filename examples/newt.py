@@ -33,8 +33,8 @@ def main():
         s = arbplf_coeff_expect(json.dumps(d))
         df = pd.read_json(StringIO(s), orient='split', precise_float=True)
         r = list(df.value)
-        print(r)
         d['model_and_data']['edge_rate_coefficients'] = r
+    print(r)
 
     summarize(d)
 
@@ -42,8 +42,8 @@ def main():
         s = arbplf_newton_point(json.dumps(d))
         df = pd.read_json(StringIO(s), orient='split', precise_float=True)
         r = list(df.value)
-        print(r)
         d['model_and_data']['edge_rate_coefficients'] = r
+    print(r)
 
     summarize(d)
 

@@ -13,6 +13,8 @@
 extern "C" {
 #endif
 
+int _arb_is_indeterminate(const arb_t x);
+
 void _arb_vec_printd(arb_srcptr vec, slong len, slong digits);
 
 int _can_round(arb_t x);

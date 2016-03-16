@@ -5,11 +5,19 @@
 
 #include "util.h"
 
+#define FULL_RELATIVE_PRECISION 60
+
 int _can_round(arb_t x)
 {
     /* This cannot deal with values like -1 +/- 1e-1000000000000 */
     /* return arb_can_round_arf(x, 53, ARF_RND_NEAR); */
-    return arb_rel_accuracy_bits(x) >= 53;
+    return arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION;
+}
+
+int
+_arb_is_indeterminate(const arb_t x)
+{
+    return arf_is_nan(arb_midref(x));
 }
 
 void
