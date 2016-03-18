@@ -32,6 +32,7 @@ myext = Extension(
             'reduction.c',
             'parsereduction.c',
             'arb_vec_extras.c',
+            'arb_vec_calc.c',
             ])
 
 setup(name="arbplf", version="0.0.1", ext_modules = [myext])

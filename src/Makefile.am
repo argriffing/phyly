@@ -11,7 +11,7 @@ bin_PROGRAMS = arbplf-ll arbplf-marginal arbplf-dwell arbplf-trans \
 	       arbplf-coeff-expect arbplf-newton-point arbplf-newton-delta \
 	       arbplf-opt-cert
 
-check_PROGRAMS = t-dummy_test
+check_PROGRAMS = t-dummy_test t-newton
 
 TESTS = $(check_PROGRAMS)
 
@@ -27,6 +27,8 @@ CORE_SOURCES = \
 	evaluate_site_lhood.h \
 	arb_vec_extras.c \
 	arb_vec_extras.h \
+	arb_vec_calc.c \
+	arb_vec_calc.h \
 	parsemodel.c \
 	parsemodel.h \
 	reduction.c \
@@ -41,6 +43,7 @@ JSON_SOURCES = \
 	runjson.h
 
 t_dummy_test_SOURCES =  $(CORE_SOURCES) t-dummy_test.c
+t_newton_SOURCES =  $(CORE_SOURCES) t-newton.c
 
 arbplf_ll_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfll.c arbplfll.h arbplf-ll.c
 arbplf_marginal_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfmarginal.c arbplfmarginal.h arbplf-marginal.c

@@ -12,6 +12,8 @@ extern "C" {
 
 void _arb_vec_printd(arb_srcptr vec, slong len, slong digits);
 void _arb_vec_print(arb_srcptr vec, slong len);
+int _arb_vec_is_indeterminate(const arb_struct *v, slong n);
+int _arb_vec_equal(const arb_struct *a, const arb_struct *b, slong n);
 int _arb_vec_contains(const arb_struct *a, const arb_struct *b, slong n);
 int _arb_vec_overlaps(const arb_struct *a, const arb_struct *b, slong n);
 int _arb_vec_intersection(arb_struct *c,

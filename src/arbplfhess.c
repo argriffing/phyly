@@ -58,13 +58,14 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
+#include "arb_calc.h"
 #include "arb_vec_extras.h"
+#include "arb_vec_calc.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
 #include "runjson.h"
 #include "arbplfhess.h"
-
 
 static void
 _print_arb_vec_containment_details(
@@ -107,17 +108,6 @@ indirect_plane_clear(indirect_plane_t p)
 {
     flint_free(p->node_pvectors);
     flint_free(p->edge_pvectors);
-}
-
-
-static void
-_expand_lower_triangular(arb_mat_t B, const arb_mat_t L)
-{
-    slong i, j;
-    arb_mat_set(B, L);
-    for (i = 0; i < arb_mat_nrows(B); i++)
-        for (j = i+1; j < arb_mat_ncols(B); j++)
-            arb_set(arb_mat_entry(B, i, j), arb_mat_entry(B, j, i));
 }
 
 
@@ -266,67 +256,6 @@ so_get_newton_point(arb_struct * newton_point, so_t so, slong prec)
     n = so->edge_count;
     so_get_newton_delta(newton_point, so, prec);
     _arb_vec_add(newton_point, so->x, newton_point, n, prec);
-}
-
-/*
- * The Hessian is computed with the wide interval.
- * The other values are computed with the narrow interval.
- * The final interval is still 'wide' but is hoped to be a contraction.
- * "On the Newton Method in Interval Analysis"
- * Karl Nickel
- * March 1971
- *
- * Returns nonzero iff the input interval contains the output interval.
- */
-static int
-_newton_contraction(
-        arb_struct *narrow_x_out, arb_struct *wide_x_out,
-        const arb_struct *narrow_x,
-        const arb_struct *wide_x,
-        const arb_mat_t narrow_grad,
-        const arb_mat_t narrow_hess,
-        const arb_mat_t wide_hess,
-        slong n, slong prec)
-{
-    slong i;
-    arb_mat_t narrow_delta, wide_delta;
-    int invertible;
-    int result;
-
-    /* Update the point. */
-    arb_mat_init(narrow_delta, n, 1);
-    invertible = arb_mat_solve(narrow_delta, narrow_hess, narrow_grad, prec);
-    if (!invertible)
-    {
-        _arb_mat_indeterminate(narrow_delta);
-    }
-    for (i = 0; i < n; i++)
-        arb_sub(narrow_x_out + i,
-                narrow_x + i, arb_mat_entry(narrow_delta, i, 0), prec);
-
-    /* Update the interval. */
-    /* Use of narrow_grad as the rhs is deliberate. */
-    arb_mat_init(wide_delta, n, 1);
-    invertible = arb_mat_solve(wide_delta, wide_hess, narrow_grad, prec);
-    if (!invertible)
-    {
-        _arb_mat_indeterminate(wide_delta);
-    }
-    /* Subtraction from narrow_x is deliberate. */
-    for (i = 0; i < n; i++)
-        arb_sub(wide_x_out + i,
-                narrow_x + i, arb_mat_entry(wide_delta, i, 0), prec);
-
-    flint_printf("debug: narrow and wide delta:\n");
-    arb_mat_printd(narrow_delta, 15); flint_printf("\n");
-    arb_mat_printd(wide_delta, 15); flint_printf("\n");
-
-    result = _arb_vec_contains(wide_x, wide_x_out, n);
-
-    arb_mat_clear(narrow_delta);
-    arb_mat_clear(wide_delta);
-
-    return result;
 }
 
 
@@ -905,6 +834,54 @@ _compute_second_order(so_t so,
 
 
 
+/* this struct does not 'own' its data */
+typedef struct
+{
+    model_and_data_struct *m;
+    column_reduction_struct *r_site;
+} _objective_param_struct;
+
+static void
+_objective_param_init(_objective_param_struct *s,
+        model_and_data_struct *m,
+        column_reduction_struct *r_site)
+{
+    s->m = m;
+    s->r_site = r_site;
+}
+
+static void
+_objective_param_clear(_objective_param_struct *s)
+{
+    s->m = NULL;
+    s->r_site = NULL;
+}
+
+/*
+ * This is the function whose zeros (roots) are of interest.
+ * It follows the interface of arb_vec_calc_func_t.
+ */
+static int
+_objective(arb_struct *vec_out, arb_mat_struct *jac_out,
+      const arb_struct *inp, void *param, slong n, slong prec)
+{
+    _objective_param_struct * s = param;
+    so_t so;
+    int result;
+
+    so_init(so, n);
+
+    /* evaluate the function and its jacobian */
+    result = _recompute_second_order(so, s->m, s->r_site, inp, prec);
+    if (result) abort();
+
+    _arb_vec_set(vec_out, so->ll_gradient, n);
+    _expand_lower_triangular(jac_out, so->ll_hessian);
+
+    so_clear(so);
+
+    return 0;
+}
 
 
 
@@ -1204,28 +1181,19 @@ opt_cert_query(
 {
     json_t * j_out = NULL;
     int result = 0;
+    int success;
     slong prec;
     int i, edge_count;
-    so_t so_wide, so_narrow;
-    so_t so_debug; /* wide, but with high precision */
-    arb_struct *wide_x, *narrow_x;
-    arb_struct *wide_x_next, *narrow_x_next;
-    arb_struct *wide_x_debug, *narrow_x_debug;
     mag_t rtmp;
-    int success;
     slong log2_rtol;
+    arb_struct *wide_x, *wide_x_out;
+
+    arb_calc_verbose = 1;
 
     mag_init(rtmp);
     edge_count = m->g->nnz;
-    so_init(so_wide, edge_count);
-    so_init(so_narrow, edge_count);
-    so_init(so_debug, edge_count);
     wide_x = _arb_vec_init(edge_count);
-    narrow_x = _arb_vec_init(edge_count);
-    wide_x_next = _arb_vec_init(edge_count);
-    narrow_x_next = _arb_vec_init(edge_count);
-    wide_x_debug = _arb_vec_init(edge_count);
-    narrow_x_debug = _arb_vec_init(edge_count);
+    wide_x_out = _arb_vec_init(edge_count);
 
     /*
      * Initially assume that the user has provided a good guess.
@@ -1251,6 +1219,8 @@ opt_cert_query(
         nozero = 0;
         for (prec = 4; !success && !nozero; prec <<= 1)
         {
+            int refinement_result;
+
             flint_fprintf(stderr, "debug: prec=%wd\n", prec);
 
             /* Extract initial edge rates. */
@@ -1264,7 +1234,6 @@ opt_cert_query(
                     idx = m->edge_map->order[i];
                     tmpd = m->edge_rate_coefficients[i];
                     arb_set_d(wide_x + idx, tmpd);
-                    arb_set_d(narrow_x + idx, tmpd);
                 }
             }
 
@@ -1279,297 +1248,48 @@ opt_cert_query(
                 mag_add(arb_radref(wide_x + i), arb_radref(wide_x + i), rtmp);
             }
 
-            while (1)
             {
-                int is_contraction;
+                _objective_param_struct s[1];
+                _objective_param_init(s, m, r_site);
 
-                result = _recompute_second_order(so_narrow,
-                        m, r_site, narrow_x, prec);
-                if (result) goto finish;
+                refinement_result = arb_vec_calc_refine_root_newton(
+                        wide_x_out, _objective, s, wide_x,
+                        edge_count, 0, prec);
 
-                result = _recompute_second_order(so_wide,
-                        m, r_site, wide_x, prec);
-                if (result) goto finish;
-
-                result = _recompute_second_order(so_debug,
-                        m, r_site, wide_x, prec * 2);
-                if (result) goto finish;
-
-                /* Do an iteration of the interval Newton method. */
-                {
-                    slong n;
-                    int tmp;
-                    arb_mat_t narrow_grad;
-                    arb_mat_t narrow_hess;
-                    arb_mat_t wide_hess;
-
-                    n = edge_count;
-
-                    /* define the narrow grad */
-                    arb_mat_init(narrow_grad, n, 1);
-                    for (i = 0; i < n; i++)
-                    {
-                        arb_set(arb_mat_entry(narrow_grad, i, 0),
-                                so_narrow->ll_gradient + i);
-                    }
-
-                    /* define the narrow hessian */
-                    arb_mat_init(narrow_hess, n, n);
-                    _expand_lower_triangular(narrow_hess,
-                            so_narrow->ll_hessian);
-
-                    /* define the wide hessian */
-                    arb_mat_init(wide_hess, n, n);
-                    _expand_lower_triangular(wide_hess,
-                            so_wide->ll_hessian);
-
-                    /* compute the contraction */
-                    is_contraction = _newton_contraction(
-                            narrow_x_next, wide_x_next,
-                            narrow_x, wide_x,
-                            narrow_grad, narrow_hess, wide_hess,
-                            n, prec);
-
-                    /*
-                     * Compute the contraction using the same inputs
-                     * but with greater precision.
-                     */
-                    tmp = _newton_contraction(
-                            narrow_x_debug, wide_x_debug,
-                            narrow_x, wide_x,
-                            narrow_grad, narrow_hess, wide_hess,
-                            n, prec * 2);
-
-                    /* todo: overlaps is required but not contains */
-                    if (!_arb_vec_contains(narrow_x_next, narrow_x_debug,
-                                edge_count))
-                    {
-                        flint_printf("internal error: containment\n");
-
-                        flint_fprintf(stderr, "narrow_x_next:\n");
-                        _arb_vec_print(narrow_x_next, edge_count);
-                        flint_fprintf(stderr, "\n");
-
-                        flint_fprintf(stderr, "narrow_x_debug:\n");
-                        _arb_vec_print(narrow_x_debug, edge_count);
-                        flint_fprintf(stderr, "\n");
-
-                        _print_arb_vec_containment_details(
-                                narrow_x_next, narrow_x_debug, edge_count);
-
-                        abort();
-                    }
-
-                    /* todo: overlaps is required but not contains */
-                    if (!_arb_vec_contains(wide_x_next, wide_x_debug,
-                                edge_count))
-                    {
-                        flint_printf("internal error: containment\n");
-
-                        flint_fprintf(stderr, "wide_x_next:\n");
-                        _arb_vec_printd(wide_x_next, edge_count, 30);
-                        flint_fprintf(stderr, "\n");
-
-                        flint_fprintf(stderr, "wide_x_debug:\n");
-                        _arb_vec_printd(wide_x_debug, edge_count, 30);
-                        flint_fprintf(stderr, "\n");
-
-                        flint_fprintf(stderr, "wide_x_next:\n");
-                        _arb_vec_print(wide_x_next, edge_count);
-                        flint_fprintf(stderr, "\n");
-
-                        flint_fprintf(stderr, "wide_x_debug:\n");
-                        _arb_vec_print(wide_x_debug, edge_count);
-                        flint_fprintf(stderr, "\n");
-
-                        _print_arb_vec_containment_details(
-                                wide_x_next, wide_x_debug, edge_count);
-
-                        abort();
-                    }
-
-                    /*
-                     * todo: compute contraction with
-                     * inputs (e.g. grad, hess) that have greater precision
-                     */
-
-                    arb_mat_clear(narrow_grad);
-                    arb_mat_clear(narrow_hess);
-                    arb_mat_clear(wide_hess);
-                }
-
-                flint_printf("debug: newton step is a contraction? %d\n",
-                        is_contraction);
-
-                /*
-                 * Check for NaN in the new wide interval.
-                 */
-                {
-                    int has_nan;
-                    has_nan = 0;
-                    for (i = 0; i < edge_count; i++)
-                    {
-                        if (_arb_is_indeterminate(wide_x_next + i))
-                        {
-                            has_nan = 1;
-                            break;
-                        }
-                    }
-                    if (has_nan)
-                    {
-                        flint_fprintf(stderr, "debug: newton interval step "
-                                              "has a NaN\n");
-                        break;
-                    }
-                }
-
-                /*
-                 * Update the wide interval by intersecting with the
-                 * Newton interval.
-                 * If the wide interval is already contained within
-                 * the Newton interval then we are not working
-                 * with sufficient precision,
-                 * so break from this loop and restart with higher precision.
-                 */
-                if (_arb_vec_contains(wide_x_next, wide_x, edge_count))
-                {
-                    flint_fprintf(stderr, "debug: newton interval step "
-                                          "is an expansion\n");
-                    break;
-                }
-
-                flint_printf("debug: coefficient information\n");
-                {
-                    flint_printf("edge order:\n");
-                    for (i = 0; i < edge_count; i++)
-                    {
-                        slong idx;
-                        idx = m->edge_map->order[i];
-                        flint_printf("%d : %wd\n", i, idx);
-                    }
-                    flint_printf("\n");
-
-                    flint_fprintf(stderr, "narrow interval:\n");
-                    _arb_vec_printd(narrow_x, edge_count, 15);
-                    flint_fprintf(stderr, "\n");
-
-                    flint_fprintf(stderr, "wide interval:\n");
-                    _arb_vec_printd(wide_x, edge_count, 15);
-                    flint_fprintf(stderr, "\n");
-
-                    flint_fprintf(stderr, "next narrow interval:\n");
-                    _arb_vec_printd(narrow_x_next, edge_count, 15);
-                    flint_fprintf(stderr, "\n");
-
-                    flint_fprintf(stderr, "next wide interval:\n");
-                    _arb_vec_printd(wide_x_next, edge_count, 15);
-                    flint_fprintf(stderr, "\n");
-                }
-
-                /*
-                 * If the newton interval does not overlap the input interval,
-                 * then the input interval does not contain a zero.
-                 */
-                flint_printf("debug: checking overlap...\n");
-                if (!_arb_vec_overlaps(wide_x_next, wide_x, edge_count))
-                {
-                    flint_fprintf(stderr, "debug: newton interval step "
-                                          "has no overlap\n");
-                    nozero = 1;
-                    break;
-                }
-
-                /* The newton interval step should be a contraction. */
-                if (!is_contraction)
-                {
-                    flint_printf("debug: newton interval step "
-                                          "is not a contraction\n");
-                    break;
-                }
-
-                /* 
-                 * Update the wide interval according to the intersection
-                 * of the newton interval and the input interval.
-                 */
-                /*
-                flint_printf("debug: computing intersection...\n");
-                if (!_arb_vec_intersection(wide_x_next,
-                        wide_x, wide_x_next, edge_count, prec))
-                {
-                    flint_printf("internal error: vec intersection\n");
-                    abort();
-                }
-                */
-
-                /*
-                 * Update the narrow interval by picking its midpoint.
-                 */
-                flint_printf("debug: picking midpoint...\n");
-                for (i = 0; i < edge_count; i++)
-                {
-                    mag_zero(arb_radref(narrow_x_next + i));
-                }
-
-                /* Check containment again. */
-                flint_printf("debug: checking midpoint containment...\n");
-                if (!_arb_vec_contains(
-                            wide_x_next, narrow_x_next, edge_count))
-                {
-                    flint_printf("internal error: midpoint containment\n");
-                    abort();
-                }
-
-
-                /* Before swapping the intervals, check containment. */
-                flint_printf("debug: checking containment...\n");
-                if (!_arb_vec_contains(wide_x_next, narrow_x_next, edge_count))
-                {
-                    flint_printf("internal error: containment\n");
-
-
-                    abort();
-                }
-
-                /*
-                 * Swap the intervals.
-                 * Zero the next intervals.
-                 */
-                flint_printf("debug: swapping intervals...\n");
-                {
-                    arb_struct *tmp;
-
-                    tmp = wide_x;
-                    wide_x = wide_x_next;
-                    wide_x_next = tmp;
-                    _arb_vec_zero(wide_x_next, edge_count);
-
-                    tmp = narrow_x;
-                    narrow_x = narrow_x_next;
-                    narrow_x_next = tmp;
-                    _arb_vec_zero(narrow_x_next, edge_count);
-                }
-
-                /*
-                 * If even the wide interval has small enough relative error,
-                 * then this is enough to certify that the minimum
-                 * has been found, as long as the hessian is negative definite.
-                 */
-                flint_printf("debug: checking rounding...\n");
-                if (_arb_vec_can_round(wide_x, edge_count))
-                {
-                    if (so_hessian_is_negative_definite(so_wide, prec))
-                    {
-                        success = 1;
-                        break;
-                    }
-                    else
-                    {
-                        fprintf(stderr, "opt cert fail: log likelihood shape\n");
-                        result = -1;
-                        goto finish;
-                    }
-                }
+                _objective_param_clear(s);
             }
+
+            flint_printf("debug: refinement_result=%d\n",
+                    refinement_result);
+
+            if (refinement_result == -1)
+            {
+                flint_printf("debug: root is excluded\n");
+                nozero = 1;
+            }
+            else if (refinement_result == 0)
+            {
+                flint_printf("debug: newton refinement does not "
+                             "contract the interval\n");
+            }
+            else
+            {
+                success = 1;
+            }
+
+            /*
+            if (so_hessian_is_negative_definite(so_wide, prec))
+            {
+                success = 1;
+                break;
+            }
+            else
+            {
+                fprintf(stderr, "opt cert fail: log likelihood shape\n");
+                result = -1;
+                goto finish;
+            }
+            */
         }
     }
 
@@ -1582,7 +1302,7 @@ opt_cert_query(
         for (i = 0; i < edge_count; i++)
         {
             idx = m->edge_map->order[i];
-            d = arf_get_d(arb_midref(wide_x + idx), ARF_RND_NEAR);
+            d = arf_get_d(arb_midref(wide_x_out + idx), ARF_RND_NEAR);
             x = json_pack("[i, f]", i, d);
             json_array_append_new(j_data, x);
         }
@@ -1591,17 +1311,8 @@ opt_cert_query(
                 "data", j_data);
     }
 
-finish:
-
-    so_clear(so_wide);
-    so_clear(so_narrow);
-    so_clear(so_debug);
     _arb_vec_clear(wide_x, edge_count);
-    _arb_vec_clear(narrow_x, edge_count);
-    _arb_vec_clear(wide_x_next, edge_count);
-    _arb_vec_clear(narrow_x_next, edge_count);
-    _arb_vec_clear(wide_x_debug, edge_count);
-    _arb_vec_clear(narrow_x_debug, edge_count);
+    _arb_vec_clear(wide_x_out, edge_count);
 
     *result_out = result;
     return j_out;

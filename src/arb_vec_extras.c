@@ -35,6 +35,26 @@ _arb_vec_overlaps(const arb_struct *a, const arb_struct *b, slong n)
     return 1;
 }
 
+int
+_arb_vec_equal(const arb_struct *a, const arb_struct *b, slong n)
+{
+    slong i;
+    for (i = 0; i < n; i++)
+        if (!arb_equal(a + i, b + i))
+            return 0;
+    return 1;
+}
+
+int
+_arb_vec_is_indeterminate(const arb_struct *v, slong n)
+{
+    slong i;
+    for (i = 0; i < n; i++)
+        if (arf_is_nan(arb_midref(v + i)))
+            return 1;
+    return 0;
+}
+
 /* from arb arb_poly zeta_series.c */
 void
 _arb_vec_printd(arb_srcptr vec, slong len, slong digits)

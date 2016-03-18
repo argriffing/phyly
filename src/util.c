@@ -65,6 +65,18 @@ _arb_mat_can_round(arb_mat_t A)
 }
 
 
+int
+_arb_mat_is_indeterminate(const arb_mat_t m)
+{
+    slong i, j;
+    for (i = 0; i < arb_mat_nrows(m); i++)
+        for (j = 0; j < arb_mat_ncols(m); j++)
+            if (_arb_is_indeterminate(arb_mat_entry(m, i, j)))
+                return 1;
+    return 0;
+}
+
+
 void
 _arb_mat_indeterminate(arb_mat_t m)
 {
@@ -358,4 +370,14 @@ _arb_mat_exp_frechet(arb_mat_t P, arb_mat_t F,
     }
 
     arb_mat_clear(M);
+}
+
+void
+_expand_lower_triangular(arb_mat_t B, const arb_mat_t L)
+{
+    slong i, j;
+    arb_mat_set(B, L);
+    for (i = 0; i < arb_mat_nrows(B); i++)
+        for (j = i+1; j < arb_mat_ncols(B); j++)
+            arb_set(arb_mat_entry(B, i, j), arb_mat_entry(B, j, i));
 }
