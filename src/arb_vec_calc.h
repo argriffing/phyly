@@ -42,6 +42,14 @@ int arb_vec_calc_refine_root_newton(
         const arb_struct *start, slong n,
         slong eval_extra_prec, slong prec);
 
+int _arb_vec_calc_newton_contraction(
+        arb_struct *xnew, arb_vec_calc_func_t func, void *param,
+        const arb_struct *inp, slong n, slong prec);
+
+int _arb_vec_calc_krawczyk_contraction(
+        arb_struct *xout, arb_vec_calc_func_t func, void *param,
+        const arb_struct *xin, slong n, slong prec);
+
 #ifdef __cplusplus
 }
 #endif

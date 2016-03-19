@@ -16,6 +16,134 @@
 #include "arb_vec_extras.h"
 #include "arb_vec_calc.h"
 
+static void
+_arb_mat_rad(arb_mat_t res, const arb_mat_t mat)
+{
+    slong i, j;
+    arb_mat_set(res, mat);
+    for (i = 0; i < arb_mat_nrows(res); i++)
+        for (j = 0; j < arb_mat_ncols(res); j++)
+            arf_zero(arb_midref(arb_mat_entry(res, i, j)));
+}
+
+static void
+_arb_mat_mid(arb_mat_t res, const arb_mat_t mat)
+{
+    slong i, j;
+    arb_mat_set(res, mat);
+    for (i = 0; i < arb_mat_nrows(res); i++)
+        for (j = 0; j < arb_mat_ncols(res); j++)
+            mag_zero(arb_radref(arb_mat_entry(res, i, j)));
+}
+
+static void
+_arb_mat_submul(arb_mat_t z, const arb_mat_t x, const arb_mat_t y, slong prec)
+{
+    arb_mat_t xy;
+    arb_mat_init(xy, arb_mat_nrows(z), arb_mat_ncols(z));
+    arb_mat_mul(xy, x, y, prec);
+    arb_mat_sub(z, z, xy, prec);
+    arb_mat_clear(xy);
+}
+
+static void
+_arb_mat_addmul(arb_mat_t z, const arb_mat_t x, const arb_mat_t y, slong prec)
+{
+    arb_mat_t xy;
+    arb_mat_init(xy, arb_mat_nrows(z), arb_mat_ncols(z));
+    arb_mat_mul(xy, x, y, prec);
+    arb_mat_add(z, z, xy, prec);
+    arb_mat_clear(xy);
+}
+
+int
+_arb_vec_calc_krawczyk_contraction(
+        arb_struct *xout, arb_vec_calc_func_t func, void *param,
+        const arb_struct *xin, slong n, slong prec)
+{
+    /* K(X) = y - Y f(y) + (I - Y F'(X))(X - y) */
+    /* Y = inverse of jacobian of x, discarding error bounds */
+    /* f evaluates the function, and F' is the jacobian */
+    int invertible;
+    slong i;
+    arb_mat_t A;
+    arb_mat_t Y;
+    arb_mat_t J, Jmid, Jrad;
+    arb_mat_t xin_col, xin_col_mid, xin_col_rad;
+    arb_mat_t vec_col, vec_col_mid;
+    arb_mat_t k_col;
+    arb_struct *vec;
+
+    arb_mat_init(xin_col, n, 1);
+    arb_mat_init(xin_col_mid, n, 1);
+    arb_mat_init(xin_col_rad, n, 1);
+    arb_mat_init(vec_col, n, 1);
+    arb_mat_init(vec_col_mid, n, 1);
+    arb_mat_init(k_col, n, 1);
+
+    arb_mat_init(A, n, n);
+    arb_mat_init(Y, n, n);
+    arb_mat_init(J, n, n);
+    arb_mat_init(Jmid, n, n);
+    arb_mat_init(Jrad, n, n);
+
+    vec = _arb_vec_init(n);
+
+    /* evaluate the function and jacobian at the input interval */
+    func(vec, J, xin, param, n, prec);
+
+    _arb_mat_mid(Jmid, J);
+    _arb_mat_rad(Jrad, J);
+
+    invertible = arb_mat_inv(Y, Jmid, prec);
+    if (!invertible)
+    {
+        if (arb_calc_verbose)
+        {
+            flint_printf("debug: interval includes singular jacobian\n");
+            /* arb_mat_printd(jac, 15); */
+        }
+        _arb_mat_indeterminate(k_col);
+    }
+    else
+    {
+        for (i = 0; i < n; i++)
+        {
+            arb_set(arb_mat_entry(xin_col, i, 0), xin + i);
+            arb_set(arb_mat_entry(vec_col, i, 0), vec + i);
+        }
+
+        _arb_mat_mid(xin_col_mid, xin_col);
+        _arb_mat_rad(xin_col_rad, xin_col);
+
+        _arb_mat_mid(vec_col_mid, vec_col);
+
+        arb_mat_one(A);
+        _arb_mat_submul(A, Y, J, prec);
+
+        arb_mat_set(k_col, xin_col_mid);
+        _arb_mat_submul(k_col, Y, vec_col_mid, prec);
+        _arb_mat_addmul(k_col, A, xin_col_rad, prec);
+    }
+
+    for (i = 0; i < n; i++)
+        arb_set(xout + i, arb_mat_entry(k_col, i, 0));
+
+    arb_mat_clear(Y);
+    arb_mat_clear(J);
+    arb_mat_clear(Jmid);
+    arb_mat_clear(Jrad);
+    arb_mat_clear(xin_col);
+    arb_mat_clear(xin_col_mid);
+    arb_mat_clear(xin_col_rad);
+    arb_mat_clear(vec_col);
+    arb_mat_clear(vec_col_mid);
+    arb_mat_clear(k_col);
+    _arb_vec_clear(vec, n);
+
+    return invertible;
+}
+
 int
 arb_vec_calc_newton_delta(
         arb_struct *delta, arb_vec_calc_func_t func, void *param,
@@ -100,6 +228,9 @@ _arb_vec_calc_newton_contraction(
     arb_mat_init(v, n, 1);
     arb_mat_init(u, n, 1);
 
+    if (arb_calc_verbose)
+        flint_printf("debug: computing wide interval...\n");
+
     func(wide_vec, wide_jac, inp, param, n, prec);
 
     if (_arb_vec_is_indeterminate(wide_vec, n))
@@ -122,15 +253,16 @@ _arb_vec_calc_newton_contraction(
         }
     }
 
-    for (i = 0; i < n; i++)
-        arb_set_arf(mid_inp + i, arb_midref(inp + i));
-
-    func(mid_vec, mid_jac, mid_inp, param, n, prec);
-
     /*
      * Use the evaluation of the Jacobian of f at the interval,
      * but use only the evaluation of f only at the midpoint.
      */
+
+    for (i = 0; i < n; i++)
+        arb_set_arf(mid_inp + i, arb_midref(inp + i));
+
+    if (arb_calc_verbose)
+        flint_printf("debug: computing mid interval...\n");
 
     func(mid_vec, mid_jac, mid_inp, param, n, prec);
 
@@ -146,6 +278,23 @@ _arb_vec_calc_newton_contraction(
             /* arb_mat_printd(jac, 15); */
         }
         _arb_mat_indeterminate(u);
+    }
+
+    if (arb_calc_verbose)
+    {
+        flint_printf("debug: solved\n");
+        arb_mat_printd(wide_jac, 15); flint_printf("\n");
+        arb_mat_printd(v, 15); flint_printf("\n");
+        flint_printf(" = \n");
+        arb_mat_printd(u, 15);
+        flint_printf("...\n");
+        {
+            arb_mat_t w;
+            arb_mat_init(w, 2, 1);
+            arb_mat_mul(w, wide_jac, u, prec);
+            arb_mat_printd(w, 15);
+            arb_mat_clear(w);
+        }
     }
 
     for (i = 0; i < n; i++)
@@ -197,6 +346,13 @@ arb_vec_calc_refine_root_newton(
         _arb_vec_zero(xnext, n);
 
         ret = _arb_vec_calc_newton_contraction(xnext, func, param, x, n, prec);
+
+        if (arb_calc_verbose)
+        {
+            _arb_vec_print(x, n); flint_printf("\n");
+            flint_printf("->\n");
+            _arb_vec_print(xnext, n); flint_printf("\n");
+        }
 
         /* convergence failure */
         if (!ret) {
