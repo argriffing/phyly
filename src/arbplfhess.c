@@ -1252,7 +1252,7 @@ opt_cert_query(
                 _objective_param_struct s[1];
                 _objective_param_init(s, m, r_site);
 
-                refinement_result = arb_vec_calc_refine_root_newton(
+                refinement_result = _arb_vec_calc_refine_root_newton(
                         wide_x_out, _objective, s, wide_x,
                         edge_count, 0, prec);
 

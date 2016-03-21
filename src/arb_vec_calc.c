@@ -145,7 +145,7 @@ _arb_vec_calc_krawczyk_contraction(
 }
 
 int
-arb_vec_calc_newton_delta(
+_arb_vec_calc_newton_delta(
         arb_struct *delta, arb_vec_calc_func_t func, void *param,
         const arb_struct *inp, slong n, slong prec)
 {
@@ -180,7 +180,7 @@ arb_vec_calc_newton_delta(
 
 
 int
-arb_vec_calc_newton_step(
+_arb_vec_calc_newton_step(
         arb_struct *xnew, arb_vec_calc_func_t func, void *param,
         const arb_struct *x, slong n, slong prec)
 {
@@ -189,7 +189,7 @@ arb_vec_calc_newton_step(
 
     delta = _arb_vec_init(n);
 
-    result = arb_vec_calc_newton_delta(delta, func, param, x, n, prec);
+    result = _arb_vec_calc_newton_delta(delta, func, param, x, n, prec);
 
     if (result)
         _arb_vec_add(xnew, x, delta, n, prec);
@@ -318,7 +318,7 @@ finish:
 
 /* todo: do not ignore eval_extra_prec */
 int
-arb_vec_calc_refine_root_newton(
+_arb_vec_calc_refine_root_newton(
         arb_struct *out, arb_vec_calc_func_t func, void *param,
         const arb_struct *start, slong n,
         slong eval_extra_prec, slong prec)
@@ -429,6 +429,140 @@ arb_vec_calc_refine_root_newton(
 
     if (arb_calc_verbose)
         flint_printf("newton iterations: %d\n", iter+1);
+
+    _arb_vec_set(out, x, n);
+
+    _arb_vec_clear(x, n);
+    _arb_vec_clear(xnext, n);
+
+    return result;
+}
+
+
+/* todo: do not ignore eval_extra_prec */
+int
+_arb_vec_calc_refine_root_krawczyk(
+        arb_struct *out, arb_vec_calc_func_t func, void *param,
+        const arb_struct *start, slong n,
+        slong eval_extra_prec, slong prec)
+{
+    int iter;
+    int result;
+    int prev_containment;
+    arb_struct *x, *xnext;
+
+    result = 1;
+
+    x = _arb_vec_init(n);
+    xnext = _arb_vec_init(n);
+
+    _arb_vec_set(x, start, n);
+    prev_containment = 0;
+    for (iter = 0; !_arb_vec_can_round(x, n); iter++)
+    {
+        int ret;
+        arb_struct *tmp;
+
+        if (arb_calc_verbose)
+            flint_printf("debug: iter %d\n", iter);
+
+        _arb_vec_zero(xnext, n);
+
+        ret = _arb_vec_calc_krawczyk_contraction(xnext, func, param, x, n, prec);
+
+        if (arb_calc_verbose)
+        {
+            _arb_vec_print(x, n); flint_printf("\n");
+            flint_printf("->\n");
+            _arb_vec_print(xnext, n); flint_printf("\n");
+        }
+
+        /* convergence failure */
+        if (!ret) {
+            result = 0;
+            break;
+        }
+        if (_arb_vec_is_indeterminate(xnext, n)) {
+            if (arb_calc_verbose)
+                flint_printf("debug: step is indeterminate\n");
+            result = 0;
+            break;
+        }
+        if (_arb_vec_equal(x, xnext, n)) {
+            if (arb_calc_verbose)
+                flint_printf("debug: step is equal\n");
+            result = 0;
+            break;
+        }
+        if (_arb_vec_contains(xnext, x, n)) {
+            if (arb_calc_verbose)
+                flint_printf("debug: step is an expansion\n");
+            result = 0;
+            break;
+        }
+        if (_arb_vec_overlaps(x, xnext, n))
+        {
+            int i;
+            int bad = 0;
+            for (i = 0; i < n && !bad; i++)
+                if (mag_cmp(arb_radref(x), arb_radref(xnext)) < 0)
+                    bad = 1;
+            if (bad)
+            {
+                if (arb_calc_verbose)
+                    flint_printf("debug: not all error radii have decreased\n");
+                result = 0;
+                break;
+            }
+        }
+
+        /* root exclusion */
+        if (!_arb_vec_overlaps(x, xnext, n)) {
+
+            if (arb_calc_verbose)
+            {
+                flint_printf("debug: root is excluded\n");
+                _arb_vec_printd(x, n, 15); flint_printf("\n");
+                _arb_vec_printd(xnext, n, 15); flint_printf("\n");
+            }
+
+            /*
+             * If the previous interation indicated root containment,
+             * then subsequent root exclusion implies some kind of bug
+             * or derivative calculation error or a misunderstanding
+             * of the properties of the interval Newton method.
+             */
+            if (prev_containment)
+            {
+                flint_printf("internal error: conflicting krawczyk "
+                        "iteration results\n");
+                abort();
+            }
+
+            result = -1;
+            break;
+        }
+
+        if (_arb_vec_contains(x, xnext, n))
+        {
+            prev_containment = 1;
+            if (arb_calc_verbose)
+                flint_printf("debug: contains\n");
+        }
+        else
+        {
+            prev_containment = 0;
+            if (arb_calc_verbose)
+                flint_printf("debug: overlaps but does not contain\n");
+        }
+
+        tmp = x;
+        x = xnext;
+        xnext = tmp;
+    }
+
+    if (arb_calc_verbose)
+        flint_printf("krawczyk iterations: %d\n", iter+1);
 
     _arb_vec_set(out, x, n);
 

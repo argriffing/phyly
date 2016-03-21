@@ -29,26 +29,31 @@ typedef int (*arb_vec_calc_func_t) (
  * Notation follows arb_calc_newton_step and arb_calc_refine_root_newton.
  */
 
-int arb_vec_calc_newton_delta(
+int _arb_vec_calc_newton_delta(
         arb_struct *delta, arb_vec_calc_func_t func, void *param,
         const arb_struct *inp, slong n, slong prec);
 
-int arb_vec_calc_newton_step(
+int _arb_vec_calc_newton_step(
         arb_struct *xnew, arb_vec_calc_func_t func, void *param,
         const arb_struct *inp, slong n, slong prec);
-
-int arb_vec_calc_refine_root_newton(
-        arb_struct *out, arb_vec_calc_func_t func, void *param,
-        const arb_struct *start, slong n,
-        slong eval_extra_prec, slong prec);
 
 int _arb_vec_calc_newton_contraction(
         arb_struct *xnew, arb_vec_calc_func_t func, void *param,
         const arb_struct *inp, slong n, slong prec);
 
+int _arb_vec_calc_refine_root_newton(
+        arb_struct *out, arb_vec_calc_func_t func, void *param,
+        const arb_struct *start, slong n,
+        slong eval_extra_prec, slong prec);
+
 int _arb_vec_calc_krawczyk_contraction(
         arb_struct *xout, arb_vec_calc_func_t func, void *param,
         const arb_struct *xin, slong n, slong prec);
+
+int _arb_vec_calc_refine_root_krawczyk(
+        arb_struct *out, arb_vec_calc_func_t func, void *param,
+        const arb_struct *start, slong n,
+        slong eval_extra_prec, slong prec);
 
 #ifdef __cplusplus
 }
