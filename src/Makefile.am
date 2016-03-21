@@ -29,6 +29,8 @@ CORE_SOURCES = \
 	arb_vec_extras.h \
 	arb_vec_calc.c \
 	arb_vec_calc.h \
+	rosenbrock.c \
+	rosenbrock.h \
 	parsemodel.c \
 	parsemodel.h \
 	reduction.c \

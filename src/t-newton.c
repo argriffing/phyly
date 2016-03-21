@@ -4,58 +4,8 @@
 
 #include "arb_calc.h"
 #include "arb_vec_calc.h"
+#include "rosenbrock.h"
 
-
-void
-rosen_grad(arb_t dx, arb_t dy, const arb_t x, const arb_t y, slong prec)
-{
-    arb_t x2;
-    arb_t xcompl;
-
-    arb_init(x2);
-    arb_init(xcompl);
-
-    arb_mul(x2, x, x, prec);
-    arb_sub_si(xcompl, x, 1, prec);
-    arb_neg(xcompl, xcompl);
-
-    arb_sub(dy, y, x2, prec);
-    arb_mul(dy, dy, x, prec);
-    arb_mul_si(dy, dy, 200, prec);
-
-    arb_mul_si(dx, dy, -2, prec);
-    arb_submul_si(dx, xcompl, 2, prec);
-
-    arb_clear(x2);
-    arb_clear(xcompl);
-}
-
-void
-rosen_hess(arb_mat_t H, const arb_t x, const arb_t y, slong prec)
-{
-    arb_t x2;
-    arb_struct *p;
-
-    arb_init(x2);
-
-    arb_mul(x2, x, x, prec);
-
-    p = arb_mat_entry(H, 0, 0);
-    arb_set_si(p, 2);
-    arb_addmul_si(p, x2, 1200, prec);
-    arb_submul_si(p, y, 400, prec);
-
-    p = arb_mat_entry(H, 0, 1);
-    arb_mul_si(p, x, -400, prec);
-
-    p = arb_mat_entry(H, 1, 0);
-    arb_mul_si(p, x, -400, prec);
-
-    p = arb_mat_entry(H, 1, 1);
-    arb_set_si(p, 200);
-
-    arb_clear(x2);
-}
 
 static int
 _objective(arb_struct *vec_out, arb_mat_struct *jac_out,
@@ -71,14 +21,14 @@ _objective(arb_struct *vec_out, arb_mat_struct *jac_out,
     arb_printd(inp + 1, 15); flint_printf("\n");
     flint_printf("\n");
 
-    rosen_grad(vec_out + 0, vec_out + 1, x, y, prec);
+    rosenbrock_gradient(vec_out + 0, vec_out + 1, x, y, prec);
 
     flint_printf("gradient:\n");
     arb_printd(vec_out + 0, 15); flint_printf("\n");
     arb_printd(vec_out + 1, 15); flint_printf("\n");
     flint_printf("\n");
 
-    rosen_hess(jac_out, x, y, prec);
+    rosenbrock_hessian(jac_out, x, y, prec);
 
     flint_printf("hessian:\n");
     arb_mat_printd(jac_out, 15); flint_printf("\n");
