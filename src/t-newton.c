@@ -152,7 +152,8 @@ void test_solution_interval(flint_rand_t state)
 
                 abort();
             }
-            if (arb_calc_verbose)
+            /* if (arb_calc_verbose) */
+            if (0)
             {
                 flint_printf("debug: ok solutions:\n");
                 flint_printf("prec=%wd\n", prec);
@@ -169,11 +170,11 @@ void test_solution_interval(flint_rand_t state)
         arb_mat_clear(Y);
     }
 
-    flint_printf("PASS\n");
-
     _arb_vec_clear(x_in, n);
     _arb_vec_clear(x_out, n);
     _arb_vec_clear(x_true, n);
+
+    flint_printf("PASS\n");
 }
 
 
@@ -391,7 +392,6 @@ void test_interval_method(contraction_t contraction, refinement_t refinement,
     }
 
     flint_printf("PASS\n");
-    return 0;
 }
 
 
@@ -404,14 +404,16 @@ int main(void)
     test_solution_interval(state);
 
     test_interval_method(
-            _arb_vec_calc_krawczyk_contraction,
-            _arb_vec_calc_refine_root_krawczyk,
-            state, "krawczyk");
-
-    test_interval_method(
             _arb_vec_calc_newton_contraction,
             _arb_vec_calc_refine_root_newton,
             state, "newton");
 
+    test_interval_method(
+            _arb_vec_calc_krawczyk_contraction,
+            _arb_vec_calc_refine_root_krawczyk,
+            state, "krawczyk");
+
     FLINT_TEST_CLEANUP(state);
+
+    return EXIT_SUCCESS;
 }

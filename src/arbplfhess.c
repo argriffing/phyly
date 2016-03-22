@@ -505,6 +505,7 @@ evaluate_site_derivatives(arb_t derivative,
     int start, stop;
     arb_mat_struct * nmat;
     arb_mat_struct * nmatb;
+    arb_mat_struct * nmatbi;
     arb_mat_struct * tmat;
     arb_mat_struct * emat;
     arb_mat_struct * emati;
@@ -543,9 +544,15 @@ evaluate_site_derivatives(arb_t derivative,
             {
                 b = g->indices[idx];
                 tmat = w->transition_matrices + idx;
+
                 nmatb = plane->node_vectors + b;
+                /* nmatbi = indirect->node_pvectors[b]; */
+
                 emat = plane->edge_vectors + idx;
+
                 arb_mat_mul(emat, tmat, nmatb, w->prec);
+                /* arb_mat_mul(emat, tmat, nmatbi, w->prec); */
+
                 _arb_mat_mul_entrywise(nmat, nmat, emat, w->prec);
                 if (update_indirect)
                 {
@@ -769,6 +776,15 @@ _recompute_second_order(so_t so,
                     arb_mul(tmp, lhood_gradient+i, lhood_gradient+j, prec);
                     arb_div(tmp, tmp, lhood, prec);
                     arb_sub(ll_hess_entry, lhood_hess_entry, tmp, prec);
+
+                    /*
+                    flint_printf("lhood hess term=");
+                    arb_printd(lhood_hess_entry, 15);
+                    flint_printf("\n");
+                    flint_printf("lhood grad term=");
+                    arb_printd(tmp, 15);
+                    flint_printf("\n\n");
+                    */
 
                     /* x is (site weight) / (site likelihood) */
                     arb_mul(ll_hess_entry, ll_hess_entry, x, prec);
@@ -1202,7 +1218,7 @@ opt_cert_query(
      * values provided by the user.
      */
     success = 0;
-    for (log2_rtol = -6; !success; log2_rtol += 4)
+    for (log2_rtol = -6; !success; log2_rtol += 2)
     {
         int nozero;
         /*
@@ -1252,7 +1268,8 @@ opt_cert_query(
                 _objective_param_struct s[1];
                 _objective_param_init(s, m, r_site);
 
-                refinement_result = _arb_vec_calc_refine_root_newton(
+                refinement_result = _arb_vec_calc_refine_root_krawczyk(
+                /* refinement_result = _arb_vec_calc_refine_root_newton( */
                         wide_x_out, _objective, s, wide_x,
                         edge_count, 0, prec);
 

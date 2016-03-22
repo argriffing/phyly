@@ -14,12 +14,15 @@ rosenbrock_gradient(arb_t dx, arb_t dy,
     arb_sub_si(xcompl, x, 1, prec);
     arb_neg(xcompl, xcompl);
 
+    /* dy = 200 (y - x^2) */
     arb_sub(dy, y, x2, prec);
-    arb_mul(dy, dy, x, prec);
     arb_mul_si(dy, dy, 200, prec);
 
-    arb_mul_si(dx, dy, -2, prec);
-    arb_submul_si(dx, xcompl, 2, prec);
+    /* dx = -2 x dy - 2 (1 - x) */
+    /*    = -2 (x dy + (1 - x)) */
+    arb_set(dx, xcompl);
+    arb_addmul(dx, x, dy, prec);
+    arb_mul_si(dx, dx, -2, prec);
 
     arb_clear(x2);
     arb_clear(xcompl);

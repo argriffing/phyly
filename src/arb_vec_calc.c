@@ -290,7 +290,7 @@ _arb_vec_calc_newton_contraction(
         flint_printf("...\n");
         {
             arb_mat_t w;
-            arb_mat_init(w, 2, 1);
+            arb_mat_init(w, n, 1);
             arb_mat_mul(w, wide_jac, u, prec);
             arb_mat_printd(w, 15);
             arb_mat_clear(w);
