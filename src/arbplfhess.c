@@ -61,12 +61,14 @@
 #include "arb_calc.h"
 #include "arb_vec_extras.h"
 #include "arb_vec_calc.h"
+#include "finite_differences.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
 #include "runjson.h"
 #include "arbplfhess.h"
 
+/*
 static void
 _print_arb_vec_containment_details(
         const arb_struct *a, const arb_struct *b, slong n)
@@ -86,6 +88,7 @@ _print_arb_vec_containment_details(
     }
     flint_printf("\n");
 }
+*/
 
 
 /* this struct does not own its vectors */
@@ -174,6 +177,7 @@ so_get_inv_hess(arb_mat_t A, so_t so, slong prec)
     }
 }
 
+/*
 static int
 so_hessian_is_negative_definite(so_t so, slong prec)
 {
@@ -186,23 +190,17 @@ so_hessian_is_negative_definite(so_t so, slong prec)
     arb_mat_init(A, n, n);
     arb_mat_init(L, n, n);
 
-    /* Get the negative of the hessian matrix. */
     _expand_lower_triangular(A, so->ll_hessian);
     arb_mat_neg(A, A);
 
-    /* Is the cholesky decomposition even possible. */
     ret = arb_mat_cho(L, A, prec);
-
-    /*
-    printf("debug:\n");
-    arb_mat_printd(A, 4);
-    */
 
     arb_mat_clear(A);
     arb_mat_clear(L);
 
     return ret;
 }
+*/
 
 static void
 so_get_newton_delta(arb_struct * newton_delta, so_t so, slong prec)
@@ -505,7 +503,6 @@ evaluate_site_derivatives(arb_t derivative,
     int start, stop;
     arb_mat_struct * nmat;
     arb_mat_struct * nmatb;
-    arb_mat_struct * nmatbi;
     arb_mat_struct * tmat;
     arb_mat_struct * emat;
     arb_mat_struct * emati;
@@ -544,15 +541,9 @@ evaluate_site_derivatives(arb_t derivative,
             {
                 b = g->indices[idx];
                 tmat = w->transition_matrices + idx;
-
                 nmatb = plane->node_vectors + b;
-                /* nmatbi = indirect->node_pvectors[b]; */
-
                 emat = plane->edge_vectors + idx;
-
                 arb_mat_mul(emat, tmat, nmatb, w->prec);
-                /* arb_mat_mul(emat, tmat, nmatbi, w->prec); */
-
                 _arb_mat_mul_entrywise(nmat, nmat, emat, w->prec);
                 if (update_indirect)
                 {
@@ -599,6 +590,7 @@ _recompute_second_order(so_t so,
     int *idx_to_a = NULL;
     int *b_to_idx = NULL;
     int *site_selection_count = NULL;
+    int *pre_to_idx = NULL;
 
     arb_t x;
     arb_t lhood;
@@ -631,8 +623,10 @@ _recompute_second_order(so_t so,
 
     /* Get maps for navigating towards the root of the tree. */
     idx_to_a = malloc(edge_count * sizeof(int));
+    pre_to_idx = malloc(edge_count * sizeof(int));
     b_to_idx = malloc(node_count * sizeof(int));
     _csr_graph_get_backward_maps(idx_to_a, b_to_idx, m->g);
+    _csr_graph_get_preorder_edges(pre_to_idx, m->g, m->preorder);
 
     /* define site aggregation weights */
     result = get_site_agg_weights(
@@ -641,6 +635,8 @@ _recompute_second_order(so_t so,
 
     likelihood_ws_init(w, m, edge_rates, prec);
     _arb_vec_set(so->x, w->edge_rates, edge_count);
+
+    /* define an edge preorder */
 
     for (site = 0; site < site_count; site++)
     {
@@ -715,6 +711,9 @@ _recompute_second_order(so_t so,
         for (i = 0; i < w->edge_count; i++)
         {
             int update_indirect;
+            int idx_i;
+
+            idx_i = pre_to_idx[i];
 
             /* Point to site likelihood vectors. */
             for (a = 0; a < w->node_count; a++)
@@ -729,16 +728,18 @@ _recompute_second_order(so_t so,
             }
 
             update_indirect = 1;
-            evaluate_site_derivatives(lhood_gradient + i,
+            evaluate_site_derivatives(lhood_gradient + idx_i,
                     m->g, m->preorder, w, idx_to_a, b_to_idx,
-                    i, w->deriv_plane, update_indirect);
+                    idx_i, w->deriv_plane, update_indirect);
             for (j = 0; j <= i; j++)
             {
+                int idx_j;
+                idx_j = pre_to_idx[j];
                 update_indirect = 0;
                 evaluate_site_derivatives(
-                        arb_mat_entry(lhood_hessian, i, j),
+                        arb_mat_entry(lhood_hessian, idx_i, idx_j),
                         m->g, m->preorder, w, idx_to_a, b_to_idx,
-                        j, w->hess_plane, update_indirect);
+                        idx_j, w->hess_plane, update_indirect);
             }
         }
 
@@ -765,15 +766,22 @@ _recompute_second_order(so_t so,
             arb_init(tmp);
             for (i = 0; i < edge_count; i++)
             {
+                int idx_i;
+                idx_i = pre_to_idx[i];
+
                 for (j = 0; j <= i; j++)
                 {
+                    int idx_j;
                     arb_ptr ll_hess_entry;
-                    ll_hess_entry = arb_mat_entry(ll_hessian, i, j);
+
+                    idx_j = pre_to_idx[j];
+
+                    ll_hess_entry = arb_mat_entry(ll_hessian, idx_i, idx_j);
 
                     arb_ptr lhood_hess_entry;
-                    lhood_hess_entry = arb_mat_entry(lhood_hessian, i, j);
+                    lhood_hess_entry = arb_mat_entry(lhood_hessian, idx_i, idx_j);
 
-                    arb_mul(tmp, lhood_gradient+i, lhood_gradient+j, prec);
+                    arb_mul(tmp, lhood_gradient+idx_i, lhood_gradient+idx_j, prec);
                     arb_div(tmp, tmp, lhood, prec);
                     arb_sub(ll_hess_entry, lhood_hess_entry, tmp, prec);
 
@@ -817,6 +825,20 @@ _recompute_second_order(so_t so,
         arb_mat_add(so->ll_hessian, so->ll_hessian, ll_hessian, prec);
     }
 
+    /* complete the hessian according to symmetry */
+    for (i = 0; i < edge_count; i++)
+    {
+        int idx_i;
+        idx_i = pre_to_idx[i];
+        for (j = 0; j < i; j++)
+        {
+            int idx_j;
+            idx_j = pre_to_idx[j];
+            arb_set(arb_mat_entry(so->ll_hessian, idx_j, idx_i),
+                    arb_mat_entry(so->ll_hessian, idx_i, idx_j));
+        }
+    }
+
 finish:
 
     likelihood_ws_clear(w);
@@ -832,6 +854,7 @@ finish:
 
     free(idx_to_a);
     free(b_to_idx);
+    free(pre_to_idx);
     free(site_selection_count);
 
     return result;
@@ -847,6 +870,7 @@ _compute_second_order(so_t so,
 {
     return _recompute_second_order(so, m, r_site, NULL, prec);
 }
+
 
 
 
@@ -872,6 +896,205 @@ _objective_param_clear(_objective_param_struct *s)
     s->m = NULL;
     s->r_site = NULL;
 }
+
+
+/*
+ * For finite differences calculation of gradient and hessian.
+ * This follows the 'multivariate_function_t' interface in 
+ * the finite_differences module.
+ */
+void _compute_ll(arb_t ll,
+        const arb_struct *edge_rates, void *param,
+        slong n, slong prec)
+{
+    slong i;
+    likelihood_ws_t w;
+    int idx, site, state, a;
+    int site_count, edge_count;
+    int *site_selection_count;
+    int result = 0;
+    _objective_param_struct *p;
+
+    arb_t x;
+    arb_t site_lhood;
+    arb_t site_ll;
+
+    p = param;
+    site_count = pmat_nsites(p->m->p);
+    site_selection_count = NULL;
+
+    edge_count = p->m->g->nnz;
+    if (edge_count != n)
+    {
+        flint_printf("internal error: edge count inconsistency\n");
+        abort();
+    }
+
+    arb_init(x);
+    arb_init(site_lhood);
+    arb_init(site_ll);
+
+    arb_struct * site_weights;
+    arb_t site_weight_divisor;
+
+    /* initialize output log likelihood to zero for accumulation */
+    arb_zero(ll);
+
+    arb_init(site_weight_divisor);
+    site_weights = _arb_vec_init(site_count);
+
+    /* Indicate which site indices are included in the selection. */
+    site_selection_count = calloc(site_count, sizeof(int));
+    for (i = 0; i < p->r_site->selection_len; i++)
+    {
+        site = p->r_site->selection[i];
+        site_selection_count[site]++;
+    }
+
+    /* define site aggregation weights */
+    result = get_site_agg_weights(
+            site_weight_divisor, site_weights, site_count, p->r_site, prec);
+    if (result) goto finish;
+
+    likelihood_ws_init(w, p->m, edge_rates, prec);
+
+    for (site = 0; site < site_count; site++)
+    {
+        /* skip sites that are not selected */
+        if (!site_selection_count[site])
+        {
+            continue;
+        }
+
+        /*
+         * Initialize base plane nodes for this site
+         * according to prior state distributions and data.
+         * Edges remain unused.
+         */
+        for (a = 0; a < w->node_count; a++)
+        {
+            arb_mat_struct * mat;
+            mat = w->base_plane->node_vectors + a;
+            for (state = 0; state < w->state_count; state++)
+            {
+                arb_set_d(
+                        arb_mat_entry(mat, state, 0),
+                        *pmat_entry(p->m->p, site, a, state));
+            }
+        }
+
+        /* Reset pointers in the virtual plane. */
+        for (a = 0; a < w->node_count; a++)
+        {
+            w->indirect_plane->node_pvectors[a] = NULL;
+        }
+        for (idx = 0; idx < w->edge_count; idx++)
+        {
+            w->indirect_plane->edge_pvectors[idx] = NULL;
+        }
+
+        evaluate_site_lhood(site_lhood,
+                w->lhood_plane->node_vectors,
+                w->lhood_plane->edge_vectors,
+                w->base_plane->node_vectors,
+                w->transition_matrices,
+                p->m->g, p->m->preorder, w->node_count, w->prec);
+
+        /*
+         * If any site likelihood is exactly zero
+         * then we do not need to continue.
+         */
+        if (arb_is_zero(site_lhood))
+        {
+            fprintf(stderr, "error: infeasible\n");
+            result = -1;
+            goto finish;
+        }
+
+        /*
+         * If the site likelihood interval includes zero
+         * then this could be handled at this point,
+         * for example by immediately requesting higher precision.
+         */
+        if (arb_contains_zero(site_lhood))
+        {
+            arb_indeterminate(ll);
+            goto finish;
+        }
+
+        arb_log(site_ll, site_lhood, prec);
+        arb_addmul(ll, site_ll, site_weights + site, prec);
+    }
+
+    arb_div(ll, ll, site_weight_divisor, prec);
+
+finish:
+
+    likelihood_ws_clear(w);
+
+    arb_clear(site_weight_divisor);
+    _arb_vec_clear(site_weights, site_count);
+
+    arb_clear(x);
+    arb_clear(site_lhood);
+    arb_clear(site_ll);
+
+    free(site_selection_count);
+}
+
+
+static int
+_compute_second_order_finite_differences(so_t so,
+        model_and_data_t m, column_reduction_t r_site, slong prec)
+{
+    _objective_param_struct p[1];
+    arb_t delta;
+    slong edge_count;
+    arb_struct *edge_rates;
+    gradient_param_t g;
+
+    edge_count = m->g->nnz;
+    edge_rates = _arb_vec_init(edge_count);
+
+    /* Extract initial edge rates. */
+    {
+        slong i;
+        slong idx;
+        double tmpd;
+        for (i = 0; i < edge_count; i++)
+        {
+            idx = m->edge_map->order[i];
+            flint_printf("debug: i=%wd idx=%wd\n", i, idx);
+            tmpd = m->edge_rate_coefficients[i];
+            arb_set_d(edge_rates + idx, tmpd);
+        }
+    }
+
+    arb_init(delta);
+    _arb_set_si_2exp_si(delta, 1, -(2 + (prec >> 2)));
+
+    /* parameters for log likelihood calculation */
+    _objective_param_init(p, m, r_site);
+
+    /* parameters for gradient calculation */
+    gradient_param_init(g, _compute_ll, p, delta);
+
+    finite_differences_gradient(
+            so->ll_gradient, edge_rates,
+            g, edge_count, edge_count, prec);
+
+    finite_differences_hessian(
+            so->ll_hessian, _compute_ll, p,
+            edge_rates, edge_count, delta, prec);
+
+    arb_clear(delta);
+    _objective_param_clear(p);
+    _arb_vec_clear(edge_rates, edge_count);
+    gradient_param_clear(g);
+
+    return 0;
+}
+
 
 /*
  * This is the function whose zeros (roots) are of interest.
@@ -1036,7 +1259,9 @@ hess_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
     int success = 0;
     for (prec=4; !success; prec <<= 1)
     {
-        result = _compute_second_order(so, m, r_site, prec);
+        result = _compute_second_order(
+        /* result = _compute_second_order_finite_differences( */
+                so, m, r_site, prec);
         if (result) goto finish;
 
         success = _arb_mat_can_round(so->ll_hessian);
@@ -1268,8 +1493,8 @@ opt_cert_query(
                 _objective_param_struct s[1];
                 _objective_param_init(s, m, r_site);
 
-                refinement_result = _arb_vec_calc_refine_root_krawczyk(
-                /* refinement_result = _arb_vec_calc_refine_root_newton( */
+                /* refinement_result = _arb_vec_calc_refine_root_krawczyk( */
+                refinement_result = _arb_vec_calc_refine_root_newton(
                         wide_x_out, _objective, s, wide_x,
                         edge_count, 0, prec);
 

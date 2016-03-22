@@ -14,6 +14,8 @@ extern "C" {
 #endif
 
 int _arb_is_indeterminate(const arb_t x);
+void _arb_set_si_2exp_si(arb_t x, slong man, slong exp);
+void _arb_init_set(arb_t dest, const arb_t src);
 
 void _arb_vec_printd(arb_srcptr vec, slong len, slong digits);
 
@@ -30,6 +32,8 @@ void _arb_mat_div_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 void _arb_mat_ones(arb_mat_t A);
 void _prune_update(arb_mat_t d, arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 void _csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g);
+void _csr_graph_get_preorder_edges(
+        int *pre_to_idx, const csr_graph_t g, const int *preorder_nodes);
 void _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec);
 
 void _arb_vec_mul_arb_mat(

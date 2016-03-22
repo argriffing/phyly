@@ -21,6 +21,20 @@ _arb_is_indeterminate(const arb_t x)
 }
 
 void
+_arb_set_si_2exp_si(arb_t x, slong man, slong exp)
+{
+    arf_set_si_2exp_si(arb_midref(x), man, exp);
+    mag_zero(arb_radref(x));
+}
+
+void
+_arb_init_set(arb_t dest, const arb_t src)
+{
+    arb_init(dest);
+    arb_set(dest, src);
+}
+
+void
 _arb_mat_ones(arb_mat_t A)
 {
     slong i, j;
@@ -224,6 +238,25 @@ _csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g)
             b = g->indices[idx];
             idx_to_a[idx] = a;
             b_to_idx[b] = idx;
+        }
+    }
+}
+
+void
+_csr_graph_get_preorder_edges(
+        int *pre_to_idx, const csr_graph_t g, const int *preorder_nodes)
+{
+    int i, idx;
+    int u, a, b;
+    int node_count;
+    node_count = g->n;
+    i = 0;
+    for (u = 0; u < node_count; u++)
+    {
+        a = preorder_nodes[u];
+        for (idx = g->indptr[a]; idx < g->indptr[a+1]; idx++)
+        {
+            pre_to_idx[i++] = idx;
         }
     }
 }
