@@ -222,12 +222,10 @@ so_get_newton_delta(arb_struct * newton_delta, so_t so, slong prec)
     {
         _arb_mat_indeterminate(u);
     }
-    else
+
+    for (i = 0; i < n; i++)
     {
-        for (i = 0; i < n; i++)
-        {
-            arb_neg(newton_delta + i, arb_mat_entry(u, i, 0));
-        }
+        arb_neg(newton_delta + i, arb_mat_entry(u, i, 0));
     }
 
     arb_mat_clear(grad);
