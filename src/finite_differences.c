@@ -27,13 +27,16 @@ void gradient_param_clear(gradient_param_t g)
 /* This follows the 'multivariate_vector_function_t' interface. */
 void finite_differences_gradient(
         arb_struct *gradient, const arb_struct *x,
-        gradient_param_t p,
+        void *param,
         slong n, slong k, slong prec)
 {
     slong i;
     arb_t y;
     arb_t yprime;
     arb_struct *xprime;
+    gradient_param_struct *p;
+
+    p = param;
 
     if (n != k)
     {

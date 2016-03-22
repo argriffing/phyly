@@ -162,19 +162,16 @@ so_indeterminate(so_t so)
     _arb_mat_indeterminate(so->ll_hessian);
 }
 
-static void
+static int
 so_get_inv_hess(arb_mat_t A, so_t so, slong prec)
 {
     int invertible;
-
-    /* set A to the full hessian, not just the lower triangular part */
-    _expand_lower_triangular(A, so->ll_hessian);
-
-    invertible = arb_mat_inv(A, A, prec);
+    invertible = arb_mat_inv(A, so->ll_hessian, prec);
     if (!invertible)
     {
         _arb_mat_indeterminate(A);
     }
+    return invertible;
 }
 
 /*
@@ -208,12 +205,9 @@ so_get_newton_delta(arb_struct * newton_delta, so_t so, slong prec)
     int i, n;
     arb_mat_t grad;
     arb_mat_t u;
-    n = so->edge_count;
+    int invertible;
 
-    /*
-    printf("debug:\n");
-    arb_mat_printd(so->ll_hessian, 4);
-    */
+    n = so->edge_count;
 
     /* newton_delta = -u = -inv(hess)*grad */
     arb_mat_init(u, n, 1);
@@ -223,24 +217,17 @@ so_get_newton_delta(arb_struct * newton_delta, so_t so, slong prec)
         arb_set(arb_mat_entry(grad, i, 0), so->ll_gradient + i);
     }
 
-    /* set A to the full hessian, not just the lower triangular part */
+    invertible = arb_mat_solve(u, so->ll_hessian, grad, prec);
+    if (!invertible)
     {
-        int invertible;
-        arb_mat_t A;
-        arb_mat_init(A, n, n);
-        _expand_lower_triangular(A, so->ll_hessian);
-
-        invertible = arb_mat_solve(u, A, grad, prec);
-        if (!invertible)
-        {
-            _arb_mat_indeterminate(u);
-        }
-        arb_mat_clear(A);
+        _arb_mat_indeterminate(u);
     }
-
-    for (i = 0; i < n; i++)
+    else
     {
-        arb_neg(newton_delta + i, arb_mat_entry(u, i, 0));
+        for (i = 0; i < n; i++)
+        {
+            arb_neg(newton_delta + i, arb_mat_entry(u, i, 0));
+        }
     }
 
     arb_mat_clear(grad);
@@ -1115,7 +1102,7 @@ _objective(arb_struct *vec_out, arb_mat_struct *jac_out,
     if (result) abort();
 
     _arb_vec_set(vec_out, so->ll_gradient, n);
-    _expand_lower_triangular(jac_out, so->ll_hessian);
+    arb_mat_set(jac_out, so->ll_hessian);
 
     so_clear(so);
 
@@ -1196,7 +1183,7 @@ inv_hess_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
         result = _compute_second_order(so, m, r_site, prec);
         if (result) goto finish;
 
-        so_get_inv_hess(inv_ll_hessian, so, prec);
+        result = so_get_inv_hess(inv_ll_hessian, so, prec);
 
         success = _arb_mat_can_round(inv_ll_hessian);
     }

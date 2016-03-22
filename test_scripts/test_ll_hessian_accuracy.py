@@ -97,9 +97,9 @@ def test_using_finite_differences():
     g0 = my_gradient(x0)
     h0 = my_hessian(x0)
 
-    print(y0)
-    print(g0)
-    print(h0)
+    #print(y0)
+    #print(g0)
+    #print(h0)
 
     # check the gradient using numerical differences of 1e-8
     numgrad = []
@@ -110,7 +110,7 @@ def test_using_finite_differences():
         y = my_objective(u)
         numgrad.append((y - y0) / delta)
 
-    # check the gradient using numerical differences of 1e-8
+    # check the hessian using numerical differences of 1e-8
     numhess = []
     for i in range(len(x0)):
         u = x0[:]
@@ -119,12 +119,7 @@ def test_using_finite_differences():
         r = (np.array(g) - np.array(g0)) / delta
         numhess.append(r.tolist())
 
-    # Require that the finite differences gradient
-    # is in the ballpark of the internally computed gradient.
+    # Require that the finite differences gradient and hessian
+    # are in the ballpark of the internally computed analogues.
     assert_allclose(numgrad, g0, rtol=1e-3)
-
-    print(np.array(numhess))
-
-    print(np.array(numhess) - h0)
-
-    assert 0
+    assert_allclose(numhess, h0, rtol=1e-3)

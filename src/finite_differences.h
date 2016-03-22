@@ -35,7 +35,7 @@ void gradient_param_clear(gradient_param_t g);
 
 void finite_differences_gradient(
         arb_struct *gradient,
-        const arb_struct *x, gradient_param_t p,
+        const arb_struct *x, void *param,
         slong n, slong k, slong prec);
 
 void finite_differences_jacobian(arb_mat_t J,
