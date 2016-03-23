@@ -571,3 +571,185 @@ _arb_vec_calc_refine_root_krawczyk(
 
     return result;
 }
+
+/*
+ * Repeat midpoint Newton iterations (not interval Newton iterations)
+ * until some condition relating consecutive iterations is met.
+ * The initial guess is assumed to be close enough to the true answer
+ * so that the number of correct digits roughly doubles at each iteration.
+ * This function does not provide any guarantee that it finds a value
+ * near the root. Instead, it is intended to be used to guess a somewhat
+ * narrow multivariate interval that is likely to contain the root,
+ * and a different function will then be used to find a suitably
+ * narrow interval that is guaranteed to contain the root, starting
+ * from that initial guess.
+ *
+ * The follow-up function could use an initial interval derived from
+ * the output of this function, and then try increasing precision levels.
+ * For each precision level, interval Newton iterations could be performed
+ * until the interval is constant between consecutive iterations.
+ */
+int _arb_vec_calc_refine_root_newton_midpoint(
+        arb_struct *x_out,
+        arb_vec_calc_func_t func, void *param,
+        const arb_struct *x_start,
+        slong n, slong prec)
+{
+    slong i, iter, itmax;
+    slong target_rtol;
+    arb_struct *x, *xnew, *diff, *tmp;
+    mag_struct *diff_mags;
+    mag_t xmag;
+    mag_t xnewmag;
+    int result = 1;
+
+    itmax = 20;
+    target_rtol = 53;
+
+    mag_init(xmag);
+    mag_init(xnewmag);
+
+    x = _arb_vec_init(n);
+    xnew = _arb_vec_init(n);
+    diff = _arb_vec_init(n);
+
+    diff_mags = flint_malloc(itmax * sizeof(mag_struct));
+    for (i = 0; i < itmax; i++)
+        mag_init(diff_mags + i);
+
+    _arb_vec_mid(x, x_start, n);
+
+    /*
+     * Repeat iterations until the target relative tolerance
+     * appears to be met, that is, until the relative difference between
+     * successive solutions is less than target_rtol.
+     * The magnitude of differences from one iteration to the next
+     * should decrease in a predictable way, and if the observed
+     * pattern of difference magnitudes differs from the predicted
+     * pattern, then the iteration loop will be cancelled
+     * and an error will be reported.
+     * The error may be due to an insufficient working precision
+     * or it may be due to an initial guess that is too far
+     * from the true root.
+     */
+    for (iter = 0; iter < itmax; iter++)
+    {
+        int step_result;
+
+        if (arb_calc_verbose)
+            flint_printf("debug: preliminary iter %wd\n", iter);
+
+        step_result = _arb_vec_calc_newton_step(xnew, func, param, x, n, prec);
+        if (!step_result)
+        {
+            if (arb_calc_verbose)
+                flint_printf("debug: newton step failed%wd\n", iter);
+            _arb_vec_indeterminate(x_out, n);
+            result = 0;
+            goto finish;
+        }
+
+        if (arb_calc_verbose)
+        {
+            _arb_vec_printd(x, n, 15);
+            _arb_vec_printd(xnew, n, 15);
+        }
+
+        /*
+         * If this value is for example 1e-5 then this corresponds
+         * to five digits of the solution shared between consecutive solutions.
+         * The number of digits shared between consecutive solutions
+         * should roughly double at each iteration near the true solution.
+         */
+        _arb_vec_sub(diff, xnew, x, n, prec);
+        _arb_vec_get_mag(diff_mags + iter, diff, n);
+        _arb_vec_get_mag(xnewmag, xnew, n);
+        mag_div(diff_mags + iter, diff_mags + iter, xnewmag);
+
+        if (iter > 0)
+        {
+            int cmp_result;
+            mag_struct *mprev, *mcurr;
+            mprev = diff_mags + iter - 1;
+            mcurr = diff_mags + iter;
+            /*
+             * In the asymptotic regime, mprev and mcurr should be
+             * much smaller than 1, and mcurr should not be much greater than
+             * the square of mprev.
+             * Maybe require that mcurr^2 is less than mprev^3.
+             */
+            {
+                mag_t mcurr2, mprev3;
+                mag_init(mcurr2);
+                mag_init(mprev3);
+                mag_pow_ui(mcurr2, mcurr, 2);
+                mag_pow_ui(mprev3, mprev, 3);
+                cmp_result = mag_cmp(mcurr2, mprev3);
+                mag_clear(mcurr2);
+                mag_clear(mprev3);
+            }
+            if (cmp_result > 0)
+            {
+                if (arb_calc_verbose)
+                    flint_printf("debug: preliminary newton iteration fail\n");
+                _arb_vec_indeterminate(x_out, n);
+                result = 0;
+                goto finish;
+            }
+        }
+
+        /*
+         * Check if all entries share the first target number of bits.
+         */
+        {
+            int cmp_result;
+            {
+                mag_t magrt;
+                arb_struct *rt;
+
+                mag_init(magrt);
+                rt = _arb_vec_init(n);
+
+                _arb_vec_div(rt, diff, x, n, prec);
+                _arb_vec_get_mag(magrt, rt, n);
+                cmp_result = mag_cmp_2exp_si(magrt, -target_rtol);
+
+                mag_clear(magrt);
+                _arb_vec_clear(rt, n);
+            }
+
+            if (cmp_result < 0)
+            {
+                if (arb_calc_verbose)
+                    flint_printf("debug: preliminary newton iteration success\n");
+                _arb_vec_set(x_out, xnew, n);
+                result = 1;
+                goto finish;
+            }
+        }
+
+        /* swap x and xnew */
+        tmp = x; x = xnew; xnew = tmp;
+    }
+
+    if (arb_calc_verbose)
+        flint_printf("debug: too many preliminary newton iterations\n");
+    _arb_vec_indeterminate(x_out, n);
+    result = 0;
+    goto finish;
+
+finish:
+
+    _arb_vec_clear(x, n);
+    _arb_vec_clear(xnew, n);
+    _arb_vec_clear(diff, n);
+
+    for (i = 0; i < itmax; i++)
+        mag_clear(diff_mags + i);
+    flint_free(diff_mags);
+
+    mag_clear(xmag);
+    mag_clear(xnewmag);
+
+    return result;
+}

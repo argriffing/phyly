@@ -7,9 +7,8 @@
 # https://www.gnu.org/software/autoconf-archive/ax_valgrind_check.html
 
 bin_PROGRAMS = arbplf-ll arbplf-marginal arbplf-dwell arbplf-trans \
-	       arbplf-deriv arbplf-hess arbplf-inv-hess \
-	       arbplf-coeff-expect arbplf-newton-point arbplf-newton-delta \
-	       arbplf-opt-cert
+	       arbplf-deriv arbplf-hess arbplf-inv-hess arbplf-coeff-expect \
+               arbplf-newton-point arbplf-newton-delta arbplf-newton-refine
 
 check_PROGRAMS = t-dummy_test t-newton
 
@@ -59,4 +58,4 @@ arbplf_hess_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h
 arbplf_inv_hess_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-inv-hess.c
 arbplf_newton_point_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-newton-point.c
 arbplf_newton_delta_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-newton-delta.c
-arbplf_opt_cert_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-opt-cert.c
+arbplf_newton_refine_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfhess.c arbplfhess.h arbplf-newton-refine.c

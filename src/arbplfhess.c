@@ -1407,139 +1407,186 @@ opt_cert_query(
 {
     json_t * j_out = NULL;
     int result = 0;
+    int nozero;
     int success;
     slong prec;
     int i, edge_count;
-    mag_t rtmp;
-    slong log2_rtol;
-    arb_struct *wide_x, *wide_x_out;
+    slong precmax;
+    arb_struct *x, *x_initial, *x_preliminary, *x_out;
 
-    arb_calc_verbose = 1;
+    /* arb_calc_verbose = 1; */
 
-    mag_init(rtmp);
     edge_count = m->g->nnz;
-    wide_x = _arb_vec_init(edge_count);
-    wide_x_out = _arb_vec_init(edge_count);
+
+    x = _arb_vec_init(edge_count);
+    x_initial = _arb_vec_init(edge_count);
+    x_preliminary = _arb_vec_init(edge_count);
+    x_out = _arb_vec_init(edge_count);
+
+    /* Extract initial edge rates to x_initial. */
+    {
+        slong edge_count;
+        slong idx;
+        double tmpd;
+        edge_count = m->g->nnz;
+        for (i = 0; i < edge_count; i++)
+        {
+            idx = m->edge_map->order[i];
+            tmpd = m->edge_rate_coefficients[i];
+            arb_set_d(x_initial + idx, tmpd);
+        }
+    }
 
     /*
-     * Initially assume that the user has provided a good guess.
-     * If there is provably no local optimum near the guess,
-     * gradually widen the search to allow rate coefficients further from the
-     * values provided by the user.
+     * Use newton iteration without caring about the interval.
+     * Increase precision, looking for a preliminary solution as x_preliminary.
      */
     success = 0;
-    for (log2_rtol = -6; !success; log2_rtol += 2)
+    precmax = 10000;
+    for (prec = 64; prec < precmax; prec <<= 1)
     {
-        int nozero;
+        if (arb_calc_verbose)
+            flint_printf("debug: preliminary newton iter prec=%wd\n", prec);
+        _objective_param_struct s[1];
+        _objective_param_init(s, m, r_site);
+
+        success = _arb_vec_calc_refine_root_newton_midpoint(
+                x_preliminary, _objective, s, x_initial, edge_count, prec);
+
+        _objective_param_clear(s);
+
+        if (success)
+            break;
+    }
+    if (!success)
+    {
+        flint_printf("error: failed to find a plausible starting point\n");
+        abort();
+    }
+
+    if (arb_calc_verbose)
+    {
+        flint_printf("debug: preliminary solution:\n");
+        _arb_vec_printd(x_preliminary, edge_count, 15);
+    }
+
+    /*
+     * Keep increasing precision until we rule out the possibility
+     * of an optimum near the guess provided by the user,
+     * or until we find a certified optimum.
+     * If the input values are garbage,
+     * this loop will keep trying increasing precision without bounds.
+     * A more sophisticated search would try subdivision or
+     * various branch-and-bound methods, but this is approaching
+     * global optimization rather than certification of a local optimum.
+     */
+    success = 0;
+    nozero = 0;
+    for (prec = prec; prec < precmax && !success && !nozero; prec <<= 1)
+    {
+        int refinement_result;
+        slong log2_rtol;
+
+        log2_rtol = -53;
+
+        if (arb_calc_verbose)
+            flint_fprintf(stderr, "debug: interval newton prec=%wd\n", prec);
+
+        _arb_vec_set(x, x_preliminary, edge_count);
+
         /*
-         * Keep increasing precision until we rule out the possibility
-         * of an optimum near the guess provided by the user,
-         * or until we find a certified optimum.
-         * If the input values are garbage,
-         * this loop will keep trying increasing precision without bounds.
-         * A more sophisticated search would try subdivision or
-         * various branch-and-bound methods, but this is approaching
-         * global optimization rather than certification of a local optimum.
+         * Inflate the wide intervals by a fixed proportion
+         * of the rate coefficient, without regard for the level of precision.
          */
-        flint_fprintf(stderr, "debug: log2_rtol=%wd\n", log2_rtol);
-        nozero = 0;
-        for (prec = 4; !success && !nozero; prec <<= 1)
+        for (i = 0; i < edge_count; i++)
         {
-            int refinement_result;
+            mag_t rtmp;
 
-            flint_fprintf(stderr, "debug: prec=%wd\n", prec);
+            mag_init(rtmp);
+            arb_get_mag(rtmp, x + i);
+            mag_mul_2exp_si(rtmp, rtmp, log2_rtol);
+            mag_add(arb_radref(x + i), arb_radref(x + i), rtmp);
 
-            /* Extract initial edge rates. */
-            {
-                slong edge_count;
-                slong idx;
-                double tmpd;
-                edge_count = m->g->nnz;
-                for (i = 0; i < edge_count; i++)
-                {
-                    idx = m->edge_map->order[i];
-                    tmpd = m->edge_rate_coefficients[i];
-                    arb_set_d(wide_x + idx, tmpd);
-                }
-            }
+            mag_clear(rtmp);
+        }
 
-            /*
-             * Inflate the wide intervals by a fixed proportion
-             * of the rate coefficient, without regard for the level of precision.
-             */
-            for (i = 0; i < edge_count; i++)
-            {
-                arb_get_mag(rtmp, wide_x + i);
-                mag_mul_2exp_si(rtmp, rtmp, log2_rtol);
-                mag_add(arb_radref(wide_x + i), arb_radref(wide_x + i), rtmp);
-            }
+        if (arb_calc_verbose)
+            _arb_vec_printd(x, edge_count, 15);
 
-            {
-                _objective_param_struct s[1];
-                _objective_param_init(s, m, r_site);
+        {
+            _objective_param_struct s[1];
+            _objective_param_init(s, m, r_site);
 
-                /* refinement_result = _arb_vec_calc_refine_root_krawczyk( */
-                refinement_result = _arb_vec_calc_refine_root_newton(
-                        wide_x_out, _objective, s, wide_x,
-                        edge_count, 0, prec);
+            /* refinement_result = _arb_vec_calc_refine_root_krawczyk( */
+            refinement_result = _arb_vec_calc_refine_root_newton(
+                    x_out, _objective, s, x,
+                    edge_count, 0, prec);
 
-                _objective_param_clear(s);
-            }
+            _objective_param_clear(s);
+        }
 
-            flint_printf("debug: refinement_result=%d\n",
-                    refinement_result);
+        if (arb_calc_verbose)
+            flint_printf("debug: refinement_result=%d\n", refinement_result);
 
-            if (refinement_result == -1)
-            {
+        if (refinement_result == -1)
+        {
+            if (arb_calc_verbose)
                 flint_printf("debug: root is excluded\n");
-                nozero = 1;
-            }
-            else if (refinement_result == 0)
-            {
+            nozero = 1;
+        }
+        else if (refinement_result == 0)
+        {
+            if (arb_calc_verbose)
                 flint_printf("debug: newton refinement does not "
                              "contract the interval\n");
-            }
-            else
-            {
-                success = 1;
-            }
-
-            /*
-            if (so_hessian_is_negative_definite(so_wide, prec))
-            {
-                success = 1;
-                break;
-            }
-            else
-            {
-                fprintf(stderr, "opt cert fail: log likelihood shape\n");
-                result = -1;
-                goto finish;
-            }
-            */
         }
+        else
+        {
+            success = 1;
+        }
+
+        /*
+        if (so_hessian_is_negative_definite(so_wide, prec))
+        {
+            success = 1;
+            break;
+        }
+        else
+        {
+            fprintf(stderr, "opt cert fail: log likelihood shape\n");
+            result = -1;
+            goto finish;
+        }
+        */
+    }
+    if (prec >= precmax)
+    {
+        flint_printf("error: newton interval method failed\n");
+        abort();
     }
 
     /* build the json output */
     {
         double d;
         int idx;
-        json_t *j_data, *x;
+        json_t *j_data, *j_x;
         j_data = json_array();
         for (i = 0; i < edge_count; i++)
         {
             idx = m->edge_map->order[i];
-            d = arf_get_d(arb_midref(wide_x_out + idx), ARF_RND_NEAR);
-            x = json_pack("[i, f]", i, d);
-            json_array_append_new(j_data, x);
+            d = arf_get_d(arb_midref(x_out + idx), ARF_RND_NEAR);
+            j_x = json_pack("[i, f]", i, d);
+            json_array_append_new(j_data, j_x);
         }
         j_out = json_pack("{s:[s, s], s:o}",
                 "columns", "edge", "value",
                 "data", j_data);
     }
 
-    _arb_vec_clear(wide_x, edge_count);
-    _arb_vec_clear(wide_x_out, edge_count);
+    _arb_vec_clear(x, edge_count);
+    _arb_vec_clear(x_out, edge_count);
+    _arb_vec_clear(x_initial, edge_count);
+    _arb_vec_clear(x_preliminary, edge_count);
 
     *result_out = result;
     return j_out;

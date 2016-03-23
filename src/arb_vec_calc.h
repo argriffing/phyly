@@ -55,6 +55,12 @@ int _arb_vec_calc_refine_root_krawczyk(
         const arb_struct *start, slong n,
         slong eval_extra_prec, slong prec);
 
+int _arb_vec_calc_refine_root_newton_midpoint(
+        arb_struct *x_out,
+        arb_vec_calc_func_t func, void *param,
+        const arb_struct *x_start,
+        slong n, slong prec);
+
 #ifdef __cplusplus
 }
 #endif

@@ -4,6 +4,24 @@
 
 #include "arb_vec_extras.h"
 
+void
+_arb_vec_div(arb_struct *c,
+        const arb_struct *a, const arb_struct *b, slong n, slong prec)
+{
+    slong i;
+    for (i = 0; i < n; i++)
+        arb_div(c + i, a + i, b + i, prec);
+}
+
+void
+_arb_vec_mid(arb_struct *y, const arb_struct *x, slong n)
+{
+    slong i;
+    _arb_vec_set(y, x, n);
+    for (i = 0; i < n; i++)
+        mag_zero(arb_radref(y + i));
+}
+
 int
 _arb_vec_intersection(arb_struct *c,
         const arb_struct *a, const arb_struct *b, slong n, slong prec)
