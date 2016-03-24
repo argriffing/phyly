@@ -28,7 +28,7 @@ json_t * hess_query(
 json_t * inv_hess_query(
         model_and_data_t m, column_reduction_t r_site, int *result_out);
 
-json_t * opt_cert_query(
+json_t * newton_refine_query(
         model_and_data_t m, column_reduction_t r_site, int *result_out);
 
 

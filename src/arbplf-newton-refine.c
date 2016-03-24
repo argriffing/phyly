@@ -6,7 +6,7 @@ int main(void)
     int result;
     json_hom_t hom;
 
-    hom->userdata = opt_cert_query;
+    hom->userdata = newton_refine_query;
     hom->clear = NULL;
     hom->f = arbplf_second_order_run;
 

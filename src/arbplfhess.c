@@ -174,7 +174,6 @@ so_get_inv_hess(arb_mat_t A, so_t so, slong prec)
     return invertible;
 }
 
-/*
 static int
 so_hessian_is_negative_definite(so_t so, slong prec)
 {
@@ -187,8 +186,7 @@ so_hessian_is_negative_definite(so_t so, slong prec)
     arb_mat_init(A, n, n);
     arb_mat_init(L, n, n);
 
-    _expand_lower_triangular(A, so->ll_hessian);
-    arb_mat_neg(A, A);
+    arb_mat_neg(A, so->ll_hessian);
 
     ret = arb_mat_cho(L, A, prec);
 
@@ -197,7 +195,6 @@ so_hessian_is_negative_definite(so_t so, slong prec)
 
     return ret;
 }
-*/
 
 static void
 so_get_newton_delta(arb_struct * newton_delta, so_t so, slong prec)
@@ -1402,7 +1399,7 @@ finish:
 }
 
 json_t *
-opt_cert_query(
+newton_refine_query(
         model_and_data_t m, column_reduction_t r_site, int *result_out)
 {
     json_t * j_out = NULL;
@@ -1553,7 +1550,7 @@ opt_cert_query(
         }
         else
         {
-            fprintf(stderr, "opt cert fail: log likelihood shape\n");
+            fprintf(stderr, "newton refinement fail: log likelihood shape\n");
             result = -1;
             goto finish;
         }
