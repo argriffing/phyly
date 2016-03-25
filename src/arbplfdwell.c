@@ -233,46 +233,6 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 
 
 static void
-_arb_mat_div_entrywise_marginal(
-        arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
-{
-    /*
-     * The justification for 0/0 = 0 in this function is that
-     * if the subtree likelihood conditional on a state is zero,
-     * then it is OK if that state has zero marginal probability
-     * at that node.
-     */
-    slong i, j, nr, nc;
-
-    nr = arb_mat_nrows(a);
-    nc = arb_mat_ncols(a);
-
-    for (i = 0; i < nr; i++)
-    {
-        for (j = 0; j < nc; j++)
-        {
-            if (arb_is_zero(arb_mat_entry(b, i, j)))
-            {
-                fprintf(stderr, "debug: 0/0 in marginal distribution\n");
-                if (!arb_is_zero(arb_mat_entry(a, i, j)))
-                {
-                    fprintf(stderr, "internal error: unexpected ratio\n");
-                    abort();
-                }
-                arb_zero(arb_mat_entry(c, i, j));
-            }
-            else
-            {
-                arb_div(arb_mat_entry(c, i, j),
-                        arb_mat_entry(a, i, j),
-                        arb_mat_entry(b, i, j), prec);
-            }
-        }
-    }
-}
-
-
-static void
 evaluate_marginal_distributions(
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,

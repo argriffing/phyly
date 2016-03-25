@@ -23,7 +23,31 @@ from numpy.testing import (
         assert_, assert_equal, assert_raises, assert_allclose, TestCase)
 
 from arbplf import arbplf_ll
+from arbplf import arbplf_dwell
 from arbplf import arbplf_marginal
+
+# remains constant across all tests in the module
+desired_marginal = {
+    "columns": ["site", "node", "state", "value"],
+    "data": [
+        [0, 0, 0, 1.0],
+        [0, 0, 1, 0.0],
+        [0, 1, 0, 1.0],
+        [0, 1, 1, 0.0],
+        [0, 2, 0, 1.0],
+        [0, 2, 1, 0.0]]
+    }
+
+# remains constant across all tests in the module
+desired_dwell = {
+    "columns": ["site", "edge", "state", "value"],
+    "data": [
+        [0, 0, 0, 1.0],
+        [0, 0, 1, 0.0],
+        [0, 1, 0, 1.0],
+        [0, 1, 1, 0.0]]
+    }
+
 
 def test_marginal_no_change():
     d = {
@@ -36,17 +60,10 @@ def test_marginal_no_change():
             }
 
     actual_marginal = json.loads(arbplf_marginal(json.dumps(d)))
-    desired_marginal = {
-        "columns": ["site", "node", "state", "value"],
-        "data": [
-            [0, 0, 0, 1.0],
-            [0, 0, 1, 0.0],
-            [0, 1, 0, 1.0],
-            [0, 1, 1, 0.0],
-            [0, 2, 0, 1.0],
-            [0, 2, 1, 0.0]]
-        }
     assert_equal(actual_marginal, desired_marginal)
+
+    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
+    assert_equal(actual_dwell, desired_dwell)
 
     actual_ll = json.loads(arbplf_ll(json.dumps(d)))
     desired_ll = {
@@ -68,17 +85,10 @@ def test_marginal_no_change_heterogeneous_edge_rates():
             }
 
     actual_marginal = json.loads(arbplf_marginal(json.dumps(d)))
-    desired_marginal = {
-        "columns": ["site", "node", "state", "value"],
-        "data": [
-            [0, 0, 0, 1.0],
-            [0, 0, 1, 0.0],
-            [0, 1, 0, 1.0],
-            [0, 1, 1, 0.0],
-            [0, 2, 0, 1.0],
-            [0, 2, 1, 0.0]]
-        }
     assert_equal(actual_marginal, desired_marginal)
+
+    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
+    assert_equal(actual_dwell, desired_dwell)
 
     actual_ll = json.loads(arbplf_ll(json.dumps(d)))
     desired_ll = {
@@ -101,17 +111,10 @@ def test_marginal_no_change_edges_are_not_preordered():
             }
 
     actual_marginal = json.loads(arbplf_marginal(json.dumps(d)))
-    desired_marginal = {
-        "columns": ["site", "node", "state", "value"],
-        "data": [
-            [0, 0, 0, 1.0],
-            [0, 0, 1, 0.0],
-            [0, 1, 0, 1.0],
-            [0, 1, 1, 0.0],
-            [0, 2, 0, 1.0],
-            [0, 2, 1, 0.0]]
-        }
     assert_equal(actual_marginal, desired_marginal)
+
+    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
+    assert_equal(actual_dwell, desired_dwell)
 
     actual_ll = json.loads(arbplf_ll(json.dumps(d)))
     desired_ll = {

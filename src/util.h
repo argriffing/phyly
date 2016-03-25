@@ -43,6 +43,8 @@ void _arb_mat_exp_frechet(arb_mat_t P, arb_mat_t F,
         const arb_mat_t Q, const arb_mat_t L, slong prec);
 
 void _expand_lower_triangular(arb_mat_t B, const arb_mat_t L);
+void _arb_mat_div_entrywise_marginal(
+        arb_mat_t c, const arb_mat_t a, const arb_mat_t b, slong prec);
 
 #ifdef __cplusplus
 }
