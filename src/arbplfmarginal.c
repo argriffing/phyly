@@ -228,19 +228,34 @@ _arb_mat_div_entrywise_marginal(
     nr = arb_mat_nrows(a);
     nc = arb_mat_ncols(a);
 
+    /*
+    fprintf(stderr, "debug: dividing\n");
+    arb_mat_printd(a, 15); flint_printf("\n");
+    arb_mat_printd(b, 15); flint_printf("\n");
+    */
+
     for (i = 0; i < nr; i++)
     {
         for (j = 0; j < nc; j++)
         {
             if (arb_is_zero(arb_mat_entry(b, i, j)))
             {
-                fprintf(stderr, "debug: 0/0 in marginal distribution\n");
-                if (!arb_is_zero(arb_mat_entry(a, i, j)))
+                if (arb_is_zero(arb_mat_entry(a, i, j)))
                 {
-                    fprintf(stderr, "internal error: unexpected ratio\n");
-                    abort();
+                    /*
+                    fprintf(stderr, "debug: 0/0 in marginal distribution\n");
+                    */
+                    arb_zero(arb_mat_entry(c, i, j));
                 }
-                arb_zero(arb_mat_entry(c, i, j));
+                else
+                {
+                    /*
+                    fprintf(stderr, "internal error: unexpected ratio\n");
+                    arb_mat_printd(a, 15); flint_printf("\n");
+                    arb_mat_printd(b, 15); flint_printf("\n");
+                    */
+                    arb_indeterminate(arb_mat_entry(c, i, j));
+                }
             }
             else
             {

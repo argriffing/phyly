@@ -5,7 +5,7 @@
 
 #include "util.h"
 
-#define FULL_RELATIVE_PRECISION 60
+#define FULL_RELATIVE_PRECISION 53
 
 int _can_round(arb_t x)
 {
