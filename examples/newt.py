@@ -28,23 +28,28 @@ def summarize(d):
 
 def main():
     d = json.loads(sys.stdin.read())
+
+    print('*** EM iterations ***')
     for i in range(4):
         #s = arbplf_newton_point(json.dumps(d))
         s = arbplf_coeff_expect(json.dumps(d))
         df = pd.read_json(StringIO(s), orient='split', precise_float=True)
         r = list(df.value)
         d['model_and_data']['edge_rate_coefficients'] = r
-    print(r)
+        print('EM summary:')
+        print(r)
+        summarize(d)
+        print()
 
-    summarize(d)
-
+    print('*** newton iterations ***')
     for i in range(6):
         s = arbplf_newton_point(json.dumps(d))
         df = pd.read_json(StringIO(s), orient='split', precise_float=True)
         r = list(df.value)
         d['model_and_data']['edge_rate_coefficients'] = r
-    print(r)
-
-    summarize(d)
+        print('newton summary:')
+        print(r)
+        summarize(d)
+        print()
 
 main()
