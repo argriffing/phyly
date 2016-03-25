@@ -247,7 +247,7 @@ _csr_graph_get_preorder_edges(
         int *pre_to_idx, const csr_graph_t g, const int *preorder_nodes)
 {
     int i, idx;
-    int u, a, b;
+    int u, a;
     int node_count;
     node_count = g->n;
     i = 0;

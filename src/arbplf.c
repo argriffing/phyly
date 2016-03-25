@@ -21,6 +21,7 @@ PyDoc_STRVAR(arbplf_hess__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_inv_hess__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_newton_point__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_newton_delta__doc__, "json in -> json out");
+PyDoc_STRVAR(arbplf_newton_refine__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_marginal__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_dwell__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_coeff_expect__doc__, "json in -> json out");
@@ -422,6 +423,50 @@ py_arbplf_newton_delta(PyObject *self, PyObject *args)
     return ret;
 }
 
+/* The wrapper to the underlying C function */
+static PyObject *
+py_arbplf_newton_refine(PyObject *self, PyObject *args)
+{
+    const char *s_in;
+    char *s_out;
+    PyObject *ret;
+    int retcode = 0;
+
+	if (!PyArg_ParseTuple(args, "s:arbplf_newton_refine", &s_in))
+		return NULL;
+	
+	/* Call the C function */
+    s_out = NULL;
+
+    /* define the json->json map */
+    json_hom_t j_hom;
+    j_hom->userdata = newton_refine_query;
+    j_hom->clear = NULL;
+    j_hom->f = arbplf_second_order_run;
+    {
+        /* define the string->string map */
+        string_hom_ptr s_hom = json_induced_string_hom(j_hom);
+        {
+            /* apply the string->string map */
+            s_out = s_hom->f(s_hom->userdata, s_in, &retcode);
+        }
+        free(s_hom);
+    }
+
+    if (retcode)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "arbplf likelihood error");
+        ret = NULL;
+    }
+    else
+    {
+        ret = Py_BuildValue("s", s_out);
+    }
+
+    free(s_out);
+    return ret;
+}
+
 /* A list of all the methods defined by this module. */
 /* "arbplf_ll" is the name seen inside of Python */
 /* "py_arbplf_ll" is the name of the C function handling the Python call */
@@ -434,6 +479,7 @@ static PyMethodDef arbplf_methods[] = {
 	{"arbplf_inv_hess",  py_arbplf_inv_hess, METH_VARARGS, arbplf_inv_hess__doc__},
 	{"arbplf_newton_point",  py_arbplf_newton_point, METH_VARARGS, arbplf_newton_point__doc__},
 	{"arbplf_newton_delta",  py_arbplf_newton_delta, METH_VARARGS, arbplf_newton_delta__doc__},
+	{"arbplf_newton_refine",  py_arbplf_newton_refine, METH_VARARGS, arbplf_newton_refine__doc__},
 	{"arbplf_marginal",  py_arbplf_marginal, METH_VARARGS, arbplf_marginal__doc__},
 	{"arbplf_dwell",  py_arbplf_dwell, METH_VARARGS, arbplf_dwell__doc__},
 	{"arbplf_coeff_expect",  py_arbplf_coeff_expect, METH_VARARGS, arbplf_coeff_expect__doc__},
