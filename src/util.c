@@ -389,6 +389,11 @@ _arb_mat_exp_frechet(arb_mat_t P, arb_mat_t F,
         }
     }
 
+    /*
+    flint_printf("debug: exp frechet matrix:\n");
+    arb_mat_printd(M, 15); flint_printf("\n");
+    */
+
     /* Compute the matrix exponential of M */
     arb_mat_exp(M, M, prec);
 

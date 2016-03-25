@@ -278,18 +278,14 @@ likelihood_ws_update(likelihood_ws_t w,
         /* update the trans frechet matrix for the current edge */
         if (edge_is_requested[idx])
         {
-            slong sa, sb;
             arb_mat_struct *fmat;
             fmat = w->trans_frechet_matrices + idx;
 
-            /* set off-diagonals of L to 1 */
-            arb_mat_zero(L);
-            for (sa = 0; sa < w->state_count; sa++)
-                for (sb = 0; sb < w->state_count; sb++)
-                    if (sa != sb)
-                        arb_one(arb_mat_entry(L, sa, sb));
-
-            _arb_mat_exp_frechet(P, fmat, tmat, L, prec);
+            /*
+             * Note that w->rate matrix has zeros on the diagonal
+             * and it is not scaled by the edge rate.
+             */
+            _arb_mat_exp_frechet(P, fmat, tmat, w->rate_matrix, prec);
         }
 
         /* compute the exponential of the rate matrix */
@@ -627,6 +623,16 @@ _query(model_and_data_t m,
         {
             if (!edge_is_requested[idx])
                 continue;
+
+            /*
+            flint_printf("debug (prec=%wd idx=%wd): "
+                         "trans accum:\n", prec, idx);
+            arb_printd(w->trans_accum + idx, 15); flint_printf("\n");
+
+            flint_printf("debug (prec=%wd idx=%wd): "
+                         "dwell accum:\n", prec, idx);
+            arb_printd(w->dwell_accum + idx, 15); flint_printf("\n");
+            */
 
             arb_div(final + idx,
                     w->trans_accum + idx, w->dwell_accum + idx, prec);
