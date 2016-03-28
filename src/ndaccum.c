@@ -15,9 +15,15 @@ nd_axis_update_precision(nd_axis_t axis, column_reduction_t r, slong prec)
 
 void
 nd_axis_init(nd_axis_t axis,
-        const char *name, int total_count, column_reduction_t r, slong prec)
+        const char *name, int total_count, column_reduction_t r,
+        int component_axis_count, struct nd_component_axis *component_axes,
+        slong prec)
 {
     int i, idx;
+
+    /* set compound axis hack data */
+    axis->component_axis_count = component_axis_count;
+    axis->component_axes = component_axes;
 
     /* set the name */
     axis->name = malloc(strlen(name) + 1);
@@ -291,7 +297,7 @@ static int
 _nd_accum_recursively_build_json(nd_accum_t a,
         json_t *j_rows, json_t *j_row, int axis_idx, int offset)
 {
-    int i, idx, next_offset;
+    int i, j, idx, next_offset;
     json_t *x;
     json_t *j_row_next;
     nd_axis_struct *axis;
@@ -333,6 +339,7 @@ _nd_accum_recursively_build_json(nd_accum_t a,
         /* add selections to the row, and update the offset */
         for (i = 0; i < axis->k; i++)
         {
+            idx = axis->selection[i];
             if (j_row)
             {
                 j_row_next = json_deep_copy(j_row);
@@ -341,9 +348,21 @@ _nd_accum_recursively_build_json(nd_accum_t a,
             {
                 j_row_next = json_array();
             }
-            idx = axis->selection[i];
-            x = json_integer(idx);
-            json_array_append_new(j_row_next, x);
+            if (axis->component_axes != NULL)
+            {
+                for (j = 0; j < axis->component_axis_count; j++)
+                {
+                    int component_idx;
+                    component_idx = axis->component_axes[j].indices[i];
+                    x = json_integer(component_idx);
+                    json_array_append_new(j_row_next, x);
+                }
+            }
+            else
+            {
+                x = json_integer(idx);
+                json_array_append_new(j_row_next, x);
+            }
             next_offset = offset + idx * a->strides[axis_idx];
             result = _nd_accum_recursively_build_json(
                     a, j_rows, j_row_next, axis_idx+1, next_offset);
@@ -358,7 +377,7 @@ _nd_accum_recursively_build_json(nd_accum_t a,
 json_t *
 nd_accum_get_json(nd_accum_t a, int *result_out)
 {
-    int axis_idx;
+    int j, axis_idx;
     int offset;
     nd_axis_struct *axis;
     json_t *j_out, *j_headers, *j_rows;
@@ -375,8 +394,19 @@ nd_accum_get_json(nd_accum_t a, int *result_out)
             axis = a->axes+axis_idx;
             if (!axis->agg_weights)
             {
-                j_header = json_string(axis->name);
-                json_array_append_new(j_headers, j_header);
+                if (axis->component_axes != NULL)
+                {
+                    for (j = 0; j < axis->component_axis_count; j++)
+                    {
+                        j_header = json_string(axis->component_axes[j].name);
+                        json_array_append_new(j_headers, j_header);
+                    }
+                }
+                else
+                {
+                    j_header = json_string(axis->name);
+                    json_array_append_new(j_headers, j_header);
+                }
             }
         }
         j_header = json_string("value");

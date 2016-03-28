@@ -667,9 +667,9 @@ _query(model_and_data_t m,
     likelihood_ws_init(w, m);
 
     /* initialize axes at zero precision */
-    nd_axis_init(site_axis, "site", site_count, r_site, 0);
-    nd_axis_init(edge_axis, "edge", edge_count, r_edge, 0);
-    nd_axis_init(state_axis, "state", state_count, r_state, 0);
+    nd_axis_init(site_axis, "site", site_count, r_site, 0, NULL, 0);
+    nd_axis_init(edge_axis, "edge", edge_count, r_edge, 0, NULL, 0);
+    nd_axis_init(state_axis, "state", state_count, r_state, 0, NULL, 0);
 
     /*
      * Define the number of axes to use in the nd accumulator.

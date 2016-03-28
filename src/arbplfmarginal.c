@@ -402,9 +402,9 @@ _query(model_and_data_t m,
     likelihood_ws_init(w, m);
 
     /* initialize axes at zero precision */
-    nd_axis_init(axes+0, "site", site_count, r_site, 0);
-    nd_axis_init(axes+1, "node", node_count, r_node, 0);
-    nd_axis_init(axes+2, "state", state_count, r_state, 0);
+    nd_axis_init(axes+0, "site", site_count, r_site, 0, NULL, 0);
+    nd_axis_init(axes+1, "node", node_count, r_node, 0, NULL, 0);
+    nd_axis_init(axes+2, "state", state_count, r_state, 0, NULL, 0);
 
     /* initialize nd accumulation array */
     nd_accum_pre_init(arr);

@@ -16,9 +16,21 @@ extern "C" {
 #endif
 
 
+struct nd_component_axis
+{
+    const char *name;
+    int *indices; /* length = k = n of nd_axis_struct */
+};
+
+
 typedef struct
 {
     char *name;
+
+    /* a hack to allow 'compound' nd axes; these are not owned
+     * by this struct */
+    int component_axis_count;
+    struct nd_component_axis *component_axes;
 
     /* the total number of indices along this axis */
     int n;
@@ -50,7 +62,9 @@ typedef nd_axis_struct nd_axis_t[1];
 
 void nd_axis_update_precision(nd_axis_t axis, column_reduction_t r, slong prec);
 void nd_axis_init(nd_axis_t axis,
-        const char *name, int total_count, column_reduction_t r, slong prec);
+        const char *name, int total_count, column_reduction_t r,
+        int component_axis_count, struct nd_component_axis *component_axes,
+        slong prec);
 void nd_axis_clear(nd_axis_t axis);
 
 

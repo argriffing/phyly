@@ -519,7 +519,7 @@ _nd_accum_update(nd_accum_t arr,
 {
     int site, edge, idx, i, j;
     int trans_idx, first_state, second_state;
-    arb_t lhood;
+    arb_t lhood, tmp;
     arb_mat_struct *bvec;
     nd_axis_struct *site_axis, *edge_axis, *trans_axis;
     int site_count;
@@ -528,6 +528,7 @@ _nd_accum_update(nd_accum_t arr,
     coords = malloc(arr->ndim * sizeof(int));
 
     arb_init(lhood);
+    arb_init(tmp);
 
     site_count = pmat_nsites(m->p);
 
@@ -642,15 +643,19 @@ _nd_accum_update(nd_accum_t arr,
                  * work with "user" edge indices,
                  * whereas the workspace arrays work with
                  * tree graph preorder edge indices.
+                 *
+                 * Note that edge expectations are multiplied by edge rates.
                  */
                 idx = m->edge_map->order[edge];
-                nd_accum_accumulate(arr,
-                        coords, w->edge_expectations + idx, prec);
+                arb_mul(tmp, w->edge_expectations + idx,
+                        w->edge_rates + idx, prec);
+                nd_accum_accumulate(arr, coords, tmp, prec);
             }
         }
     }
 
     arb_clear(lhood);
+    arb_clear(tmp);
     free(coords);
 }
 
@@ -674,6 +679,7 @@ _query(model_and_data_t m,
     nd_accum_t arr;
     likelihood_ws_t w;
     nd_axis_struct *site_axis, *edge_axis, *trans_axis;
+    struct nd_component_axis axis_components[2];
 
     site_axis = axes + SITE_AXIS;
     edge_axis = axes + EDGE_AXIS;
@@ -690,10 +696,21 @@ _query(model_and_data_t m,
     /* initialize likelihood workspace */
     likelihood_ws_init(w, m);
 
+    axis_components[0].name = "first_state";
+    axis_components[0].indices = first_idx;
+    axis_components[1].name = "second_state";
+    axis_components[1].indices = second_idx;
+
     /* initialize axes at zero precision */
-    nd_axis_init(site_axis, "site", site_count, r_site, 0);
-    nd_axis_init(edge_axis, "edge", edge_count, r_edge, 0);
-    nd_axis_init(trans_axis, "trans", r_trans->selection_len, r_trans, 0);
+    nd_axis_init(site_axis, "site", site_count, r_site, 0, NULL, 0);
+    nd_axis_init(edge_axis, "edge", edge_count, r_edge, 0, NULL, 0);
+
+    nd_axis_init(trans_axis, "trans", r_trans->selection_len, r_trans,
+            2, axis_components, 0);
+    /*
+    nd_axis_init(trans_axis, "trans", r_trans->selection_len, r_trans,
+            0, NULL, 0);
+    */
 
     /*
      * Define the number of axes to use in the nd accumulator.
