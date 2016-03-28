@@ -170,3 +170,138 @@ validate_column_reduction(column_reduction_t r,
 
     return result;
 }
+
+
+
+/*
+ * Column pair reduction.
+ * This can be applied to transition reductions on state pairs, for example.
+ */
+
+
+static int
+_validate_column_pair(int *pair, json_t *root)
+{
+    json_error_t err;
+    int result;
+    size_t flags;
+
+    flags = JSON_STRICT;
+    result = json_unpack_ex(root, &err, flags, "[i, i]", pair+0, pair+1);
+    if (result)
+    {
+        fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+        return result;
+    }
+
+    return 0;
+}
+
+
+static int
+_validate_column_pair_selection(column_reduction_t r,
+        int **first_idx, int **second_idx,
+        int k0, int k1, const char *name, json_t *root)
+{
+    json_t *j_pair;
+    int i;
+    int pair[2];
+    int idx;
+    int result = 0;
+
+    if (!json_is_array(root))
+    {
+        fprintf(stderr, "error: %s selection: ", name);
+        fprintf(stderr, "the selection should be an array\n");
+        result = -1;
+        goto finish;
+    }
+    r->selection_len = json_array_size(root);
+    r->selection = malloc(r->selection_len * sizeof(int));
+    *first_idx = flint_malloc(r->selection_len * sizeof(int));
+    *second_idx = flint_malloc(r->selection_len * sizeof(int));
+    for (i = 0; i < r->selection_len; i++)
+    {
+        j_pair = json_array_get(root, i);
+
+        /* require that the pair is a json array of two integers */
+        result = _validate_column_pair(pair, j_pair);
+        if (result) goto finish;
+
+        /* require that the indices are within a valid range */
+        idx = pair[0];
+        if (idx < 0 || idx >= k0)
+        {
+            fprintf(stderr, "error: %s selection: ", name);
+            fprintf(stderr, "indices should be nonnegative integers less than "
+                            "the number of column elements\n");
+            result = -1;
+            goto finish;
+        }
+
+        /* require that the indices are within a valid range */
+        idx = pair[1];
+        if (idx < 0 || idx >= k1)
+        {
+            fprintf(stderr, "error: %s selection: ", name);
+            fprintf(stderr, "indices should be nonnegative integers less than "
+                            "the number of column elements\n");
+            result = -1;
+            goto finish;
+        }
+
+        /* update the indices */
+        (*first_idx)[i] = pair[0];
+        (*second_idx)[i] = pair[1];
+
+        /* the pair selection will simply be the index */
+        r->selection[i] = i;
+    }
+
+finish:
+
+    return result;
+}
+
+
+int
+validate_column_pair_reduction(column_reduction_t r,
+        int **first_idx, int **second_idx,
+        int k0, int k1, const char *name, json_t *root)
+{
+    json_t *selection = NULL;
+    json_t *aggregation = NULL;
+
+    int result;
+    json_error_t err;
+    size_t flags;
+
+    result = 0;
+    flags = JSON_STRICT;
+
+    *first_idx = NULL;
+    *second_idx = NULL;
+
+    if (root)
+    {
+        /* For pair reduction, 'selection' is required (not optional). */
+        result = json_unpack_ex(root, &err, flags,
+                "{s:o, s?o}",
+                "selection", &selection,
+                "aggregation", &aggregation);
+        if (result)
+        {
+            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+            return result;
+        }
+    }
+
+    result = _validate_column_pair_selection(r, first_idx, second_idx,
+            k0, k1, name, selection);
+    if (result) return result;
+
+    result = _validate_column_aggregation(r, name, aggregation);
+    if (result) return result;
+
+    return result;
+}

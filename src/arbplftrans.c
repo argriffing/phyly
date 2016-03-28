@@ -34,9 +34,6 @@
  * }
  *
  */
-
-/* under construction */
-
 #include "jansson.h"
 #include "flint/flint.h"
 
@@ -49,13 +46,16 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
-#include "arb_vec_extras.h"
+#include "ndaccum.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
 #include "runjson.h"
 #include "arbplftrans.h"
 
+#define SITE_AXIS 0
+#define EDGE_AXIS 1
+#define TRANS_AXIS 2
 
 
 /* Likelihood workspace. */
@@ -65,12 +65,10 @@ typedef struct
     int edge_count;
     int state_count;
     arb_struct *edge_rates;
-    arb_struct *dwell_accum;
-    arb_struct *trans_accum;
+    arb_struct *edge_expectations;
     arb_mat_t rate_matrix;
     arb_mat_struct *transition_matrices;
-    arb_mat_struct *dwell_frechet_matrices;
-    arb_mat_struct *trans_frechet_matrices;
+    arb_mat_struct *frechet_matrices;
     arb_mat_struct *base_node_vectors;
     arb_mat_struct *lhood_node_vectors;
     arb_mat_struct *lhood_edge_vectors;
@@ -103,16 +101,12 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     w->state_count = arb_mat_nrows(m->mat);
 
     w->edge_rates = _arb_vec_init(w->edge_count);
+    w->edge_expectations = _arb_vec_init(w->edge_count);
+    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
     w->transition_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
-    w->trans_frechet_matrices = flint_malloc(
+    w->frechet_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
-    w->dwell_frechet_matrices = flint_malloc(
-            w->edge_count * sizeof(arb_mat_struct));
-
-    /* initialize values of the transition rate matrix */
-    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
-    dmat_get_arb_mat(w->rate_matrix, m->mat);
 
     /* intialize transition probability matrices */
     for (idx = 0; idx < w->edge_count; idx++)
@@ -124,10 +118,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     /* intialize frechet matrices */
     for (idx = 0; idx < w->edge_count; idx++)
     {
-        tmat = w->trans_frechet_matrices + idx;
-        arb_mat_init(tmat, w->state_count, w->state_count);
-
-        tmat = w->dwell_frechet_matrices + idx;
+        tmat = w->frechet_matrices + idx;
         arb_mat_init(tmat, w->state_count, w->state_count);
     }
 
@@ -179,10 +170,6 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     {
         arb_mat_init(w->lhood_edge_vectors+i, w->state_count, 1);
     }
-
-    /* init accumulators */
-    w->dwell_accum = _arb_vec_init(w->edge_count);
-    w->trans_accum = _arb_vec_init(w->edge_count);
 }
 
 
@@ -192,21 +179,21 @@ likelihood_ws_clear(likelihood_ws_t w)
     int i, idx;
 
     _arb_vec_clear(w->edge_rates, w->edge_count);
+    _arb_vec_clear(w->edge_expectations, w->edge_count);
 
     /* clear unscaled rate matrix */
     arb_mat_clear(w->rate_matrix);
 
+    /* todo: skip frechet matrices on unselected edges */
     /* clear per-edge matrices */
     for (idx = 0; idx < w->edge_count; idx++)
     {
         arb_mat_clear(w->transition_matrices + idx);
-        arb_mat_clear(w->dwell_frechet_matrices + idx);
-        arb_mat_clear(w->trans_frechet_matrices + idx);
+        arb_mat_clear(w->frechet_matrices + idx);
         arb_mat_clear(w->lhood_edge_vectors + idx);
     }
     flint_free(w->transition_matrices);
-    flint_free(w->dwell_frechet_matrices);
-    flint_free(w->trans_frechet_matrices);
+    flint_free(w->frechet_matrices);
     flint_free(w->lhood_edge_vectors);
 
     /* clear per-node matrices */
@@ -219,94 +206,29 @@ likelihood_ws_clear(likelihood_ws_t w)
     flint_free(w->base_node_vectors);
     flint_free(w->lhood_node_vectors);
     flint_free(w->marginal_node_vectors);
-
-    /* clear accumulators */
-    _arb_vec_clear(w->dwell_accum, w->edge_count);
-    _arb_vec_clear(w->trans_accum, w->edge_count);
 }
 
+
 static void
-likelihood_ws_update(likelihood_ws_t w,
-        const int *edge_is_requested, slong prec)
+likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 {
     /* arrays are already allocated and initialized */
     int idx;
-    arb_mat_t P, L;
-    arb_struct *rates_out;
+    arb_mat_struct *rmat, *tmat;
 
-    /* clear accumulators */
-    _arb_vec_zero(w->dwell_accum, w->edge_count);
-    _arb_vec_zero(w->trans_accum, w->edge_count);
+    rmat = w->rate_matrix;
 
-    /* utility matrices */
-    arb_mat_init(P, w->state_count, w->state_count);
-    arb_mat_init(L, w->state_count, w->state_count);
+    /* modify rate matrix diagonals so that the sum of each row is zero */
+    dmat_get_arb_mat(rmat, m->mat);
+    _arb_update_rate_matrix_diagonal(rmat, prec);
 
-    /* compute rates out */
-    rates_out = _arb_vec_init(w->state_count);
-    _arb_mat_row_sums(rates_out, w->rate_matrix, prec);
-
-    /*
-     * Update state->state matrices on each edge.
-     * The transition matrix will be updated on each edge.
-     * The frechet exp matrices will be updated only on requested edges.
-     */
+    /* exponentiate scaled rate matrices */
     for (idx = 0; idx < w->edge_count; idx++)
     {
-        int state;
-        arb_mat_struct *tmat;
         tmat = w->transition_matrices + idx;
-        arb_mat_set(tmat, w->rate_matrix);
-        for (state = 0; state < w->state_count; state++)
-        {
-            arb_sub(
-                    arb_mat_entry(tmat, state, state),
-                    arb_mat_entry(tmat, state, state),
-                    rates_out + state, prec);
-        }
-        arb_mat_scalar_mul_arb(tmat, tmat, w->edge_rates + idx, prec);
-
-        /* at this point, tmat is the scaled rate matrix with zero row sums */
-
-        /* update the dwell frechet matrix for the current edge */
-        /* set diagonal entries of L to the rates out of that state */
-        if (edge_is_requested[idx])
-        {
-            arb_mat_struct *fmat;
-            fmat = w->dwell_frechet_matrices + idx;
-
-            /* set diagonals of L to rate-out */
-            arb_mat_zero(L);
-            for (state = 0; state < w->state_count; state++)
-                arb_set(arb_mat_entry(L, state, state), rates_out + state);
-
-            _arb_mat_exp_frechet(P, fmat, tmat, L, prec);
-        }
-
-        /* update the trans frechet matrix for the current edge */
-        if (edge_is_requested[idx])
-        {
-            slong sa, sb;
-            arb_mat_struct *fmat;
-            fmat = w->trans_frechet_matrices + idx;
-
-            /* set off-diagonals of L to 1 */
-            arb_mat_zero(L);
-            for (sa = 0; sa < w->state_count; sa++)
-                for (sb = 0; sb < w->state_count; sb++)
-                    if (sa != sb)
-                        arb_one(arb_mat_entry(L, sa, sb));
-
-            _arb_mat_exp_frechet(P, fmat, tmat, L, prec);
-        }
-
-        /* compute the exponential of the rate matrix */
+        arb_mat_scalar_mul_arb(tmat, rmat, w->edge_rates + idx, prec);
         arb_mat_exp(tmat, tmat, prec);
     }
-
-    arb_mat_clear(P);
-    arb_mat_clear(L);
-    _arb_vec_clear(rates_out, w->state_count);
 }
 
 
@@ -375,16 +297,13 @@ evaluate_marginal_distributions(
 
 static void
 evaluate_edge_expectations(
-        arb_struct *dwell_accum,
-        arb_struct *trans_accum,
+        arb_struct *edge_expectations,
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
-        arb_mat_struct *dwell_frechet_matrices,
-        arb_mat_struct *trans_frechet_matrices,
+        arb_mat_struct *frechet_matrices,
         csr_graph_t g, int *preorder,
-        int node_count, int state_count,
-        const int *edge_is_requested, slong prec)
+        int node_count, int state_count, slong prec)
 {
     int u, a, b;
     int idx;
@@ -392,13 +311,10 @@ evaluate_edge_expectations(
     slong state;
     arb_mat_struct *lvec, *mvec, *evec;
     arb_mat_t fvec;
-    arb_t tmp, dwell_tmp, trans_tmp;
+    arb_t tmp;
 
     arb_mat_init(fvec, state_count, 1);
-
     arb_init(tmp);
-    arb_init(dwell_tmp);
-    arb_init(trans_tmp);
 
     for (u = 0; u < node_count; u++)
     {
@@ -409,7 +325,6 @@ evaluate_edge_expectations(
 
         for (idx = start; idx < stop; idx++)
         {
-            /* flint_printf("debug: idx=%d\n", idx); */
             b = g->indices[idx];
             /*
              * At this point (a, b) is an edge from node a to node b
@@ -417,108 +332,117 @@ evaluate_edge_expectations(
              */
             lvec = lhood_node_vectors + b;
             evec = lhood_edge_vectors + idx;
+            arb_mat_mul(fvec, frechet_matrices + idx, lvec, prec);
 
-            /* dwell update */
-            if (edge_is_requested[idx])
+            arb_zero(edge_expectations + idx);
+            for (state = 0; state < state_count; state++)
             {
-                arb_zero(dwell_tmp);
-                arb_mat_mul(fvec, dwell_frechet_matrices + idx, lvec, prec);
-                for (state = 0; state < state_count; state++)
+                /* See arbplfmarginal.c regarding the zero case. */
+                if (!arb_is_zero(arb_mat_entry(evec, state, 0)))
                 {
-                    if (!arb_is_zero(arb_mat_entry(evec, state, 0)))
-                    {
-                        arb_div(tmp,
-                                arb_mat_entry(fvec, state, 0),
-                                arb_mat_entry(evec, state, 0), prec);
-                        arb_addmul(
-                                dwell_tmp,
-                                arb_mat_entry(mvec, state, 0),
-                                tmp, prec);
-                    }
+                    arb_div(tmp,
+                            arb_mat_entry(fvec, state, 0),
+                            arb_mat_entry(evec, state, 0), prec);
+                    arb_addmul(
+                            edge_expectations + idx,
+                            arb_mat_entry(mvec, state, 0),
+                            tmp, prec);
                 }
-                /* flint_printf("debug: dwell_tmp = "); */
-                /* arb_printd(dwell_tmp, 15); flint_printf("\n"); */
-                arb_set(dwell_accum + idx, dwell_tmp);
-            }
-
-            /* trans update */
-            if (edge_is_requested[idx])
-            {
-                arb_zero(trans_tmp);
-                arb_mat_mul(fvec, trans_frechet_matrices + idx, lvec, prec);
-                for (state = 0; state < state_count; state++)
-                {
-                    if (!arb_is_zero(arb_mat_entry(evec, state, 0)))
-                    {
-                        arb_div(tmp,
-                                arb_mat_entry(fvec, state, 0),
-                                arb_mat_entry(evec, state, 0), prec);
-                        arb_addmul(
-                                trans_tmp,
-                                arb_mat_entry(mvec, state, 0),
-                                tmp, prec);
-                    }
-                }
-                /* flint_printf("debug: trans_tmp = "); */
-                /* arb_printd(trans_tmp, 15); flint_printf("\n"); */
-                arb_set(trans_accum + idx, trans_tmp);
             }
         }
     }
 
     arb_clear(tmp);
-    arb_clear(dwell_tmp);
-    arb_clear(trans_tmp);
     arb_mat_clear(fvec); 
 }
 
 
-static int
-_accum(likelihood_ws_t w, model_and_data_t m, column_reduction_t r_site, 
-        const int *edge_is_requested, slong prec)
+static void
+_nd_accum_update_state_agg(nd_accum_t arr,
+        likelihood_ws_t w, model_and_data_t m,
+        const int *first_idx, const int *second_idx, slong prec)
 {
-    int site, idx, i, j;
-    arb_t lhood;
+    int site, edge, idx, i, j;
+    int trans_idx, first_state, second_state;
+    arb_t lhood, tmp;
+    arb_mat_struct *bvec;
+    nd_axis_struct *site_axis, *edge_axis, *trans_axis;
     int site_count;
-    int result;
-    arb_struct *dwell_site, *trans_site;
+    int *coords;
 
-    arb_t site_weight_divisor;
-    arb_struct *site_weights;
-    int *site_selection_count;
+    coords = malloc(arr->ndim * sizeof(int));
 
     arb_init(lhood);
-    result = 0;
+    arb_init(tmp);
+
     site_count = pmat_nsites(m->p);
 
-    dwell_site = _arb_vec_init(w->edge_count);
-    trans_site = _arb_vec_init(w->edge_count);
+    site_axis = arr->axes + SITE_AXIS;
+    edge_axis = arr->axes + EDGE_AXIS;
+    trans_axis = arr->axes + TRANS_AXIS;
 
-    arb_init(site_weight_divisor);
-    site_weights = _arb_vec_init(site_count);
-    site_selection_count = calloc(site_count, sizeof(int));
+    /* zero all requested cells of the array */
+    nd_accum_zero_requested_cells(arr);
 
-    /* count how many times each site index is included in the selection */
-    for (i = 0; i < r_site->selection_len; i++)
+    /* todo: what about zero branch length */
+
+    /*
+     * Update the frechet matrix for each edge.
+     * At this point the rate matrix has been normalized
+     * to have zero row sums, but it has not been scaled
+     * by the edge rate coefficients.
+     */
     {
-        site = r_site->selection[i];
-        site_selection_count[site]++;
+        arb_mat_t P, L, Q;
+        arb_mat_init(P, w->state_count, w->state_count);
+        arb_mat_init(L, w->state_count, w->state_count);
+        arb_mat_init(Q, w->state_count, w->state_count);
+
+        /* set entries of L to the requested transition weights */
+        arb_mat_zero(L);
+        for (trans_idx = 0; trans_idx < trans_axis->n; trans_idx++)
+        {
+            first_state = first_idx[trans_idx];
+            second_state = second_idx[trans_idx];
+            arb_add(arb_mat_entry(L, first_state, second_state),
+                    arb_mat_entry(L, first_state, second_state),
+                    trans_axis->agg_weights + trans_idx, prec);
+        }
+
+        /* multiply entries of L by the rate matrix entries */
+        arb_mat_mul_entrywise(L, L, w->rate_matrix, prec);
+
+        /* divide L by the global weight divisor */
+        arb_mat_scalar_div_arb(L, L, trans_axis->agg_weight_divisor, prec);
+
+        for (idx = 0; idx < w->edge_count; idx++)
+        {
+            arb_mat_struct *fmat;
+            fmat = w->frechet_matrices + idx;
+            arb_mat_scalar_mul_arb(Q,
+                    w->rate_matrix, w->edge_rates + idx, prec);
+            _arb_mat_exp_frechet(P, fmat, Q, L, prec);
+        }
+        arb_mat_clear(P);
+        arb_mat_clear(L);
+        arb_mat_clear(Q);
     }
 
-    /* define site aggregation weights */
-    result = get_column_agg_weights(
-            site_weight_divisor, site_weights, site_count, r_site, prec);
-    if (result) goto finish;
-
+    /*
+     * Update the output array at the given precision.
+     * Axes have already been updated for this precision.
+     * The nd array links to axis selection and aggregation information,
+     * and the model and data are provided separately.
+     */
     for (site = 0; site < site_count; site++)
     {
-        if (!site_selection_count[site])
-            continue;
+        /* skip sites that are not requested */
+        if (!site_axis->request_update[site]) continue;
+        coords[SITE_AXIS] = site;
 
         /* update base node vectors */
         for (i = 0; i < w->node_count; i++)
         {
-            arb_mat_struct *bvec;
             bvec = w->base_node_vectors + i;
             for (j = 0; j < w->state_count; j++)
             {
@@ -551,155 +475,295 @@ _accum(likelihood_ws_t w, model_and_data_t m, column_reduction_t r_site,
                 w->transition_matrices,
                 m->g, m->preorder, w->node_count, w->state_count, prec);
 
-        /* Update dwell and trans expectations on edges. */
+        /* Update expectations at edges. */
         evaluate_edge_expectations(
-                dwell_site,
-                trans_site,
+                w->edge_expectations,
                 w->marginal_node_vectors,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
-                w->dwell_frechet_matrices,
-                w->trans_frechet_matrices,
-                m->g, m->preorder, w->node_count, w->state_count,
-                edge_is_requested, prec);
+                w->frechet_matrices,
+                m->g, m->preorder, w->node_count, w->state_count, prec);
 
-        /* Accumulate, using the site weights and weight divisor. */
+        /* Update the nd accumulator. */
+        for (edge = 0; edge < w->edge_count; edge++)
         {
-            arb_t tmp;
-            arb_init(tmp);
-            arb_div(tmp, site_weights + site, site_weight_divisor, prec);
-            for (idx = 0; idx < w->edge_count; idx++)
-            {
-                if (!edge_is_requested[idx])
-                    continue;
+            /* skip edges that are not requested */
+            if (!edge_axis->request_update[edge]) continue;
+            coords[EDGE_AXIS] = edge;
 
-                arb_addmul(w->dwell_accum + idx, dwell_site + idx, tmp, prec);
-                arb_addmul(w->trans_accum + idx, trans_site + idx, tmp, prec);
-            }
-            arb_clear(tmp);
+            /*
+             * Accumulate.
+             * Note that the axes, accumulator, and json interface
+             * work with "user" edge indices,
+             * whereas the workspace arrays work with
+             * tree graph preorder edge indices.
+             *
+             * Note that edge expectations are multiplied by edge rates.
+             */
+            idx = m->edge_map->order[edge];
+            arb_mul(tmp, w->edge_expectations + idx, w->edge_rates + idx, prec);
+            nd_accum_accumulate(arr, coords, tmp, prec);
         }
     }
 
-finish:
+    arb_clear(lhood);
+    arb_clear(tmp);
+    free(coords);
+}
+
+
+static void
+_nd_accum_update(nd_accum_t arr,
+        likelihood_ws_t w, model_and_data_t m,
+        const int *first_idx, const int *second_idx, slong prec)
+{
+    int site, edge, idx, i, j;
+    int trans_idx, first_state, second_state;
+    arb_t lhood;
+    arb_mat_struct *bvec;
+    nd_axis_struct *site_axis, *edge_axis, *trans_axis;
+    int site_count;
+    int *coords;
+
+    coords = malloc(arr->ndim * sizeof(int));
+
+    arb_init(lhood);
+
+    site_count = pmat_nsites(m->p);
+
+    site_axis = arr->axes + SITE_AXIS;
+    edge_axis = arr->axes + EDGE_AXIS;
+    trans_axis = arr->axes + TRANS_AXIS;
+
+    /* zero all requested cells of the array */
+    nd_accum_zero_requested_cells(arr);
+
+    /*
+     * Update the output array at the given precision.
+     * Axes have already been updated for this precision.
+     * The nd array links to axis selection and aggregation information,
+     * and the model and data are provided separately.
+     */
+    for (trans_idx = 0; trans_idx < trans_axis->n; trans_idx++)
+    {
+        if (!trans_axis->request_update[trans_idx]) continue;
+        coords[TRANS_AXIS] = trans_idx;
+
+        first_state = first_idx[trans_idx];
+        second_state = second_idx[trans_idx];
+
+        /*
+         * Update the frechet matrix for each edge.
+         * At this point the rate matrix has been normalized
+         * to have zero row sums, but it has not been scaled
+         * by the edge rate coefficients.
+         */
+        {
+            arb_mat_t P, L, Q;
+            arb_mat_init(P, w->state_count, w->state_count);
+            arb_mat_init(L, w->state_count, w->state_count);
+            arb_mat_init(Q, w->state_count, w->state_count);
+            arb_mat_zero(L);
+            arb_set(arb_mat_entry(L, first_state, second_state),
+                    arb_mat_entry(w->rate_matrix, first_state, second_state));
+            for (idx = 0; idx < w->edge_count; idx++)
+            {
+                arb_mat_struct *fmat;
+                fmat = w->frechet_matrices + idx;
+                arb_mat_scalar_mul_arb(Q,
+                        w->rate_matrix, w->edge_rates + idx, prec);
+                _arb_mat_exp_frechet(P, fmat, Q, L, prec);
+            }
+            arb_mat_clear(P);
+            arb_mat_clear(L);
+            arb_mat_clear(Q);
+        }
+
+        for (site = 0; site < site_count; site++)
+        {
+            /* skip sites that are not requested */
+            if (!site_axis->request_update[site]) continue;
+            coords[SITE_AXIS] = site;
+
+            /* update base node vectors */
+            for (i = 0; i < w->node_count; i++)
+            {
+                bvec = w->base_node_vectors + i;
+                for (j = 0; j < w->state_count; j++)
+                {
+                    arb_set_d(
+                            arb_mat_entry(bvec, j, 0),
+                            *pmat_entry(m->p, site, i, j));
+                }
+            }
+
+            /*
+             * Update per-node and per-edge likelihood vectors.
+             * Actually the likelihood vectors on edges are not used.
+             * This is a backward pass from the leaves to the root.
+             */
+            evaluate_site_lhood(lhood,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    w->base_node_vectors,
+                    w->transition_matrices,
+                    m->g, m->preorder, w->node_count, prec);
+
+            /*
+             * Update marginal distribution vectors at nodes.
+             * This is a forward pass from the root to the leaves.
+             */
+            evaluate_marginal_distributions(
+                    w->marginal_node_vectors,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    w->transition_matrices,
+                    m->g, m->preorder, w->node_count, w->state_count, prec);
+
+            /* Update expectations at edges. */
+            evaluate_edge_expectations(
+                    w->edge_expectations,
+                    w->marginal_node_vectors,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    w->frechet_matrices,
+                    m->g, m->preorder, w->node_count, w->state_count, prec);
+
+            /* Update the nd accumulator. */
+            for (edge = 0; edge < w->edge_count; edge++)
+            {
+                /* skip edges that are not requested */
+                if (!edge_axis->request_update[edge]) continue;
+                coords[EDGE_AXIS] = edge;
+
+                /*
+                 * Accumulate.
+                 * Note that the axes, accumulator, and json interface
+                 * work with "user" edge indices,
+                 * whereas the workspace arrays work with
+                 * tree graph preorder edge indices.
+                 */
+                idx = m->edge_map->order[edge];
+                nd_accum_accumulate(arr,
+                        coords, w->edge_expectations + idx, prec);
+            }
+        }
+    }
 
     arb_clear(lhood);
-    arb_clear(site_weight_divisor);
-    _arb_vec_clear(site_weights, site_count);
-    _arb_vec_clear(dwell_site, w->edge_count);
-    _arb_vec_clear(trans_site, w->edge_count);
-    free(site_selection_count);
-
-    return result;
+    free(coords);
 }
 
 
 static json_t *
 _query(model_and_data_t m,
         column_reduction_t r_site,
+        column_reduction_t r_edge,
+        column_reduction_t r_trans,
+        int *first_idx,
+        int *second_idx,
         int *result_out)
 {
     json_t * j_out = NULL;
     slong prec;
-    slong idx;
+    int ndim, result;
+    int axis_idx;
+    int state_count, site_count, edge_count;
+    int node_count;
+    nd_axis_struct axes[3];
+    nd_accum_t arr;
     likelihood_ws_t w;
-    arb_struct *final;
-    int result, success;
-    int *edge_is_requested;
+    nd_axis_struct *site_axis, *edge_axis, *trans_axis;
+
+    site_axis = axes + SITE_AXIS;
+    edge_axis = axes + EDGE_AXIS;
+    trans_axis = axes + TRANS_AXIS;
 
     result = 0;
+
+    /* initialize counts */
+    site_count = pmat_nsites(m->p);
+    node_count = pmat_nrows(m->p);
+    state_count = pmat_ncols(m->p);
+    edge_count = node_count - 1;
 
     /* initialize likelihood workspace */
     likelihood_ws_init(w, m);
 
-    edge_is_requested = flint_malloc(w->edge_count * sizeof(int));
-    for (idx = 0; idx < w->edge_count; idx++)
-        edge_is_requested[idx] = 1;
+    /* initialize axes at zero precision */
+    nd_axis_init(site_axis, "site", site_count, r_site, 0);
+    nd_axis_init(edge_axis, "edge", edge_count, r_edge, 0);
+    nd_axis_init(trans_axis, "trans", r_trans->selection_len, r_trans, 0);
 
-    /* initialize output vector */
-    final = _arb_vec_init(w->edge_count);
+    /*
+     * Define the number of axes to use in the nd accumulator.
+     * The reason for this complication is that state aggregation
+     * can be done more efficiently using linear algebra tricks instead
+     * of using the generic framework.
+     */
+    ndim = (r_trans->agg_mode == AGG_NONE) ? 3 : 2;
+
+    /* initialize nd accumulation array */
+    nd_accum_pre_init(arr);
+    nd_accum_init(arr, axes, ndim);
 
     /* repeat with increasing precision until there is no precision failure */
-    for (success = 0, prec=4; !success; prec <<= 1)
+    int success = 0;
+    for (prec=4; !success; prec <<= 1)
     {
-        /* this does not update per-edge or per-node likelihood vectors */
-        likelihood_ws_update(w, edge_is_requested, prec);
+        /*
+         * Update likelihood workspace.
+         * This updates all members except the conditional and marginal
+         * per-node and per-edge likelihood column state vectors.
+         */
+        likelihood_ws_update(w, m, prec);
 
-        /* accumulate numerators and denominators over sites */
-        _accum(w, m, r_site, edge_is_requested, prec);
+        /* recompute axis reduction weights with increased precision */
+        nd_axis_update_precision(site_axis, r_site, prec);
+        nd_axis_update_precision(edge_axis, r_edge, prec);
+        nd_axis_update_precision(trans_axis, r_trans, prec);
 
         /*
-         * For each edge, compute the ratio of two values that have been
-         * accumulated over sites.
+         * Recompute the output array with increased working precision.
+         * This also updates the workspace conditional and merginal
+         * per-node and per-edge likelihood column state vectors.
          */
-        for (idx = 0; idx < w->edge_count; idx++)
+        if (r_trans->agg_mode == AGG_NONE)
         {
-            if (!edge_is_requested[idx])
-                continue;
-
-            arb_div(final + idx,
-                    w->trans_accum + idx, w->dwell_accum + idx, prec);
-            arb_mul(final + idx,
-                    final + idx, w->edge_rates + idx, prec);
+            _nd_accum_update(arr, w, m, first_idx, second_idx, prec);
+        }
+        else
+        {
+            _nd_accum_update_state_agg(arr, w, m, first_idx, second_idx, prec);
         }
 
+        /* check whether entries are accurate to full relative precision  */
+        success = nd_accum_can_round(arr);
+
         /*
-        flint_printf("debug:\n");
-        flint_printf("prec=%wd\n", prec);
-
-        flint_printf("numerator(trans)=\n");
-        _arb_vec_printd(w->trans_accum, w->edge_count, 15);
-        flint_printf("\n");
-
-        flint_printf("denominator(dwell)=\n");
-        _arb_vec_printd(w->dwell_accum, w->edge_count, 15);
-        flint_printf("\n");
-
-        flint_printf("ratio=\n");
-        _arb_vec_printd(final, w->edge_count, 15);
+        flint_printf("debug: ndaccum prec=%wd:\n", prec);
+        nd_accum_printd(arr, 15);
         flint_printf("\n");
         */
-
-
-        /* check which entries are accurate to full relative precision  */
-        success = 1;
-        for (idx = 0; idx < w->edge_count; idx++)
-        {
-            if (_can_round(final + idx))
-            {
-                edge_is_requested[idx] = 0;
-            }
-            else
-            {
-                success = 0;
-            }
-        }
     }
 
-    /* build the json output */
-    {
-        double d;
-        int edge, idx;
-        json_t *j_data, *x;
-        j_data = json_array();
-        for (edge = 0; edge < w->edge_count; edge++)
-        {
-            idx = m->edge_map->order[edge];
-            d = arf_get_d(arb_midref(final + idx), ARF_RND_NEAR);
-            x = json_pack("[i, f]", edge, d);
-            json_array_append_new(j_data, x);
-        }
-        j_out = json_pack("{s:[s, s], s:o}",
-                "columns", "edge", "value",
-                "data", j_data);
-    }
+    /* build the json output using the nd array */
+    j_out = nd_accum_get_json(arr, &result);
+    if (result) goto finish;
 
-    /* clear output vector */
-    _arb_vec_clear(final, w->edge_count);
+finish:
 
     /* clear likelihood workspace */
     likelihood_ws_clear(w);
 
-    flint_free(edge_is_requested);
+    /* clear axes */
+    for (axis_idx = 0; axis_idx < 3; axis_idx++)
+    {
+        nd_axis_clear(axes + axis_idx);
+    }
+
+    /* clear nd accumulation array */
+    nd_accum_clear(arr);
 
     *result_out = result;
     return j_out;
@@ -707,10 +771,19 @@ _query(model_and_data_t m,
 
 
 static int
-_parse(model_and_data_t m, column_reduction_t r_site, json_t *root)
+_parse(model_and_data_t m,
+        column_reduction_t r_site,
+        column_reduction_t r_edge,
+        column_reduction_t r_trans,
+        int **first_idx, int **second_idx,
+        json_t *root)
 {
     json_t *model_and_data = NULL;
     json_t *site_reduction = NULL;
+    json_t *edge_reduction = NULL;
+    json_t *trans_reduction = NULL;
+    int site_count, edge_count, state_count;
+    int node_count;
     int result;
 
     result = 0;
@@ -720,10 +793,13 @@ _parse(model_and_data_t m, column_reduction_t r_site, json_t *root)
         size_t flags;
         json_error_t err;
         flags = JSON_STRICT;
+        /* trans_reduction is required (not optional) */
         result = json_unpack_ex(root, &err, flags,
-                "{s:o, s?o}",
+                "{s:o, s?o, s?o, s:o}",
                 "model_and_data", &model_and_data,
-                "site_reduction", &site_reduction
+                "site_reduction", &site_reduction,
+                "edge_reduction", &edge_reduction,
+                "trans_reduction", &trans_reduction
                 );
         if (result)
         {
@@ -736,14 +812,26 @@ _parse(model_and_data_t m, column_reduction_t r_site, json_t *root)
     result = validate_model_and_data(m, model_and_data);
     if (result) return result;
 
+    /* initialize counts */
+    site_count = pmat_nsites(m->p);
+    node_count = pmat_nrows(m->p);
+    state_count = pmat_ncols(m->p);
+    edge_count = node_count - 1;
+
     /* validate the site reduction section of the json input */
-    {
-        int site_count;
-        site_count = pmat_nsites(m->p);
-        result = validate_column_reduction(
-                r_site, site_count, "site", site_reduction);
-        if (result) return result;
-    }
+    result = validate_column_reduction(
+            r_site, site_count, "site", site_reduction);
+    if (result) return result;
+
+    /* validate the edge reduction section of the json input */
+    result = validate_column_reduction(
+            r_edge, edge_count, "edge", edge_reduction);
+    if (result) return result;
+
+    /* validate the state reduction section of the json input */
+    result = validate_column_pair_reduction(r_trans, first_idx, second_idx,
+            state_count, state_count, "trans", trans_reduction);
+    if (result) return result;
 
     return result;
 }
@@ -754,10 +842,19 @@ json_t *arbplf_trans_run(void *userdata, json_t *root, int *retcode)
     json_t *j_out = NULL;
     model_and_data_t m;
     column_reduction_t r_site;
+    column_reduction_t r_edge;
+    column_reduction_t r_trans;
+    int *first_idx;
+    int *second_idx;
     int result = 0;
+
+    first_idx = NULL;
+    second_idx = NULL;
 
     model_and_data_init(m);
     column_reduction_init(r_site);
+    column_reduction_init(r_edge);
+    column_reduction_init(r_trans);
 
     if (userdata)
     {
@@ -766,23 +863,10 @@ json_t *arbplf_trans_run(void *userdata, json_t *root, int *retcode)
         goto finish;
     }
 
-    /* todo: implement this */
-    {
-        fprintf(stderr, "not implemented\n");
-        abort();
-    }
-
-    result = _parse(m, r_site, root);
+    result = _parse(m, r_site, r_edge, r_trans, &first_idx, &second_idx, root);
     if (result) goto finish;
 
-    if (r_site->agg_mode == AGG_NONE)
-    {
-        fprintf(stderr, "error: aggregation over sites is required\n");
-        result = -1;
-        goto finish;
-    }
-
-    j_out = _query(m, r_site, &result);
+    j_out = _query(m, r_site, r_edge, r_trans, first_idx, second_idx, &result);
     if (result) goto finish;
 
 finish:
@@ -791,6 +875,11 @@ finish:
 
     model_and_data_clear(m);
     column_reduction_clear(r_site);
+    column_reduction_clear(r_edge);
+    column_reduction_clear(r_trans);
+
+    flint_free(first_idx);
+    flint_free(second_idx);
 
     flint_cleanup();
     return j_out;
