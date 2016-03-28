@@ -29,6 +29,58 @@ from arbplf import arbplf_ll
 from arbplf import arbplf_dwell
 from arbplf import arbplf_coeff_expect
 
+def _shuffle_edges(d_in):
+    """
+    This should affect edge outputs according to a returned permutation.
+    adjust edges
+    adjust edge rate coefficients
+    """
+    d = copy.deepcopy(d_in)
+    m = d['model_and_data']
+    edge_count = len(m['edges'])
+    node_count = edge_count + 1
+    perm = range(edge_count)
+    random.shuffle(perm)
+    # reorder edges
+    edges_in = m['edges']
+    next_edges = [[] for i in range(edge_count)]
+    for a in range(edge_count):
+        next_edges[perm[a]] = edges_in[a][:]
+    d['model_and_data']['edges'] = next_edges
+    # reorder edge rate coefficients
+    p = d['model_and_data']['edge_rate_coefficients']
+    p_in = d_in['model_and_data']['edge_rate_coefficients']
+    for a in range(edge_count):
+        p[perm[a]] = p_in[a]
+    # return the shuffled input
+    print(perm)
+    print(d_in)
+    print(d)
+    print()
+    return d, perm
+
+def _perm_output_edges(d, perm):
+    edge_count = len(perm)
+    invperm = [None]*edge_count
+    for i, p in enumerate(perm):
+        invperm[p] = i
+    # get the edge column index
+    edge_column_idx = None
+    for i, name in enumerate(d['columns']):
+        if name == 'edge':
+            edge_column_idx = i
+    # permute the edge indices
+    d_out = copy.deepcopy(d)
+    row_count = len(d['data'])
+    for row_idx in range(row_count):
+        original_edge_idx = d['data'][row_idx][edge_column_idx]
+        new_edge_idx = invperm[original_edge_idx]
+        #new_edge_idx = perm[original_edge_idx]
+        d_out['data'][row_idx][edge_column_idx] = new_edge_idx
+    # return the analysis with permuted edge labels
+    return d_out
+
+
 def _shuffle_nodes(d_in):
     """
     This should not affect outputs that are indexed by site, edge, and state.
@@ -106,3 +158,38 @@ def test_shuffled_nodes():
         d['site_reduction'] = {'aggregation' : 'sum'}
         coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
         assert_equal(coeff_expect, original_coeff_expect)
+
+
+def test_shuffled_edges():
+
+    d = copy.deepcopy(d_original)
+    original_dwell = json.loads(arbplf_dwell(json.dumps(d)))
+
+    d = copy.deepcopy(d_original)
+    original_ll = json.loads(arbplf_ll(json.dumps(d)))
+
+    d = copy.deepcopy(d_original)
+    d['site_reduction'] = {'aggregation' : 'sum'}
+    original_coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
+
+    iter_count = 10
+    for i in range(iter_count):
+        d_shuffled, perm = _shuffle_edges(d_original)
+
+        # the ll output does not have an edge column
+        d = copy.deepcopy(d_shuffled)
+        ll = json.loads(arbplf_ll(json.dumps(d)))
+        assert_equal(ll, original_ll)
+
+        d = copy.deepcopy(d_shuffled)
+        dwell = json.loads(arbplf_dwell(json.dumps(d)))
+        dwell_prime = _perm_output_edges(dwell, perm)
+        dwell_prime['data'].sort()
+        assert_equal(dwell_prime, original_dwell)
+
+        d = copy.deepcopy(d_shuffled)
+        d['site_reduction'] = {'aggregation' : 'sum'}
+        coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
+        coeff_expect_prime = _perm_output_edges(coeff_expect, perm)
+        coeff_expect_prime['data'].sort()
+        assert_equal(coeff_expect_prime, original_coeff_expect)
