@@ -74,6 +74,7 @@ void nd_accum_accumulate(nd_accum_t a,
         int *coords, arb_struct *value, slong prec);
 void nd_accum_zero_requested_cells(nd_accum_t a);
 json_t * nd_accum_get_json(nd_accum_t a, int *result_out);
+void nd_accum_printd(const nd_accum_t a, slong digits);
 
 
 

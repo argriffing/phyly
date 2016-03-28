@@ -715,6 +715,12 @@ _query(model_and_data_t m,
 
         /* check whether entries are accurate to full relative precision  */
         success = nd_accum_can_round(arr);
+
+        /*
+        flint_printf("debug: ndaccum prec=%wd:\n", prec);
+        nd_accum_printd(arr, 15);
+        flint_printf("\n");
+        */
     }
 
     /* build the json output using the nd array */

@@ -135,26 +135,30 @@ nd_accum_init(nd_accum_t a, nd_axis_struct *axes, int ndim)
 
     /* allocate the data array */
     a->data = _arb_vec_init(a->size);
+}
 
-    /* debug spam */
-    /*
-    fprintf(stderr, "debug: ndim=%d\n", a->ndim);
-    fprintf(stderr, "debug: size=%d\n", a->size);
+void
+nd_accum_printd(const nd_accum_t a, slong digits)
+{
+    slong i;
 
-    fprintf(stderr, "debug: shape = ");
-    for (i = 0; i < ndim; i++)
+    /* print structural data */
+    flint_printf("ndim=%d\n", a->ndim);
+    flint_printf("size=%d\n", a->size);
+
+    flint_printf("shape=");
+    for (i = 0; i < a->ndim; i++)
     {
-        fprintf(stderr, "%d ", a->shape[i]);
+        flint_printf("%d ", a->shape[i]);
     }
-    fprintf(stderr, "\n");
+    flint_printf("\n");
 
-    fprintf(stderr, "debug: strides = ");
-    for (i = 0; i < ndim; i++)
+    flint_printf("debug: strides=");
+    for (i = 0; i < a->ndim; i++)
     {
-        fprintf(stderr, "%d ", a->strides[i]);
+        flint_printf("%d ", a->strides[i]);
     }
-    fprintf(stderr, "\n");
-    */
+    flint_printf("\n");
 }
 
 /* todo: do this more intelligently and update axis requests for precision */

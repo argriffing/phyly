@@ -406,6 +406,11 @@ evaluate_edge_expectations(
             lvec = lhood_node_vectors + b;
             evec = lhood_edge_vectors + idx;
 
+            /*
+            flint_printf("debug: edge idx %d is requested? %d\n",
+                    idx, edge_is_requested[idx]);
+            */
+
             /* dwell update */
             if (edge_is_requested[idx])
             {
@@ -424,8 +429,10 @@ evaluate_edge_expectations(
                                 tmp, prec);
                     }
                 }
-                /* flint_printf("debug: dwell_tmp = "); */
-                /* arb_printd(dwell_tmp, 15); flint_printf("\n"); */
+                /*
+                flint_printf("debug: dwell_tmp = ");
+                arb_printd(dwell_tmp, 15); flint_printf("\n");
+                */
                 arb_set(dwell_accum + idx, dwell_tmp);
             }
 
@@ -447,8 +454,10 @@ evaluate_edge_expectations(
                                 tmp, prec);
                     }
                 }
-                /* flint_printf("debug: trans_tmp = "); */
-                /* arb_printd(trans_tmp, 15); flint_printf("\n"); */
+                /*
+                flint_printf("debug: trans_tmp = ");
+                arb_printd(trans_tmp, 15); flint_printf("\n");
+                */
                 arb_set(trans_accum + idx, trans_tmp);
             }
         }
@@ -618,6 +627,10 @@ _query(model_and_data_t m,
         /*
          * For each edge, compute the ratio of two values that have been
          * accumulated over sites.
+         * If the conditionally expected number of transitions is exactly
+         * zero, then set the ratio to zero regardless of the
+         * expected rates out of the occupied states, even if those
+         * rates are zero.
          */
         for (idx = 0; idx < w->edge_count; idx++)
         {
@@ -634,10 +647,16 @@ _query(model_and_data_t m,
             arb_printd(w->dwell_accum + idx, 15); flint_printf("\n");
             */
 
-            arb_div(final + idx,
-                    w->trans_accum + idx, w->dwell_accum + idx, prec);
-            arb_mul(final + idx,
-                    final + idx, w->edge_rates + idx, prec);
+            if (arb_is_zero(w->trans_accum + idx))
+            {
+                arb_zero(final + idx);
+            }
+            else
+            {
+                arb_div(final + idx,
+                        w->trans_accum + idx, w->dwell_accum + idx, prec);
+            }
+            arb_mul(final + idx, final + idx, w->edge_rates + idx, prec);
         }
 
         /*
@@ -645,15 +664,15 @@ _query(model_and_data_t m,
         flint_printf("prec=%wd\n", prec);
 
         flint_printf("numerator(trans)=\n");
-        _arb_vec_printd(w->trans_accum, w->edge_count, 15);
+        _arb_vec_print(w->trans_accum, w->edge_count);
         flint_printf("\n");
 
         flint_printf("denominator(dwell)=\n");
-        _arb_vec_printd(w->dwell_accum, w->edge_count, 15);
+        _arb_vec_print(w->dwell_accum, w->edge_count);
         flint_printf("\n");
 
         flint_printf("ratio=\n");
-        _arb_vec_printd(final, w->edge_count, 15);
+        _arb_vec_print(final, w->edge_count);
         flint_printf("\n");
         */
 
@@ -665,6 +684,13 @@ _query(model_and_data_t m,
             if (_can_round(final + idx))
             {
                 edge_is_requested[idx] = 0;
+
+                /*
+                flint_printf("debug: edge %wd is now accurate to full "
+                             "relative precision with value \n");
+                arb_printd(final + idx, 15);
+                flint_printf("\n");
+                */
             }
             else
             {
