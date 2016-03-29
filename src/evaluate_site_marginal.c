@@ -89,6 +89,10 @@ evaluate_site_marginal(
          * and then normalize the distribution.
          */
         _arb_mat_mul_entrywise(mvec, mvec, lvec, prec);
+        /* todo: add a test that fails when the following line uses
+         *       ...mvec, lvec, prec... instead of 
+         *       ...mvec, mvec, prec...
+         */
         _arb_mat_proportions(mvec, mvec, prec);
 
         /*
