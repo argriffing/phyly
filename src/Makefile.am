@@ -24,6 +24,8 @@ CORE_SOURCES = \
 	ndaccum.h \
 	evaluate_site_lhood.c \
 	evaluate_site_lhood.h \
+	evaluate_site_marginal.c \
+	evaluate_site_marginal.h \
 	arb_vec_extras.c \
 	arb_vec_extras.h \
 	arb_vec_calc.c \

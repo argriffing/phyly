@@ -46,6 +46,7 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
+#include "evaluate_site_marginal.h"
 #include "ndaccum.h"
 
 #include "parsemodel.h"
@@ -233,65 +234,6 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 
 
 static void
-evaluate_marginal_distributions(
-        arb_mat_struct *marginal_node_vectors,
-        arb_mat_struct *lhood_node_vectors,
-        arb_mat_struct *lhood_edge_vectors,
-        arb_mat_struct *transition_matrices,
-        csr_graph_t g, int *preorder,
-        int node_count, int state_count, slong prec)
-{
-    int u, a, b;
-    int idx;
-    int start, stop;
-    arb_mat_struct *tmat, *lvec, *mvec, *mvecb, *evec;
-    arb_mat_t tmp;
-
-    arb_mat_init(tmp, state_count, 1);
-
-    _arb_mat_ones(marginal_node_vectors + preorder[0]);
-
-    for (u = 0; u < node_count; u++)
-    {
-        a = preorder[u];
-        lvec = lhood_node_vectors + a;
-        mvec = marginal_node_vectors + a;
-        start = g->indptr[a];
-        stop = g->indptr[a+1];
-
-        /*
-         * Entrywise multiply by the likelihood node vector
-         * and then normalize the distribution.
-         */
-        _arb_mat_mul_entrywise(mvec, mvec, lvec, prec);
-        _arb_mat_proportions(mvec, mvec, prec);
-
-        /* initialize neighboring downstream marginal vectors */
-        for (idx = start; idx < stop; idx++)
-        {
-            b = g->indices[idx];
-            /*
-             * At this point (a, b) is an edge from node a to node b
-             * in a pre-order traversal of edges of the tree.
-             */
-            evec = lhood_edge_vectors + idx;
-            mvecb = marginal_node_vectors + b;
-            tmat = transition_matrices + idx;
-
-            /* todo: look into rewriting the dynamic programming to
-             *       avoid this potentially destabilizing division
-             *       while maintaining efficiency
-             */
-            _arb_mat_div_entrywise_marginal(tmp, mvec, evec, prec);
-            _arb_mat_mul_AT_B(mvecb, tmat, tmp, prec);
-        }
-    }
-
-    arb_mat_clear(tmp); 
-}
-
-
-static void
 evaluate_edge_expectations(
         arb_struct *edge_expectations,
         arb_mat_struct *marginal_node_vectors,
@@ -456,7 +398,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
          * Update marginal distribution vectors at nodes.
          * This is a forward pass from the root to the leaves.
          */
-        evaluate_marginal_distributions(
+        evaluate_site_marginal(
                 w->marginal_node_vectors,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
@@ -592,7 +534,7 @@ _nd_accum_update(nd_accum_t arr,
              * Update marginal distribution vectors at nodes.
              * This is a forward pass from the root to the leaves.
              */
-            evaluate_marginal_distributions(
+            evaluate_site_marginal(
                     w->marginal_node_vectors,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
