@@ -312,10 +312,8 @@ evaluate_marginal_distributions(
     int start, stop;
     arb_mat_struct *tmat, *lvec, *mvec, *mvecb, *evec;
     arb_mat_t tmp;
-    arb_t s;
 
     arb_mat_init(tmp, state_count, 1);
-    arb_init(s);
 
     _arb_mat_ones(marginal_node_vectors + preorder[0]);
 
@@ -332,8 +330,7 @@ evaluate_marginal_distributions(
          * and then normalize the distribution.
          */
         _arb_mat_mul_entrywise(mvec, mvec, lvec, prec);
-        _arb_mat_sum(s, mvec, prec);
-        arb_mat_scalar_div_arb(mvec, mvec, s, prec);
+        _arb_mat_proportions(mvec, mvec, prec);
 
         /* initialize neighboring downstream marginal vectors */
         for (idx = start; idx < stop; idx++)
@@ -357,7 +354,6 @@ evaluate_marginal_distributions(
     }
 
     arb_mat_clear(tmp); 
-    arb_clear(s);
 }
 
 
@@ -429,10 +425,12 @@ evaluate_edge_expectations(
                                 tmp, prec);
                     }
                 }
+
                 /*
                 flint_printf("debug: dwell_tmp = ");
                 arb_printd(dwell_tmp, 15); flint_printf("\n");
                 */
+
                 arb_set(dwell_accum + idx, dwell_tmp);
             }
 

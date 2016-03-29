@@ -10,6 +10,7 @@
 extern "C" {
 #endif
 
+void _arb_vec_proportions(arb_struct *b, const arb_struct *a, slong n, slong prec);
 void _arb_vec_mid(arb_struct *y, const arb_struct *x, slong n);
 void _arb_vec_printd(arb_srcptr vec, slong len, slong digits);
 void _arb_vec_print(arb_srcptr vec, slong len);

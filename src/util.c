@@ -473,3 +473,59 @@ _arb_mat_div_entrywise_marginal(
         }
     }
 }
+
+void
+_arb_mat_proportions(arb_mat_t b, const arb_mat_t a, slong prec)
+{
+    int i, j;
+    int zero_count, nonzero_count, indeterminate_count;
+    slong r, c, size;
+    arb_struct *p;
+    
+    r = arb_mat_nrows(b);
+    c = arb_mat_ncols(b);
+    size = r * c;
+
+    zero_count = 0;
+    nonzero_count = 0;
+    indeterminate_count = 0;
+    for (i = 0; i < r; i++)
+    {
+        for (j = 0; j < c; j++)
+        {
+            p = arb_mat_entry(a, i, j);
+            if (_arb_is_indeterminate(p))
+                indeterminate_count++;
+            else if (arb_is_zero(p))
+                zero_count++;
+            else if (!arb_contains_zero(p))
+                nonzero_count++;
+        }
+    }
+    if (indeterminate_count || zero_count == size)
+    {
+        _arb_mat_indeterminate(b);
+    }
+    else if (nonzero_count == 1 && zero_count == size - 1)
+    {
+        for (i = 0; i < r; i++)
+        {
+            for (j = 0; j < c; j++)
+            {
+                p = arb_mat_entry(a, i, j);
+                if (arb_is_zero(p))
+                    arb_zero(arb_mat_entry(b, i, j));
+                else
+                    arb_one(arb_mat_entry(b, i, j));
+            }
+        }
+    }
+    else
+    {
+        arb_t total;
+        arb_init(total);
+        _arb_mat_sum(total, b, prec);
+        arb_mat_scalar_div_arb(b, a, total, prec);
+        arb_clear(total);
+    }
+}

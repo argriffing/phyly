@@ -2,7 +2,50 @@
 
 #include "arb.h"
 
+#include "util.h"
 #include "arb_vec_extras.h"
+
+void
+_arb_vec_proportions(arb_struct *b, const arb_struct *a, slong n, slong prec)
+{
+    int i, zero_count, nonzero_count, indeterminate_count;
+    arb_t total;
+    arb_init(total);
+    zero_count = 0;
+    nonzero_count = 0;
+    indeterminate_count = 0;
+    for (i = 0; i < n; i++)
+    {
+        if (_arb_is_indeterminate(a + i))
+            indeterminate_count++;
+        else if (arb_is_zero(a + i))
+            zero_count++;
+        else if (!arb_contains_zero(a + i))
+            nonzero_count++;
+    }
+    if (indeterminate_count || zero_count == n)
+    {
+        _arb_vec_indeterminate(b, n);
+    }
+    else if (nonzero_count == 1 && zero_count == n - 1)
+    {
+        for (i = 0; i < n; i++)
+        {
+            if (arb_is_zero(a + i))
+                arb_zero(b + i);
+            else
+                arb_one(b + i);
+        }
+    }
+    else
+    {
+        for (i = 0; i < n; i++)
+            arb_add(total, total, a+i, prec);
+        for (i = 0; i < n; i++)
+            arb_div(b+i, a+i, total, prec);
+    }
+    arb_clear(total);
+}
 
 void
 _arb_vec_div(arb_struct *c,
