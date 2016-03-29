@@ -10,6 +10,7 @@
 void
 model_and_data_init(model_and_data_t m)
 {
+    m->rate_divisor = 1.0;
     m->root_node_index = -1;
     m->preorder = NULL;
     m->edge_rate_coefficients = NULL;
@@ -33,19 +34,25 @@ model_and_data_clear(model_and_data_t m)
 
 
 int
-dmat_nrows(dmat_t mat)
+dmat_nrows(const dmat_t mat)
 {
     return mat->r;
 }
 
 int
-dmat_ncols(dmat_t mat)
+dmat_ncols(const dmat_t mat)
 {
     return mat->c;
 }
 
 double *
 dmat_entry(dmat_t mat, int i, int j)
+{
+    return mat->data + i * mat->c + j;
+}
+
+const double *
+dmat_srcentry(const dmat_t mat, int i, int j)
 {
     return mat->data + i * mat->c + j;
 }
@@ -74,7 +81,7 @@ dmat_clear(dmat_t mat)
 }
 
 void
-dmat_get_arb_mat(arb_mat_t dst, dmat_t src)
+dmat_get_arb_mat(arb_mat_t dst, const dmat_t src)
 {
     int i, j;
     int r, c;
@@ -89,7 +96,7 @@ dmat_get_arb_mat(arb_mat_t dst, dmat_t src)
     {
         for (j = 0; j < c; j++)
         {
-            arb_set_d(arb_mat_entry(dst, i, j), *dmat_entry(src, i, j));
+            arb_set_d(arb_mat_entry(dst, i, j), *dmat_srcentry(src, i, j));
         }
     }
 }
@@ -98,19 +105,19 @@ dmat_get_arb_mat(arb_mat_t dst, dmat_t src)
 
 
 int
-pmat_nsites(pmat_t mat)
+pmat_nsites(const pmat_t mat)
 {
     return mat->s;
 }
 
 int
-pmat_nrows(pmat_t mat)
+pmat_nrows(const pmat_t mat)
 {
     return mat->r;
 }
 
 int
-pmat_ncols(pmat_t mat)
+pmat_ncols(const pmat_t mat)
 {
     return mat->c;
 }

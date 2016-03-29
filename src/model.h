@@ -21,9 +21,9 @@ typedef struct
 } pmat_struct;
 typedef pmat_struct pmat_t[1];
 
-int pmat_nsites(pmat_t mat);
-int pmat_nrows(pmat_t mat);
-int pmat_ncols(pmat_t mat);
+int pmat_nsites(const pmat_t mat);
+int pmat_nrows(const pmat_t mat);
+int pmat_ncols(const pmat_t mat);
 double * pmat_entry(pmat_t mat, int i, int j, int k);
 void pmat_pre_init(pmat_t mat);
 void pmat_init(pmat_t mat, int s, int r, int c);
@@ -38,13 +38,14 @@ typedef struct
 } dmat_struct;
 typedef dmat_struct dmat_t[1];
 
-int dmat_nrows(dmat_t mat);
-int dmat_ncols(dmat_t mat);
+int dmat_nrows(const dmat_t mat);
+int dmat_ncols(const dmat_t mat);
 double * dmat_entry(dmat_t mat, int i, int j);
+const double * dmat_srcentry(const dmat_t mat, int i, int j);
 void dmat_pre_init(dmat_t mat);
 void dmat_init(dmat_t mat, int r, int c);
 void dmat_clear(dmat_t mat);
-void dmat_get_arb_mat(arb_mat_t dst, dmat_t src);
+void dmat_get_arb_mat(arb_mat_t dst, const dmat_t src);
 
 
 typedef struct
@@ -54,6 +55,7 @@ typedef struct
     pmat_t p;
     int root_node_index;
     int *preorder;
+    double rate_divisor;
     double *edge_rate_coefficients;
     csr_edge_mapper_t edge_map;
 } model_and_data_struct;

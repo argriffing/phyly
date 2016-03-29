@@ -13,6 +13,39 @@
 
 
 static int
+_validate_rate_divisor(model_and_data_t m, json_t *root)
+{
+    if (root && !json_is_null(root))
+    {
+        double tmpd;
+
+        if (!json_is_number(root))
+        {
+            fprintf(stderr, "_validate_rate_divisor: ");
+            fprintf(stderr, "not a number\n");
+            fprintf(stderr, "%zu\n", (size_t) root);
+            fprintf(stderr, "%s\n", json_dumps(root, JSON_INDENT(2)));
+            json_dumpf(root, stderr, JSON_INDENT(2));
+            return -1;
+        }
+
+        tmpd = json_number_value(root);
+
+        if (tmpd <= 0)
+        {
+            fprintf(stderr, "_validate_rate_divisor: ");
+            fprintf(stderr, "rate divisor must be positive\n");
+            return -1;
+        }
+
+        m->rate_divisor = tmpd;
+    }
+
+    return 0;
+}
+
+
+static int
 _validate_edge(int *pair, json_t *root)
 {
     json_error_t err;
@@ -403,10 +436,11 @@ finish:
 int
 validate_model_and_data(model_and_data_t m, json_t *root)
 {
-    json_t *edges;
-    json_t *edge_rate_coefficients;
-    json_t *rate_matrix;
-    json_t *probability_array;
+    json_t *rate_divisor = NULL;
+    json_t *edges = NULL;
+    json_t *edge_rate_coefficients = NULL;
+    json_t *rate_matrix = NULL;
+    json_t *probability_array = NULL;
 
     int result;
     json_error_t err;
@@ -415,13 +449,13 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     result = 0;
     flags = JSON_STRICT;
 
-    /* all four members are json objects and all are required */
     result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o, s:o, s:o}",
+            "{s:o, s:o, s:o, s:o, s?o}",
             "edges", &edges,
             "edge_rate_coefficients", &edge_rate_coefficients,
             "rate_matrix", &rate_matrix,
-            "probability_array", &probability_array);
+            "probability_array", &probability_array,
+            "rate_divisor", &rate_divisor);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
@@ -438,6 +472,9 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     if (result) return result;
 
     result = _validate_probability_array(m, probability_array);
+    if (result) return result;
+
+    result = _validate_rate_divisor(m, rate_divisor);
     if (result) return result;
 
     return result;

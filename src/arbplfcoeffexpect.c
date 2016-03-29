@@ -220,12 +220,17 @@ likelihood_ws_clear(likelihood_ws_t w)
 
 static void
 likelihood_ws_update(likelihood_ws_t w,
+        const dmat_t rate_matrix, double rate_divisor,
         const int *edge_is_requested, slong prec)
 {
     /* arrays are already allocated and initialized */
     int idx;
     arb_mat_t P, L;
     arb_struct *rates_out;
+
+    /* update rate matrix with new precision */
+    dmat_get_arb_mat(w->rate_matrix, rate_matrix);
+    _arb_mat_scalar_div_d(w->rate_matrix, rate_divisor, prec);
 
     /* clear accumulators */
     _arb_vec_zero(w->dwell_accum, w->edge_count);
@@ -559,7 +564,8 @@ _query(model_and_data_t m,
     for (success = 0, prec=4; !success; prec <<= 1)
     {
         /* this does not update per-edge or per-node likelihood vectors */
-        likelihood_ws_update(w, edge_is_requested, prec);
+        likelihood_ws_update(w, m->mat, m->rate_divisor,
+                edge_is_requested, prec);
 
         /* accumulate numerators and denominators over sites */
         _accum(w, m, r_site, edge_is_requested, prec);

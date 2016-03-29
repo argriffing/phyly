@@ -200,8 +200,11 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 
     rmat = w->rate_matrix;
 
-    /* modify rate matrix diagonals so that the sum of each row is zero */
+    /* update rate matrix including divisor */
     dmat_get_arb_mat(rmat, m->mat);
+    _arb_mat_scalar_div_d(rmat, m->rate_divisor, prec);
+
+    /* modify rate matrix diagonals so that the sum of each row is zero */
     _arb_update_rate_matrix_diagonal(rmat, prec);
 
     /* exponentiate scaled rate matrices */

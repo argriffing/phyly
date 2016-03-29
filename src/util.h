@@ -22,6 +22,7 @@ void _arb_vec_printd(arb_srcptr vec, slong len, slong digits);
 int _can_round(arb_t x);
 int _arb_vec_can_round(arb_struct * x, slong n);
 int _arb_mat_can_round(arb_mat_t A);
+void _arb_mat_scalar_div_d(arb_mat_t m, double d, slong prec);
 
 void _arb_mat_indeterminate(arb_mat_t m);
 int _arb_mat_is_indeterminate(const arb_mat_t m);

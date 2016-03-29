@@ -92,6 +92,17 @@ _arb_mat_is_indeterminate(const arb_mat_t m)
 
 
 void
+_arb_mat_scalar_div_d(arb_mat_t m, double d, slong prec)
+{
+    arb_t x;
+    arb_init(x);
+    arb_set_d(x, d);
+    arb_mat_scalar_div_arb(m, m, x, prec);
+    arb_clear(x);
+}
+
+
+void
 _arb_mat_indeterminate(arb_mat_t m)
 {
     slong i, j;

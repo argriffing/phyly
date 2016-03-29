@@ -40,8 +40,10 @@ def get_rate_matrix(kappa):
     m = [[0]*4 for i in range(4)]
     expected_rate = kappa + 2
     for i, j, ts, tv in gen_K80():
-        m[i][j] = (kappa * ts + tv) / expected_rate
-    return m
+        #m[i][j] = (kappa * ts + tv) / expected_rate
+        m[i][j] = (kappa * ts + tv)
+    #return m, 1
+    return m, expected_rate
 
 def get_ts_tv_pairs():
     ts_pairs = []
@@ -58,11 +60,11 @@ def run(assumed_kappa):
     state_count = 4
     node_count = 5
     true_kappa = 4
-    assumed_m = get_rate_matrix(assumed_kappa)
-    true_m = get_rate_matrix(true_kappa)
+    assumed_m, assumed_denom = get_rate_matrix(assumed_kappa)
+    true_m, true_denom = get_rate_matrix(true_kappa)
     edges = [[0, 2], [0, 1], [1, 3], [1, 4]]
-    assumed_coeffs = [0.28, 0.21, 0.12, 0.09]
-    true_coeffs = [0.3, 0.2, 0.1, 0.1]
+    assumed_coeffs = [28, 21, 12, 9]
+    true_coeffs = [30, 20, 10, 10]
     # There are five nodes.
     # Three of them have unobserved states.
     # Use one site for each of the 4^3 = 64 possible observations.
@@ -93,11 +95,13 @@ def run(assumed_kappa):
             "edges" : edges,
             "edge_rate_coefficients" : true_coeffs,
             "rate_matrix" : true_m,
+            "rate_divisor" : true_denom * 100,
             "probability_array" : probability_array}
     d = {"model_and_data" : model_and_data}
     s = arbplf_ll(json.dumps(d))
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     log_likelihoods = df.value.values
+    print('log likelihood sum:', sum(log_likelihoods))
 
     # compute ts and tv using the likelihoods as observation weights
     weights = [math.exp(ll) for ll in log_likelihoods]
@@ -109,6 +113,7 @@ def run(assumed_kappa):
             "edges" : edges,
             "edge_rate_coefficients" : assumed_coeffs,
             "rate_matrix" : assumed_m,
+            "rate_divisor" : assumed_denom * 100,
             "probability_array" : probability_array}
     d = {
             "model_and_data" : model_and_data,
@@ -117,6 +122,7 @@ def run(assumed_kappa):
             "trans_reduction" : {"aggregation" : "sum"}}
 
     d['trans_reduction']['selection'] = ts_pairs
+    d['trans_reduction']['aggregation'] = [1000]*len(ts_pairs)
     d['site_reduction']['aggregation'] = "sum"
     d['model_and_data']['probability_array'] = prior_array
     s = arbplf_trans(json.dumps(d))
@@ -126,6 +132,7 @@ def run(assumed_kappa):
     print(s)
 
     d['trans_reduction']['selection'] = ts_pairs
+    d['trans_reduction']['aggregation'] = [1000]*len(ts_pairs)
     d['site_reduction']['aggregation'] = weights
     d['model_and_data']['probability_array'] = probability_array
     s = arbplf_trans(json.dumps(d))
@@ -135,6 +142,7 @@ def run(assumed_kappa):
     print(s)
 
     d['trans_reduction']['selection'] = tv_pairs
+    d['trans_reduction']['aggregation'] = [1000]*len(tv_pairs)
     d['site_reduction']['aggregation'] = "sum"
     d['model_and_data']['probability_array'] = prior_array
     s = arbplf_trans(json.dumps(d))
@@ -144,6 +152,7 @@ def run(assumed_kappa):
     print(s)
 
     d['trans_reduction']['selection'] = tv_pairs
+    d['trans_reduction']['aggregation'] = [1000]*len(tv_pairs)
     d['site_reduction']['aggregation'] = weights
     d['model_and_data']['probability_array'] = probability_array
     s = arbplf_trans(json.dumps(d))
