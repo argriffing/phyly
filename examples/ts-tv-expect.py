@@ -40,9 +40,7 @@ def get_rate_matrix(kappa):
     m = [[0]*4 for i in range(4)]
     expected_rate = kappa + 2
     for i, j, ts, tv in gen_K80():
-        #m[i][j] = (kappa * ts + tv) / expected_rate
-        m[i][j] = (kappa * ts + tv)
-    #return m, 1
+        m[i][j] = kappa * ts + tv
     return m, expected_rate
 
 def get_ts_tv_pairs():
@@ -72,7 +70,7 @@ def run(assumed_kappa):
     U = range(4)
     all_site_patterns = list(itertools.product(X, X, U, U, U))
     prior_array = [[
-        [0.25, 0.25, 0.25, 0.25],
+        [1, 1, 1, 1],
         [1, 1, 1, 1],
         [1, 1, 1, 1],
         [1, 1, 1, 1],
@@ -86,14 +84,12 @@ def run(assumed_kappa):
             else:
                 row = [0]*state_count
                 row[p] = 1
-            if i == 0:
-                for k in range(state_count):
-                    row[k] *= 0.25
             arr.append(row)
         probability_array.append(arr)
     model_and_data = {
             "edges" : edges,
             "edge_rate_coefficients" : true_coeffs,
+            "use_equilibrium_root_prior" : True,
             "rate_matrix" : true_m,
             "rate_divisor" : true_denom * 100,
             "probability_array" : probability_array}
@@ -112,6 +108,7 @@ def run(assumed_kappa):
     model_and_data = {
             "edges" : edges,
             "edge_rate_coefficients" : assumed_coeffs,
+            "use_equilibrium_root_prior" : True,
             "rate_matrix" : assumed_m,
             "rate_divisor" : assumed_denom * 100,
             "probability_array" : probability_array}
