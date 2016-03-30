@@ -1178,12 +1178,15 @@ inv_hess_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
     int success = 0;
     for (prec=4; !success; prec <<= 1)
     {
+        int invertible;
         result = _compute_second_order(so, m, r_site, prec);
         if (result) goto finish;
 
-        result = so_get_inv_hess(inv_ll_hessian, so, prec);
-
-        success = _arb_mat_can_round(inv_ll_hessian);
+        invertible = so_get_inv_hess(inv_ll_hessian, so, prec);
+        if (invertible)
+        {
+            success = _arb_mat_can_round(inv_ll_hessian);
+        }
     }
 
     /* build the json output */
