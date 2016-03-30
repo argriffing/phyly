@@ -285,34 +285,12 @@ likelihood_ws_clear(likelihood_ws_t w)
 }
 
 
-/* helper function to update base node probabilities at a site */
-static void
-_update_base_node_vectors(
-        arb_mat_struct *base_node_vectors,
-        pmat_t p, slong site)
-{
-    slong i, j;
-    slong node_count, state_count;
-    arb_mat_struct *bvec;
-    node_count = pmat_nrows(p);
-    state_count = pmat_ncols(p);
-    for (i = 0; i < node_count; i++)
-    {
-        bvec = base_node_vectors + i;
-        for (j = 0; j < state_count; j++)
-        {
-            arb_set_d(arb_mat_entry(bvec, j, 0), *pmat_entry(p, site, i, j));
-        }
-    }
-}
-
-
 /* Helper function to update likelihood-related vectors at a site. */
 static int
 _update_lhood_vectors(arb_t lhood,
         model_and_data_t m, likelihood_ws_t w, int site)
 {
-    _update_base_node_vectors(w->base_node_column_vectors, m->p, site);
+    pmat_update_base_node_vectors(w->base_node_column_vectors, m->p, site);
 
     evaluate_site_lhood(lhood,
             w->lhood_node_column_vectors,

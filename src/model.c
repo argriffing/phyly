@@ -128,6 +128,12 @@ pmat_entry(pmat_t mat, int i, int j, int k)
     return mat->data + i * mat->r * mat->c + j * mat->c + k;
 }
 
+const double *
+pmat_srcentry(const pmat_t mat, int i, int j, int k)
+{
+    return mat->data + i * mat->r * mat->c + j * mat->c + k;
+}
+
 void
 pmat_pre_init(pmat_t mat)
 {
@@ -151,4 +157,24 @@ void
 pmat_clear(pmat_t mat)
 {
     free(mat->data);
+}
+
+void
+pmat_update_base_node_vectors(
+        arb_mat_struct *base_node_vectors,
+        const pmat_t p, slong site)
+{
+    slong i, j;
+    slong node_count, state_count;
+    arb_mat_struct *bvec;
+    node_count = pmat_nrows(p);
+    state_count = pmat_ncols(p);
+    for (i = 0; i < node_count; i++)
+    {
+        bvec = base_node_vectors + i;
+        for (j = 0; j < state_count; j++)
+        {
+            arb_set_d(arb_mat_entry(bvec, j, 0), *pmat_srcentry(p, site, i, j));
+        }
+    }
 }

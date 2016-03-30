@@ -25,9 +25,12 @@ int pmat_nsites(const pmat_t mat);
 int pmat_nrows(const pmat_t mat);
 int pmat_ncols(const pmat_t mat);
 double * pmat_entry(pmat_t mat, int i, int j, int k);
+const double * pmat_srcentry(const pmat_t mat, int i, int j, int k);
 void pmat_pre_init(pmat_t mat);
 void pmat_init(pmat_t mat, int s, int r, int c);
 void pmat_clear(pmat_t mat);
+void pmat_update_base_node_vectors(
+        arb_mat_struct *base_node_vectors, const pmat_t p, slong site);
 
 
 typedef struct

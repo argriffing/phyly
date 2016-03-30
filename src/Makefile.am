@@ -32,6 +32,8 @@ CORE_SOURCES = \
 	arb_vec_calc.h \
 	rosenbrock.c \
 	rosenbrock.h \
+	equilibrium.c \
+	equilibrium.h \
 	finite_differences.c \
 	finite_differences.h \
 	parsemodel.c \
