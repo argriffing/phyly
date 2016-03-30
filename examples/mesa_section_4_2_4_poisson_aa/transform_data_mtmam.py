@@ -47,13 +47,18 @@ s_distn = """
 0.1675 0.0221 0.0561 0.0611 0.0536 0.0725 0.0870 0.0293 0.0340 0.0428
 """
 
+s_distn_scaled = """
+0692 0184 0400 0186 0065 0238 0236 0557 0277 0905
+1675 0221 0561 0611 0536 0725 0870 0293 0340 0428
+"""
+
 s_aas = 'ARNDCQEGHILKMFPSTWYV'
 
 def get_rate_matrix():
     nstates = len(s_aas)
     assert_equal(nstates, 20)
     d = {a : i for i, a in enumerate(s_aas)}
-    distn = [float(x) for x in s_distn.strip().split()]
+    distn = [float(x) for x in s_distn_scaled.strip().split()]
     assert_equal(len(distn), nstates)
     lines = s_mtmam.splitlines()
     assert_equal(len(lines), nstates-1)
@@ -66,19 +71,6 @@ def get_rate_matrix():
     rate_matrix = np.multiply(rate_matrix + rate_matrix.T, distn)
     np.fill_diagonal(rate_matrix, 0)
     return rate_matrix.tolist()
-
-
-def canonical(seq_in):
-    # FIXME: This code assumed a Poisson rate matrix.
-    #        With an 'MTMAM' rate matrix this function is obsolete.
-    assert False
-    d = {}
-    seq_out = []
-    for x in seq_in:
-        if x not in d:
-            d[x] = len(d)
-        seq_out.append(d[x])
-    return seq_out
 
 
 def get_info(fin):
@@ -134,7 +126,7 @@ def get_hardcoded_edge_rate_coefficients():
 def get_probability_array(fin):
     sequences, canonical_columns = get_info(fin)
 
-    distn = [float(x) for x in s_distn.strip().split()]
+    #distn = [float(x) for x in s_distn.strip().split()]
 
     lines = []
     for column in zip(*sequences):
@@ -166,8 +158,8 @@ def get_probability_array(fin):
         # root node
         states = range(state_count)
         for i, x in enumerate(ccol[:1]):
-            # lst = [(1/state_count if (j == x) else 0) for j in states]
-            lst = [(distn[j] if (j == x) else 0) for j in states]
+            lst = [(1 if (j == x) else 0) for j in states]
+            #lst = [(distn[j] if (j == x) else 0) for j in states]
             arr.append(lst)
         # other leaf nodes
         for i, x in enumerate(ccol[1:]):
@@ -178,10 +170,6 @@ def get_probability_array(fin):
             lst = [1] * state_count
             arr.append(lst)
         expanded.append(arr)
-    #print('expanded canonical columns:')
-    #for x in expanded:
-        #print(x)
-    #print()
 
     # total_count = sum(count for ccol, count in pairs)
 
@@ -199,6 +187,8 @@ def main():
     model_and_data = OrderedDict(
             edges = get_hardcoded_edges(),
             edge_rate_coefficients = get_hardcoded_edge_rate_coefficients(),
+            rate_divisor = 10000,
+            use_equilibrium_root_prior = True,
             # rate_matrix = get_hardcoded_rate_matrix(),
             rate_matrix = get_rate_matrix(),
             probability_array = arr)
@@ -210,5 +200,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
