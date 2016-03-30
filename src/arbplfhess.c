@@ -379,13 +379,15 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m,
 
     /* update rate matrix including rate divisor */
     dmat_get_arb_mat(w->rate_matrix, m->mat);
-    _arb_mat_scalar_div_d(w->rate_matrix, m->rate_divisor, w->prec);
+    _arb_mat_zero_diagonal(w->rate_matrix);
 
     /* update equilibrium if requested */
     if (m->use_equilibrium_root_prior)
     {
         _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
     }
+
+    _arb_mat_scalar_div_d(w->rate_matrix, m->rate_divisor, w->prec);
 
     /*
      * Initialize the unscaled arbitrary precision rate matrix.

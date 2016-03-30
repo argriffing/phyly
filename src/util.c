@@ -47,6 +47,16 @@ _arb_mat_ones(arb_mat_t A)
     }
 }
 
+void
+_arb_mat_zero_diagonal(arb_mat_t A)
+{
+    slong i;
+    for (i = 0; i < arb_mat_nrows(A) && i < arb_mat_ncols(A); i++)
+    {
+        arb_zero(arb_mat_entry(A, i, i));
+    }
+}
+
 int
 _arb_vec_can_round(arb_struct * x, slong n)
 {

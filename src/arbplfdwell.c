@@ -232,13 +232,15 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 
     /* update rate matrix including divisor */
     dmat_get_arb_mat(rmat, m->mat);
-    _arb_mat_scalar_div_d(rmat, m->rate_divisor, prec);
+    _arb_mat_zero_diagonal(rmat);
 
     /* update equilibrium if requested */
     if (m->use_equilibrium_root_prior)
     {
         _arb_vec_rate_matrix_equilibrium(w->equilibrium, rmat, prec);
     }
+
+    _arb_mat_scalar_div_d(rmat, m->rate_divisor, prec);
 
     /* modify rate matrix diagonals so that the sum of each row is zero */
     _arb_update_rate_matrix_diagonal(rmat, prec);

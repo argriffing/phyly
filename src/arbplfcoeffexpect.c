@@ -110,9 +110,8 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
         w->equilibrium = _arb_vec_init(w->state_count);
     }
 
-    /* initialize values of the transition rate matrix */
+    /* initialize the rate matrix */
     arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
-    dmat_get_arb_mat(w->rate_matrix, m->mat);
 
     /* intialize transition probability matrices */
     for (idx = 0; idx < w->edge_count; idx++)
@@ -241,13 +240,15 @@ likelihood_ws_update(likelihood_ws_t w,
 
     /* update rate matrix with new precision */
     dmat_get_arb_mat(w->rate_matrix, rate_matrix);
-    _arb_mat_scalar_div_d(w->rate_matrix, rate_divisor, prec);
+    _arb_mat_zero_diagonal(w->rate_matrix);
 
     /* update equilibrium if requested */
     if (w->equilibrium)
     {
         _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
     }
+
+    _arb_mat_scalar_div_d(w->rate_matrix, rate_divisor, prec);
 
     /* clear accumulators */
     _arb_vec_zero(w->dwell_accum, w->edge_count);
