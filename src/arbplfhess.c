@@ -463,6 +463,27 @@ likelihood_ws_clear(likelihood_ws_t w)
     flint_free(w->transition_matrices);
 }
 
+/* helper function to update base node probabilities at a site */
+static void
+_update_base_node_vectors(
+        arb_mat_struct *base_node_vectors,
+        pmat_t p, slong site)
+{
+    slong i, j;
+    slong node_count, state_count;
+    arb_mat_struct *bvec;
+    node_count = pmat_nrows(p);
+    state_count = pmat_ncols(p);
+    for (i = 0; i < node_count; i++)
+    {
+        bvec = base_node_vectors + i;
+        for (j = 0; j < state_count; j++)
+        {
+            arb_set_d(arb_mat_entry(bvec, j, 0), *pmat_entry(p, site, i, j));
+        }
+    }
+}
+
 /*
  * Evaluate derivatives of likelihood with respect to edge rate coefficients.
  *
@@ -566,7 +587,7 @@ _recompute_second_order(so_t so,
 {
     likelihood_ws_t w;
     int result = 0;
-    int i, j, idx, site, state, a;
+    int i, j, idx, site, a;
 
     int site_count = pmat_nsites(m->p);
     int edge_count = m->g->nnz;
@@ -636,17 +657,7 @@ _recompute_second_order(so_t so,
          * according to prior state distributions and data.
          * Edges remain unused.
          */
-        for (a = 0; a < w->node_count; a++)
-        {
-            arb_mat_struct * mat;
-            mat = w->base_plane->node_vectors + a;
-            for (state = 0; state < w->state_count; state++)
-            {
-                arb_set_d(
-                        arb_mat_entry(mat, state, 0),
-                        *pmat_entry(m->p, site, a, state));
-            }
-        }
+        _update_base_node_vectors(w->base_plane->node_vectors, m->p, site);
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < w->node_count; a++)
@@ -894,7 +905,7 @@ void _compute_ll(arb_t ll,
 {
     slong i;
     likelihood_ws_t w;
-    int idx, site, state, a;
+    int idx, site, a;
     int site_count, edge_count;
     int *site_selection_count;
     int result = 0;
@@ -956,17 +967,7 @@ void _compute_ll(arb_t ll,
          * according to prior state distributions and data.
          * Edges remain unused.
          */
-        for (a = 0; a < w->node_count; a++)
-        {
-            arb_mat_struct * mat;
-            mat = w->base_plane->node_vectors + a;
-            for (state = 0; state < w->state_count; state++)
-            {
-                arb_set_d(
-                        arb_mat_entry(mat, state, 0),
-                        *pmat_entry(p->m->p, site, a, state));
-            }
-        }
+        _update_base_node_vectors(w->base_plane->node_vectors, p->m->p, site);
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < w->node_count; a++)
