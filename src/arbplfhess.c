@@ -62,6 +62,7 @@
 #include "arb_vec_extras.h"
 #include "arb_vec_calc.h"
 #include "finite_differences.h"
+#include "equilibrium.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -296,6 +297,7 @@ typedef struct
     int edge_count;
     int state_count;
     arb_struct *edge_rates;
+    arb_struct *equilibrium;
     arb_mat_t rate_matrix;
     arb_mat_struct *transition_matrices;
     plane_t base_plane;
@@ -326,6 +328,11 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m,
     arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
     w->transition_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
+    w->equilibrium = NULL;
+    if (m->use_equilibrium_root_prior)
+    {
+        w->equilibrium = _arb_vec_init(w->state_count);
+    }
 
     /*
      * This is the csr graph index of edge (a, b).
@@ -373,6 +380,12 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m,
     /* update rate matrix including rate divisor */
     dmat_get_arb_mat(w->rate_matrix, m->mat);
     _arb_mat_scalar_div_d(w->rate_matrix, m->rate_divisor, w->prec);
+
+    /* update equilibrium if requested */
+    if (m->use_equilibrium_root_prior)
+    {
+        _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
+    }
 
     /*
      * Initialize the unscaled arbitrary precision rate matrix.
@@ -454,6 +467,12 @@ likelihood_ws_clear(likelihood_ws_t w)
     {
         _arb_vec_clear(w->edge_rates, w->edge_count);
     }
+
+    if (w->equilibrium)
+    {
+        _arb_vec_clear(w->equilibrium, w->state_count);
+    }
+
     arb_mat_clear(w->rate_matrix);
 
     for (idx = 0; idx < w->edge_count; idx++)
@@ -621,8 +640,6 @@ _recompute_second_order(so_t so,
     likelihood_ws_init(w, m, edge_rates, prec);
     _arb_vec_set(so->x, w->edge_rates, edge_count);
 
-    /* define an edge preorder */
-
     for (site = 0; site < site_count; site++)
     {
         /* skip sites that are not selected */
@@ -636,7 +653,9 @@ _recompute_second_order(so_t so,
          * according to prior state distributions and data.
          * Edges remain unused.
          */
-        pmat_update_base_node_vectors(w->base_plane->node_vectors, m->p, site);
+        pmat_update_base_node_vectors(
+                w->base_plane->node_vectors, m->p, site,
+                w->equilibrium, m->preorder[0], prec);
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < w->node_count; a++)
@@ -947,7 +966,8 @@ void _compute_ll(arb_t ll,
          * Edges remain unused.
          */
         pmat_update_base_node_vectors(
-                w->base_plane->node_vectors, p->m->p, site);
+                w->base_plane->node_vectors, p->m->p, site,
+                w->equilibrium, p->m->preorder[0], prec);
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < w->node_count; a++)

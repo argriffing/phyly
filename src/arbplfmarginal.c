@@ -48,6 +48,7 @@
 #include "evaluate_site_lhood.h"
 #include "evaluate_site_marginal.h"
 #include "ndaccum.h"
+#include "equilibrium.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -62,6 +63,7 @@ typedef struct
     int edge_count;
     int state_count;
     arb_struct *edge_rates;
+    arb_struct *equilibrium;
     arb_mat_t rate_matrix;
     arb_mat_struct *transition_matrices;
     arb_mat_struct *base_node_vectors;
@@ -99,6 +101,11 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
     w->transition_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
+    w->equilibrium = NULL;
+    if (m->use_equilibrium_root_prior)
+    {
+        w->equilibrium = _arb_vec_init(w->state_count);
+    }
 
     /* intialize transition probability matrices */
     for (idx = 0; idx < w->edge_count; idx++)
@@ -166,6 +173,11 @@ likelihood_ws_clear(likelihood_ws_t w)
     /* clear edge rates */
     _arb_vec_clear(w->edge_rates, w->edge_count);
 
+    if (w->equilibrium)
+    {
+        _arb_vec_clear(w->equilibrium, w->state_count);
+    }
+
     /* clear unscaled rate matrix */
     arb_mat_clear(w->rate_matrix);
 
@@ -203,6 +215,12 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
     /* update rate matrix including divisor */
     dmat_get_arb_mat(rmat, m->mat);
     _arb_mat_scalar_div_d(rmat, m->rate_divisor, prec);
+
+    /* update equilibrium if requested */
+    if (m->use_equilibrium_root_prior)
+    {
+        _arb_vec_rate_matrix_equilibrium(w->equilibrium, rmat, prec);
+    }
 
     /* modify rate matrix diagonals so that the sum of each row is zero */
     _arb_update_rate_matrix_diagonal(rmat, prec);
@@ -254,7 +272,9 @@ _nd_accum_update(nd_accum_t arr,
         coords[0] = site;
 
         /* update base node vectors */
-        pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
+        pmat_update_base_node_vectors(
+                w->base_node_vectors, m->p, site,
+                w->equilibrium, m->preorder[0], prec);
 
         /*
          * Update per-node and per-edge likelihood vectors.

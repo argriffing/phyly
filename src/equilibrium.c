@@ -1,22 +1,27 @@
 #include "util.h"
 #include "equilibrium.h"
 
-void _arb_vec_rate_matrix_equilibrium(
+int
+_arb_vec_rate_matrix_equilibrium(
         arb_struct *p, const arb_mat_t Q, slong prec)
 {
+    int invertible;
     slong i, n;
     arb_mat_t x;
     n = arb_mat_nrows(Q);
     arb_mat_init(x, n, 1);
-    _arb_mat_rate_matrix_equilibrium(x, Q, prec);
+    invertible = _arb_mat_rate_matrix_equilibrium(x, Q, prec);
     for (i = 0; i < n; i++)
         arb_set(p + i, arb_mat_entry(x, i, 0));
     arb_mat_clear(x);
+    return invertible;
 }
 
-void _arb_mat_rate_matrix_equilibrium(
+int
+_arb_mat_rate_matrix_equilibrium(
         arb_mat_t p, const arb_mat_t Q, slong prec)
 {
+    int invertible;
     slong i, j, n;
     arb_mat_t R;
     arb_mat_t x, b;
@@ -55,14 +60,18 @@ void _arb_mat_rate_matrix_equilibrium(
     }
     for (i = 0; i < n; i++)
     {
-        arb_set(arb_mat_entry(R, i, i), exit_rates + i);
+        arb_neg(arb_mat_entry(R, i, i), exit_rates + i);
         arb_one(arb_mat_entry(R, n, i));
         arb_one(arb_mat_entry(R, i, n));
     }
 
     /* solve the system */
     arb_mat_init(x, n+1, 1);
-    arb_mat_solve(x, R, b, prec);
+    invertible = arb_mat_solve(x, R, b, prec);
+    if (!invertible)
+    {
+        _arb_mat_indeterminate(x);
+    }
 
     /* copy the solution to the output matrix */
     for (i = 0; i < n; i++)
@@ -74,4 +83,6 @@ void _arb_mat_rate_matrix_equilibrium(
     arb_mat_clear(R);
     arb_mat_clear(x);
     arb_mat_clear(b);
+
+    return invertible;
 }

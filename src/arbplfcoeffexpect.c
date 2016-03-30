@@ -43,6 +43,7 @@
 #include "evaluate_site_lhood.h"
 #include "evaluate_site_marginal.h"
 #include "arb_vec_extras.h"
+#include "equilibrium.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -58,6 +59,7 @@ typedef struct
     int edge_count;
     int state_count;
     arb_struct *edge_rates;
+    arb_struct *equilibrium;
     arb_struct *dwell_accum;
     arb_struct *trans_accum;
     arb_mat_t rate_matrix;
@@ -102,6 +104,11 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
             w->edge_count * sizeof(arb_mat_struct));
     w->dwell_frechet_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
+    w->equilibrium = NULL;
+    if (m->use_equilibrium_root_prior)
+    {
+        w->equilibrium = _arb_vec_init(w->state_count);
+    }
 
     /* initialize values of the transition rate matrix */
     arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
@@ -185,6 +192,10 @@ likelihood_ws_clear(likelihood_ws_t w)
     int i, idx;
 
     _arb_vec_clear(w->edge_rates, w->edge_count);
+    if (w->equilibrium)
+    {
+        _arb_vec_clear(w->equilibrium, w->state_count);
+    }
 
     /* clear unscaled rate matrix */
     arb_mat_clear(w->rate_matrix);
@@ -231,6 +242,12 @@ likelihood_ws_update(likelihood_ws_t w,
     /* update rate matrix with new precision */
     dmat_get_arb_mat(w->rate_matrix, rate_matrix);
     _arb_mat_scalar_div_d(w->rate_matrix, rate_divisor, prec);
+
+    /* update equilibrium if requested */
+    if (w->equilibrium)
+    {
+        _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
+    }
 
     /* clear accumulators */
     _arb_vec_zero(w->dwell_accum, w->edge_count);
@@ -458,7 +475,9 @@ _accum(likelihood_ws_t w, model_and_data_t m, column_reduction_t r_site,
             continue;
 
         /* update base node vectors */
-        pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
+        pmat_update_base_node_vectors(
+                w->base_node_vectors, m->p, site,
+                w->equilibrium, m->preorder[0], prec);
 
         /*
          * Update per-node and per-edge likelihood vectors.

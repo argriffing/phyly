@@ -68,6 +68,7 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
+#include "equilibrium.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -87,6 +88,7 @@ typedef struct
     int edge_count;
     int state_count;
     arb_struct *edge_rates;
+    arb_struct *equilibrium;
     arb_mat_t rate_matrix;
     arb_mat_struct *transition_matrices;
     arb_mat_struct *base_node_column_vectors;
@@ -110,6 +112,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
         w->base_node_column_vectors = NULL;
         w->lhood_node_column_vectors = NULL;
         w->edge_rates = NULL;
+        w->equilibrium = NULL;
         w->node_count = 0;
         w->edge_count = 0;
         w->state_count = 0;
@@ -132,6 +135,11 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
             w->node_count * sizeof(arb_mat_struct));
     w->lhood_node_column_vectors = flint_malloc(
             w->node_count * sizeof(arb_mat_struct));
+    w->equilibrium = NULL;
+    if (m->use_equilibrium_root_prior)
+    {
+        w->equilibrium = _arb_vec_init(w->state_count);
+    }
 
     /*
      * This is the csr graph index of edge (a, b).
@@ -172,6 +180,12 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     /* Initialize the unscaled arbitrary precision rate matrix. */
     dmat_get_arb_mat(w->rate_matrix, m->mat);
     _arb_mat_scalar_div_d(w->rate_matrix, m->rate_divisor, prec);
+
+    /* Update equilibrium if requested. */
+    if (m->use_equilibrium_root_prior)
+    {
+        _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
+    }
 
     /*
      * Modify the diagonals of the unscaled rate matrix
@@ -247,6 +261,12 @@ likelihood_ws_clear(likelihood_ws_t w)
     {
         _arb_vec_clear(w->edge_rates, w->edge_count);
     }
+
+    if (w->equilibrium)
+    {
+        _arb_vec_clear(w->equilibrium, w->state_count);
+    }
+
     arb_mat_clear(w->rate_matrix);
 
     for (idx = 0; idx < w->edge_count; idx++)
@@ -364,7 +384,8 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
                 continue;
 
             pmat_update_base_node_vectors(
-                    w->base_node_column_vectors, m->p, site);
+                    w->base_node_column_vectors, m->p, site,
+                    w->equilibrium, m->preorder[0], w->prec);
 
             evaluate_site_lhood(lhood,
                     w->lhood_node_column_vectors,

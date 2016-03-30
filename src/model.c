@@ -10,6 +10,7 @@
 void
 model_and_data_init(model_and_data_t m)
 {
+    m->use_equilibrium_root_prior = 0;
     m->rate_divisor = 1.0;
     m->root_node_index = -1;
     m->preorder = NULL;
@@ -162,7 +163,8 @@ pmat_clear(pmat_t mat)
 void
 pmat_update_base_node_vectors(
         arb_mat_struct *base_node_vectors,
-        const pmat_t p, slong site)
+        const pmat_t p, slong site,
+        arb_struct *equilibrium, slong root_node_index, slong prec)
 {
     slong i, j;
     slong node_count, state_count;
@@ -175,6 +177,18 @@ pmat_update_base_node_vectors(
         for (j = 0; j < state_count; j++)
         {
             arb_set_d(arb_mat_entry(bvec, j, 0), *pmat_srcentry(p, site, i, j));
+        }
+    }
+
+    /* optionally multiply by an equilibrium at the root node */
+    if (equilibrium)
+    {
+        bvec = base_node_vectors + root_node_index;
+        for (j = 0; j < state_count; j++)
+        {
+            arb_struct *p;
+            p = arb_mat_entry(bvec, j, 0);
+            arb_mul(p, p, equilibrium + j, prec);
         }
     }
 }

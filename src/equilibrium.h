@@ -8,10 +8,10 @@
 extern "C" {
 #endif
 
-void _arb_vec_rate_matrix_equilibrium(
+int _arb_vec_rate_matrix_equilibrium(
         arb_struct *p, const arb_mat_t Q, slong prec);
 
-void _arb_mat_rate_matrix_equilibrium(
+int _arb_mat_rate_matrix_equilibrium(
         arb_mat_t p, const arb_mat_t Q, slong prec);
 
 

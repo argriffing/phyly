@@ -30,7 +30,8 @@ void pmat_pre_init(pmat_t mat);
 void pmat_init(pmat_t mat, int s, int r, int c);
 void pmat_clear(pmat_t mat);
 void pmat_update_base_node_vectors(
-        arb_mat_struct *base_node_vectors, const pmat_t p, slong site);
+        arb_mat_struct *base_node_vectors, const pmat_t p, slong site,
+        arb_struct *equilibrium, slong root_node_index, slong prec);
 
 
 typedef struct
@@ -58,6 +59,7 @@ typedef struct
     pmat_t p;
     int root_node_index;
     int *preorder;
+    int use_equilibrium_root_prior;
     double rate_divisor;
     double *edge_rate_coefficients;
     csr_edge_mapper_t edge_map;

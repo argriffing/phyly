@@ -12,6 +12,7 @@
 #include "csr_graph.h"
 
 
+
 static int
 _validate_rate_divisor(model_and_data_t m, json_t *root)
 {
@@ -23,9 +24,6 @@ _validate_rate_divisor(model_and_data_t m, json_t *root)
         {
             fprintf(stderr, "_validate_rate_divisor: ");
             fprintf(stderr, "not a number\n");
-            fprintf(stderr, "%zu\n", (size_t) root);
-            fprintf(stderr, "%s\n", json_dumps(root, JSON_INDENT(2)));
-            json_dumpf(root, stderr, JSON_INDENT(2));
             return -1;
         }
 
@@ -450,12 +448,13 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     flags = JSON_STRICT;
 
     result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o, s:o, s:o, s?o}",
+            "{s:o, s:o, s:o, s:o, s?o, s?b}",
             "edges", &edges,
             "edge_rate_coefficients", &edge_rate_coefficients,
             "rate_matrix", &rate_matrix,
             "probability_array", &probability_array,
-            "rate_divisor", &rate_divisor);
+            "rate_divisor", &rate_divisor,
+            "use_equilibrium_root_prior", &m->use_equilibrium_root_prior);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
