@@ -14,10 +14,10 @@ import numpy as np
 import pandas as pd
 from numpy.testing import assert_equal, assert_allclose
 
-from numpy import exp, expm1
+from numpy import log, exp, expm1
 from scipy.special import exprel
 
-from arbplf import arbplf_dwell, arbplf_marginal, arbplf_trans
+from arbplf import arbplf_ll, arbplf_dwell, arbplf_marginal, arbplf_trans
 
 rates = [1, 1, 2, 0, 3]
 
@@ -91,6 +91,18 @@ def test_trans_10():
     desired = np.zeros_like(actual)
     # compare actual and desired result
     assert_equal(actual, desired)
+
+def test_truncated_ll():
+    d = copy.deepcopy(D)
+    d['model_and_data']['probability_array'][0][-1] = [0, 1]
+    s = arbplf_ll(json.dumps(d))
+    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
+    actual = df.value.values[0]
+    # compute the desired closed form solution
+    T = sum(rates)
+    desired = log(1 - exp(-T))
+    # compare actual and desired result
+    assert_allclose(actual, desired)
 
 def test_truncated_dwell():
     d = copy.deepcopy(D)
