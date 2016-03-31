@@ -18,7 +18,8 @@ from numpy import log, exp, expm1
 from scipy.special import exprel
 
 from arbplf import (
-        arbplf_ll, arbplf_deriv, arbplf_dwell, arbplf_marginal, arbplf_trans)
+        arbplf_ll, arbplf_deriv, arbplf_hess,
+        arbplf_dwell, arbplf_marginal, arbplf_trans)
 
 rates = [1, 1, 2, 0, 3]
 
@@ -115,6 +116,19 @@ def test_truncated_deriv():
     T = sum(rates)
     # derivative of log(1 - exp(-T))
     desired = np.reciprocal(expm1(T))
+    # compare actual and desired result
+    assert_allclose(actual, desired)
+
+def test_truncated_hess():
+    d = copy.deepcopy(D)
+    d['model_and_data']['probability_array'][0][-1] = [0, 1]
+    s = arbplf_hess(json.dumps(d))
+    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
+    actual = df.pivot('first_edge', 'second_edge', 'value').values
+    # compute the desired closed form solution
+    T = sum(rates)
+    # second derivative of log(1 - exp(-T))
+    desired = -exp(T) / np.square(expm1(T))
     # compare actual and desired result
     assert_allclose(actual, desired)
 
