@@ -34,6 +34,7 @@ myext = Extension(
             'parsereduction.c',
             'arb_vec_extras.c',
             'arb_vec_calc.c',
+            'arb_vec_calc_quad.c',
             'rosenbrock.c',
             'equilibrium.c',
             'finite_differences.c',

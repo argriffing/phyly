@@ -176,7 +176,7 @@ so_get_inv_hess(arb_mat_t A, so_t so, slong prec)
 }
 
 static int
-so_hessian_is_negative_definite(so_t so, slong prec)
+so_hessian_is_negative_definite(const so_t so, slong prec)
 {
     int ret;
     slong n;
@@ -875,15 +875,18 @@ typedef struct
 {
     model_and_data_struct *m;
     column_reduction_struct *r_site;
+    /* so_struct *so; */
 } _objective_param_struct;
 
 static void
 _objective_param_init(_objective_param_struct *s,
         model_and_data_struct *m,
         column_reduction_struct *r_site)
+        /* so_struct *so */ 
 {
     s->m = m;
     s->r_site = r_site;
+    /* s->so = so; */
 }
 
 static void
@@ -891,6 +894,7 @@ _objective_param_clear(_objective_param_struct *s)
 {
     s->m = NULL;
     s->r_site = NULL;
+    /* s->so = NULL; */
 }
 
 
@@ -1093,8 +1097,8 @@ _objective(arb_struct *vec_out, arb_mat_struct *jac_out,
       const arb_struct *inp, void *param, slong n, slong prec)
 {
     _objective_param_struct * s = param;
-    so_t so;
     int result;
+    so_t so;
 
     so_init(so, n);
 
@@ -1418,6 +1422,7 @@ newton_refine_query(
     slong prec;
     int i, edge_count;
     slong precmax;
+    /* so_t so; */
     arb_struct *x, *x_initial, *x_preliminary, *x_out;
 
     /* arb_calc_verbose = 1; */
@@ -1428,6 +1433,7 @@ newton_refine_query(
     x_initial = _arb_vec_init(edge_count);
     x_preliminary = _arb_vec_init(edge_count);
     x_out = _arb_vec_init(edge_count);
+    /* so_init(so, edge_count); */
 
     /* Extract initial edge rates to x_initial. */
     {
@@ -1550,18 +1556,21 @@ newton_refine_query(
         {
             success = 1;
         }
-
         /*
-        if (so_hessian_is_negative_definite(so_wide, prec))
-        {
-            success = 1;
-            break;
-        }
         else
         {
-            fprintf(stderr, "newton refinement fail: log likelihood shape\n");
-            result = -1;
-            goto finish;
+            if (so_hessian_is_negative_definite(so, prec))
+            {
+                success = 1;
+                break;
+            }
+            else
+            {
+                fprintf(stderr, "newton refinement fail: "
+                                "log likelihood shape\n");
+                result = -1;
+                goto finish;
+            }
         }
         */
     }

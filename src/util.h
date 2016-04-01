@@ -24,6 +24,8 @@ int _arb_vec_can_round(arb_struct * x, slong n);
 int _arb_mat_can_round(arb_mat_t A);
 void _arb_mat_scalar_div_d(arb_mat_t m, double d, slong prec);
 
+int _arb_mat_solve_arb_vec(arb_struct *x,
+        const arb_mat_t A, const arb_struct *b, slong prec);
 void _arb_mat_indeterminate(arb_mat_t m);
 int _arb_mat_is_indeterminate(const arb_mat_t m);
 void _arb_mat_sum(arb_t dst, arb_mat_t src, slong prec);

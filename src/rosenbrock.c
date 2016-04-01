@@ -1,6 +1,35 @@
 #include "rosenbrock.h"
 
 void
+rosenbrock_objective(arb_t z, const arb_t x, const arb_t y, slong prec)
+{
+    arb_t x2, xcompl, xcompl2;
+
+    /* x^2 */
+    arb_init(x2);
+    arb_mul(x2, x, x, prec);
+
+    /* (1 - x) */
+    arb_init(xcompl);
+    arb_sub_si(xcompl, x, 1, prec);
+    arb_neg(xcompl, xcompl);
+
+    /* (1 - x)^2 */
+    arb_init(xcompl2);
+    arb_mul(xcompl2, xcompl, xcompl, prec);
+
+    /* (y - x^2)^2 * 100 + (1 - x)^2 */
+    arb_sub(z, y, x2, prec);
+    arb_mul(z, z, z, prec);
+    arb_mul_si(z, z, 100, prec);
+    arb_add(z, z, xcompl2, prec);
+
+    arb_clear(x2);
+    arb_clear(xcompl);
+    arb_clear(xcompl2);
+}
+
+void
 rosenbrock_gradient(arb_t dx, arb_t dy,
         const arb_t x, const arb_t y, slong prec)
 {

@@ -10,7 +10,7 @@ bin_PROGRAMS = arbplf-ll arbplf-marginal arbplf-dwell arbplf-trans \
 	       arbplf-deriv arbplf-hess arbplf-inv-hess arbplf-coeff-expect \
                arbplf-newton-point arbplf-newton-delta arbplf-newton-refine
 
-check_PROGRAMS = t-dummy_test t-newton
+check_PROGRAMS = t-dummy_test t-newton t-arb_vec_calc_quad
 
 TESTS = $(check_PROGRAMS)
 
@@ -30,6 +30,8 @@ CORE_SOURCES = \
 	arb_vec_extras.h \
 	arb_vec_calc.c \
 	arb_vec_calc.h \
+	arb_vec_calc_quad.c \
+	arb_vec_calc_quad.h \
 	rosenbrock.c \
 	rosenbrock.h \
 	equilibrium.c \
@@ -51,6 +53,7 @@ JSON_SOURCES = \
 
 t_dummy_test_SOURCES =  $(CORE_SOURCES) t-dummy_test.c
 t_newton_SOURCES =  $(CORE_SOURCES) t-newton.c
+t_arb_vec_calc_quad_SOURCES =  $(CORE_SOURCES) t-arb_vec_calc_quad.c
 
 arbplf_ll_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfll.c arbplfll.h arbplf-ll.c
 arbplf_marginal_SOURCES =  $(CORE_SOURCES) $(JSON_SOURCES) arbplfmarginal.c arbplfmarginal.h arbplf-marginal.c

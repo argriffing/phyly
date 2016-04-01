@@ -107,7 +107,7 @@ void test_solution_interval(flint_rand_t state)
         arb_mat_init(b, 2, 1);
         arb_set_si(arb_mat_entry(b, 0, 0), -2);
 
-        for (iter = 0; iter < 1000; iter++)
+        for (iter = 0; iter < 100; iter++)
         {
             slong ra, rb, rc;
 
@@ -343,7 +343,7 @@ void test_interval_method(contraction_t contraction, refinement_t refinement,
         }
 
         /* random testing */
-        for (iter = 0; iter < 10000; iter++)
+        for (iter = 0; iter < 1000; iter++)
         {
             for (i = 0; i < n; i++)
                 arb_randtest(x_in + i, state, 1 + n_randint(state, 200), 10);

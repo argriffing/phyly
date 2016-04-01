@@ -34,6 +34,26 @@ _arb_init_set(arb_t dest, const arb_t src)
     arb_set(dest, src);
 }
 
+int
+_arb_mat_solve_arb_vec(arb_struct *x,
+        const arb_mat_t A, const arb_struct *b, slong prec)
+{
+    int invertible;
+    slong i, n;
+    arb_mat_t xm, bm;
+    n = arb_mat_nrows(A);
+    arb_mat_init(xm, n, 1);
+    arb_mat_init(bm, n, 1);
+    for (i = 0; i < n; i++)
+        arb_set(arb_mat_entry(bm, i, 0), b + i);
+    invertible = arb_mat_solve(xm, A, bm, prec);
+    for (i = 0; i < n; i++)
+        arb_set(x + i, arb_mat_entry(xm, i, 0));
+    arb_mat_clear(xm);
+    arb_mat_clear(bm);
+    return invertible;
+}
+
 void
 _arb_mat_ones(arb_mat_t A)
 {

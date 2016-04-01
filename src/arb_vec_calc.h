@@ -16,7 +16,9 @@ extern "C" {
 
 /* extern TLS_PREFIX int arb_vec_calc_verbose; */
 
+
 /*
+ * multivariate function (R^N -> R^N) with jacobian
  * `param` is the user data.
  * `n` is the dimensionality of the Euclidean space.
  */

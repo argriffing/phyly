@@ -87,6 +87,16 @@ _arb_vec_contains(const arb_struct *a, const arb_struct *b, slong n)
 }
 
 int
+_arb_vec_contains_zero(const arb_struct *a, slong n)
+{
+    slong i;
+    for (i = 0; i < n; i++)
+        if (!arb_contains_zero(a + i));
+            return 0;
+    return 1;
+}
+
+int
 _arb_vec_overlaps(const arb_struct *a, const arb_struct *b, slong n)
 {
     slong i;
@@ -114,6 +124,16 @@ _arb_vec_is_indeterminate(const arb_struct *v, slong n)
         if (arf_is_nan(arb_midref(v + i)))
             return 1;
     return 0;
+}
+
+/* implemented following _arb_vec_scalar_mul */
+void
+_arb_vec_scalar_sub(arb_ptr res, arb_srcptr vec,
+        slong len, const arb_t c, slong prec)
+{
+    slong i;
+    for (i = 0; i < len; i++)
+        arb_sub(res + i, vec + i, c, prec);
 }
 
 /* from arb arb_poly zeta_series.c */
