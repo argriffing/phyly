@@ -61,6 +61,7 @@
 #include "arb_calc.h"
 #include "arb_vec_extras.h"
 #include "arb_vec_calc.h"
+#include "arb_vec_calc_quad.h"
 #include "finite_differences.h"
 #include "equilibrium.h"
 
@@ -583,6 +584,7 @@ static int
 _recompute_second_order(so_t so,
         model_and_data_t m, column_reduction_t r_site,
         const arb_struct *edge_rates,
+        int req_y, int req_g, int req_h,
         slong prec)
 {
     likelihood_ws_t w;
@@ -704,38 +706,45 @@ _recompute_second_order(so_t so,
          * Note that these derivatives are with respect to the likelihood
          * rather than with respect to the log likelihood.
          */
-        for (i = 0; i < w->edge_count; i++)
+        if (req_g || req_h)
         {
-            int update_indirect;
-            int idx_i;
-
-            idx_i = pre_to_idx[i];
-
-            /* Point to site likelihood vectors. */
-            for (a = 0; a < w->node_count; a++)
+            for (i = 0; i < w->edge_count; i++)
             {
-                w->indirect_plane->node_pvectors[a] = (
-                        w->lhood_plane->node_vectors + a);
-            }
-            for (idx = 0; idx < w->edge_count; idx++)
-            {
-                w->indirect_plane->edge_pvectors[idx] = (
-                        w->lhood_plane->edge_vectors + idx);
-            }
+                int update_indirect;
+                int idx_i;
 
-            update_indirect = 1;
-            evaluate_site_derivatives(lhood_gradient + idx_i,
-                    m->g, m->preorder, w, idx_to_a, b_to_idx,
-                    idx_i, w->deriv_plane, update_indirect);
-            for (j = 0; j <= i; j++)
-            {
-                int idx_j;
-                idx_j = pre_to_idx[j];
-                update_indirect = 0;
-                evaluate_site_derivatives(
-                        arb_mat_entry(lhood_hessian, idx_i, idx_j),
+                idx_i = pre_to_idx[i];
+
+                /* Point to site likelihood vectors. */
+                for (a = 0; a < w->node_count; a++)
+                {
+                    w->indirect_plane->node_pvectors[a] = (
+                            w->lhood_plane->node_vectors + a);
+                }
+                for (idx = 0; idx < w->edge_count; idx++)
+                {
+                    w->indirect_plane->edge_pvectors[idx] = (
+                            w->lhood_plane->edge_vectors + idx);
+                }
+
+                update_indirect = 1;
+                evaluate_site_derivatives(lhood_gradient + idx_i,
                         m->g, m->preorder, w, idx_to_a, b_to_idx,
-                        idx_j, w->hess_plane, update_indirect);
+                        idx_i, w->deriv_plane, update_indirect);
+
+                if (req_h)
+                {
+                    for (j = 0; j <= i; j++)
+                    {
+                        int idx_j;
+                        idx_j = pre_to_idx[j];
+                        update_indirect = 0;
+                        evaluate_site_derivatives(
+                                arb_mat_entry(lhood_hessian, idx_i, idx_j),
+                                m->g, m->preorder, w, idx_to_a, b_to_idx,
+                                idx_j, w->hess_plane, update_indirect);
+                    }
+                }
             }
         }
 
@@ -756,10 +765,12 @@ _recompute_second_order(so_t so,
          *   ((d/dx f(x,y)) * (d/dy f(x,y))) / f(x,y)) / f(x,y)
          *    
          */
-        arb_mat_zero(ll_hessian);
+        if (req_h)
         {
             arb_t tmp;
             arb_init(tmp);
+
+            arb_mat_zero(ll_hessian);
             for (i = 0; i < edge_count; i++)
             {
                 int idx_i;
@@ -809,29 +820,38 @@ _recompute_second_order(so_t so,
         }
 
         /* accumulate gradient of log likelihood */
-        for (i = 0; i < edge_count; i++)
+        if (req_g)
         {
-            arb_addmul(
-                    so->ll_gradient + i,
-                    lhood_gradient + i,
-                    x, prec);
+            for (i = 0; i < edge_count; i++)
+            {
+                arb_addmul(
+                        so->ll_gradient + i,
+                        lhood_gradient + i,
+                        x, prec);
+            }
         }
 
         /* accumulate hessian of log likelihood */
-        arb_mat_add(so->ll_hessian, so->ll_hessian, ll_hessian, prec);
+        if (req_h)
+        {
+            arb_mat_add(so->ll_hessian, so->ll_hessian, ll_hessian, prec);
+        }
     }
 
     /* complete the hessian according to symmetry */
-    for (i = 0; i < edge_count; i++)
+    if (req_h)
     {
-        int idx_i;
-        idx_i = pre_to_idx[i];
-        for (j = 0; j < i; j++)
+        for (i = 0; i < edge_count; i++)
         {
-            int idx_j;
-            idx_j = pre_to_idx[j];
-            arb_set(arb_mat_entry(so->ll_hessian, idx_j, idx_i),
-                    arb_mat_entry(so->ll_hessian, idx_i, idx_j));
+            int idx_i;
+            idx_i = pre_to_idx[i];
+            for (j = 0; j < i; j++)
+            {
+                int idx_j;
+                idx_j = pre_to_idx[j];
+                arb_set(arb_mat_entry(so->ll_hessian, idx_j, idx_i),
+                        arb_mat_entry(so->ll_hessian, idx_i, idx_j));
+            }
         }
     }
 
@@ -864,7 +884,9 @@ static int
 _compute_second_order(so_t so,
         model_and_data_t m, column_reduction_t r_site, slong prec)
 {
-    return _recompute_second_order(so, m, r_site, NULL, prec);
+    arb_struct *edge_rates;
+    edge_rates = NULL;
+    return _recompute_second_order(so, m, r_site, edge_rates, 1, 1, 1, prec);
 }
 
 
@@ -875,18 +897,15 @@ typedef struct
 {
     model_and_data_struct *m;
     column_reduction_struct *r_site;
-    /* so_struct *so; */
 } _objective_param_struct;
 
 static void
 _objective_param_init(_objective_param_struct *s,
         model_and_data_struct *m,
         column_reduction_struct *r_site)
-        /* so_struct *so */ 
 {
     s->m = m;
     s->r_site = r_site;
-    /* s->so = so; */
 }
 
 static void
@@ -894,7 +913,6 @@ _objective_param_clear(_objective_param_struct *s)
 {
     s->m = NULL;
     s->r_site = NULL;
-    /* s->so = NULL; */
 }
 
 
@@ -1102,8 +1120,12 @@ _objective(arb_struct *vec_out, arb_mat_struct *jac_out,
 
     so_init(so, n);
 
-    /* evaluate the function and its jacobian */
-    result = _recompute_second_order(so, s->m, s->r_site, inp, prec);
+    /*
+     * Evaluate the function and its jacobian.
+     * the {1, 1, 1} args indicate that all calculations are requested,
+     * as opposed to skipping higher order Taylor terms.
+     */
+    result = _recompute_second_order(so, s->m, s->r_site, inp, 1, 1, 1, prec);
     if (result) abort();
 
     _arb_vec_set(vec_out, so->ll_gradient, n);
@@ -1112,6 +1134,62 @@ _objective(arb_struct *vec_out, arb_mat_struct *jac_out,
     so_clear(so);
 
     return 0;
+}
+
+/*
+ * This is the function whose local minimum is of interest.
+ * It follows the interface of arb_vec_calc_f_t.
+ * The {y, g, h} output arguments correspond to the negative log likelihood
+ * and its gradient and hessian respectively. If non-NULL, they will
+ * hold the output of the corresponding functions.
+ * This is done 'lazily' so for example the hessian will not be
+ * computed if only the negative log likelihood and gradient are requested.
+ */
+static int
+_minimization_objective(
+        arb_struct *y, arb_struct *g, arb_mat_struct *h,
+        const arb_struct *x, void *param, slong n, slong prec)
+{
+    /* ad-hoc bounds check */
+    if (_arb_vec_is_nonnegative(x, n))
+    {
+        _objective_param_struct * s = param;
+        int result;
+        so_t so;
+
+        so_init(so, n);
+
+        result = _recompute_second_order(
+                so, s->m, s->r_site, x,
+                (y != NULL), (g != NULL), (h != NULL), prec);
+        if (result) abort();
+
+        if (y)
+            arb_neg(y, so->ll);
+
+        if (g)
+            _arb_vec_neg(g, so->ll_gradient, n);
+
+        if (h)
+            arb_mat_neg(h, so->ll_hessian);
+
+        so_clear(so);
+
+        return 0;
+    }
+    else
+    {
+        if (y)
+            arb_indeterminate(y);
+
+        if (g)
+            _arb_vec_indeterminate(g, n);
+
+        if (h)
+            _arb_mat_indeterminate(h);
+
+        return -1;
+    }
 }
 
 
@@ -1417,7 +1495,6 @@ newton_refine_query(
 {
     json_t * j_out = NULL;
     int result = 0;
-    int nozero;
     int success;
     slong prec;
     int i, edge_count;
@@ -1453,6 +1530,7 @@ newton_refine_query(
      * Use newton iteration without caring about the interval.
      * Increase precision, looking for a preliminary solution as x_preliminary.
      */
+    /*
     success = 0;
     precmax = 10000;
     for (prec = 64; prec < precmax; prec <<= 1)
@@ -1475,6 +1553,107 @@ newton_refine_query(
         flint_printf("error: failed to find a plausible starting point\n");
         abort();
     }
+    */
+    success = 0;
+    precmax = 10000;
+    for (prec = 64; prec < precmax; prec <<= 1)
+    {
+        if (arb_calc_verbose)
+        {
+            flint_printf("preliminary search precision: %wd\n", prec);
+        }
+        _objective_param_struct s[1];
+        myquad_t q_opt, q_initial;
+
+        _objective_param_init(s, m, r_site);
+
+        quad_init(
+                q_initial, _minimization_objective,
+                x_initial, s, edge_count, prec);
+        quad_init_set(q_opt, q_initial);
+
+        {
+            arb_t r, rmax;
+            slong maxiter;
+
+            maxiter = 10000;
+
+            /*
+             * Initial trust radius.
+             * Set this to half the minimum initial value.
+             */
+            {
+                arf_t m;
+                arf_init(m);
+                arf_set(m, arb_midref(q_initial->x + 0));
+                for (i = 1; i < edge_count; i++)
+                {
+                    arf_min(m, m, arb_midref(q_initial->x + i));
+                }
+                arb_init(r);
+                arb_set_arf(r, m);
+                arb_mul_2exp_si(r, r, -1);
+                arf_clear(m);
+            }
+
+            /* max trust radius */
+            arb_init(rmax);
+            arb_set_d(rmax, 10.0);
+
+            _minimize_dogleg(q_opt, q_initial, r, rmax, maxiter);
+
+            arb_clear(r);
+            arb_clear(rmax);
+        }
+
+        /* Set the preliminary vector. */
+        _arb_vec_set(x_preliminary, q_opt->x, edge_count);
+
+        /*
+         * Check if the preliminary solution has reasonably small
+         * relative error. Note that at this point,
+         * the true solution is not guaranteed to be contained
+         * within the preliminary solution vector.
+         */
+        if (_arb_vec_min_rel_accuracy_bits(x_preliminary, edge_count) > 53)
+        {
+            success = 1;
+        }
+        else if (_arb_vec_min_rel_accuracy_bits(x_preliminary, edge_count) > 2)
+        {
+            /* 
+             * If the unsuccessful solution has some amount
+             * of significant bits, then set the initial point
+             * to the midpoint of the unsuccessful solution.
+             */
+            _arb_vec_set(x_initial, x_preliminary, edge_count);
+            for (i = 0; i < edge_count; i++)
+            {
+                mag_zero(arb_radref(x_initial + i));
+            }
+            if (arb_calc_verbose)
+            {
+                flint_printf("debug: reusing imprecise solution\n");
+            }
+        }
+        else
+        {
+            if (arb_calc_verbose)
+            {
+                flint_printf("debug: restarting from scratch\n");
+            }
+        }
+
+        quad_clear(q_opt);
+        quad_clear(q_initial);
+        _objective_param_clear(s);
+
+        if (success)
+        {
+            /* break so that prec is not bumped */
+            break;
+        }
+    }
 
     if (arb_calc_verbose)
     {
@@ -1493,8 +1672,7 @@ newton_refine_query(
      * global optimization rather than certification of a local optimum.
      */
     success = 0;
-    nozero = 0;
-    for (prec = prec; prec < precmax && !success && !nozero; prec <<= 1)
+    for (prec = prec; prec < precmax; prec <<= 1)
     {
         int refinement_result;
         slong log2_rtol;
@@ -1544,17 +1722,27 @@ newton_refine_query(
         {
             if (arb_calc_verbose)
                 flint_printf("debug: root is excluded\n");
-            nozero = 1;
+            result = -1;
+            break;
         }
         else if (refinement_result == 0)
         {
             if (arb_calc_verbose)
                 flint_printf("debug: newton refinement does not "
                              "contract the interval\n");
+            result = -1;
+        }
+        else if (refinement_result == 1)
+        {
+            success = 1;
+            result = 0;
+            break;
         }
         else
         {
-            success = 1;
+            flint_printf("internal error: newton refinement result %d\n",
+                    refinement_result);
+            abort();
         }
         /*
         else
@@ -1576,7 +1764,7 @@ newton_refine_query(
     }
     if (prec >= precmax)
     {
-        flint_printf("error: newton interval method failed\n");
+        flint_printf("error: newton interval method exceeded precmax\n");
         abort();
     }
 

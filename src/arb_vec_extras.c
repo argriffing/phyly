@@ -5,6 +5,41 @@
 #include "util.h"
 #include "arb_vec_extras.h"
 
+/* implemented following _arb_vec_is_nonnegative */
+int
+_arb_vec_is_nonnegative(arb_srcptr vec, slong len)
+{
+    slong i;
+    for (i = 0; i < len; i++)
+        if (!arb_is_nonnegative(vec + i))
+            return 0;
+    return 1;
+}
+
+/* implemented following _arb_vec_add_error_arf_vec */
+void
+_arb_vec_add_error_arb_vec(arb_ptr res, arb_srcptr err, slong len)
+{
+    slong i;
+    for (i = 0; i < len; i++)
+        arb_add_error(res + i, err + i);
+}
+
+slong
+_arb_vec_min_rel_accuracy_bits(const arb_struct *v, slong n)
+{
+    slong i, result;
+
+    if (!n)
+        return 0;
+
+    result = arb_rel_accuracy_bits(v + 0);
+    for (i = 1; i < n; i++)
+        result = FLINT_MIN(result, arb_rel_accuracy_bits(v + i));
+
+    return result;
+}
+
 void
 _arb_vec_proportions(arb_struct *b, const arb_struct *a, slong n, slong prec)
 {
@@ -91,7 +126,7 @@ _arb_vec_contains_zero(const arb_struct *a, slong n)
 {
     slong i;
     for (i = 0; i < n; i++)
-        if (!arb_contains_zero(a + i));
+        if (!arb_contains_zero(a + i))
             return 0;
     return 1;
 }

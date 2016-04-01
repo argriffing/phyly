@@ -53,7 +53,7 @@ int main(void)
 
         for (iter = 0; iter < 1; iter++)
         {
-            slong i, n, prec;
+            slong n, prec;
             myquad_t q_opt, q_initial;
             arb_struct *x_in;
 

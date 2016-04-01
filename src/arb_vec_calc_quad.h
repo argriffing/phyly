@@ -35,6 +35,7 @@ typedef struct
     arb_vec_calc_f_t f;
     void *param;
     slong prec;
+    int domain_error;
 } quad_struct;
 typedef quad_struct myquad_t[1];
 

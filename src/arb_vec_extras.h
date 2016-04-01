@@ -10,6 +10,9 @@
 extern "C" {
 #endif
 
+int _arb_vec_is_nonnegative(arb_srcptr vec, slong len);
+void _arb_vec_add_error_arb_vec(arb_ptr res, arb_srcptr err, slong len);
+slong _arb_vec_min_rel_accuracy_bits(const arb_struct *v, slong n);
 void _arb_vec_proportions(arb_struct *b, const arb_struct *a, slong n, slong prec);
 void _arb_vec_mid(arb_struct *y, const arb_struct *x, slong n);
 void _arb_vec_printd(arb_srcptr vec, slong len, slong digits);

@@ -140,6 +140,7 @@ quad_init(myquad_t q, arb_vec_calc_f_t f,
         arb_struct *x, void *param, slong n, slong prec)
 {
     q->n = n;
+    q->domain_error = 0;
     q->y = NULL;
     q->g = NULL;
     q->h = NULL;
@@ -193,6 +194,7 @@ quad_clear(myquad_t q)
     q->param = NULL;
     q->prec = -1;
     q->n = -1;
+    q->domain_error = 0;
 }
 
 void
@@ -246,6 +248,7 @@ quad_set(myquad_t b, const myquad_t a)
      */
     quad_clear(b);
 
+    b->domain_error = a->domain_error;
     b->n = a->n;
     b->f = a->f;
     b->param = a->param;
@@ -332,7 +335,41 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
             }
             goto finish;
         }
+
+        /*
+         * check if the entries of p are small
+         * relative to the errors of the corresponding entries of the 
+         * current solution.
+         */
+        {
+            int i, delta_is_small;
+            arb_struct *err;
+            err = _arb_vec_init(n);
+            _arb_vec_set(err, q_curr->x, n);
+            for (i = 0; i < n; i++)
+            {
+                arf_zero(arb_midref(err + i));
+            }
+            delta_is_small = _arb_vec_contains(err, p, n);
+            _arb_vec_clear(err, n);
+            if (delta_is_small)
+            {
+                if (arb_calc_verbose)
+                {
+                    flint_printf("debug: the subproblem solution is small "
+                                 "compared to the current error\n");
+                }
+                goto finish;
+            }
+        }
+
         _arb_vec_add(x, q_curr->x, p, n, prec);
+
+        if (arb_calc_verbose)
+        {
+            flint_printf("debug: proposed point:\n");
+            _arb_vec_printd(x, n, 15);
+        }
 
         /* initialize the local model at the proposed point */
         quad_clear(q_next);
@@ -361,6 +398,11 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
             /* expected improvement according to the local model */
             quad_estimate_improvement(expected, q_curr, p);
             expectation_ok = arb_is_positive(expected);
+            if (arb_calc_verbose)
+            {
+                flint_printf("estimated improvement:\n");
+                arb_printd(expected, 15); flint_printf("\n");
+            }
 
             if (expectation_ok)
             {
@@ -390,6 +432,28 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
             }
         }
 
+        if (arb_calc_verbose)
+        {
+            if (q_next->domain_error)
+            {
+                flint_printf("debug: domain error in the callback\n");
+            }
+            else
+            {
+                flint_printf("debug: observed/expected improvement ratio:\n");
+                arb_printd(rho, 15); flint_printf("\n");
+            }
+        }
+
+        if (arb_rel_accuracy_bits(rho) < 2 && !q_next->domain_error)
+        {
+            if (arb_calc_verbose)
+            {
+                flint_printf("debug: loss of accuracy in improvement ratio\n");
+            }
+            goto finish;
+        }
+
         /* update the trust region radius */
         {
             arb_t tmp;
@@ -397,12 +461,12 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
 
             /* maybe contract the radius */
             arb_set_d(tmp, 0.25);
-            if (arb_lt(rho, tmp))
+            if (!arb_gt(rho, tmp) || q_next->domain_error)
             {
                 if (arb_calc_verbose)
                 {
                     flint_printf("contracting trust radius\n");
-                    arb_printd(r_curr, 15);
+                    flint_printf("r_curr : "); arb_printd(r_curr, 15);
                     flint_printf("\n");
                 }
 
@@ -417,7 +481,7 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
 
             /* maybe expand the radius */
             arb_set_d(tmp, 0.75);
-            if (arb_gt(rho, tmp) && hits_boundary)
+            if (arb_gt(rho, tmp) && hits_boundary && !q_next->domain_error)
             {
                 if (arb_calc_verbose)
                 {
@@ -443,12 +507,23 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
         }
 
         /* maybe accept the proposed step */
-        if (arb_gt(rho, eta))
+        if (arb_gt(rho, eta) && !q_next->domain_error)
         {
+            if (arb_calc_verbose)
+            {
+                flint_printf("debug: accepting step\n");
+            }
             /* swap curr and next local models */
             q_tmp = q_curr;
             q_curr = q_next;
             q_next = q_tmp;
+        }
+        else
+        {
+            if (arb_calc_verbose)
+            {
+                flint_printf("debug: rejecting step\n");
+            }
         }
 
         /* increase iteration count */
@@ -484,10 +559,19 @@ finish:
 
     if (arb_calc_verbose)
     {
-        flint_printf("debug: %d minimize_dogleg iterations\n", iter);
+        flint_printf("debug: %d _minimize_dogleg iterations\n", iter);
     }
 
     quad_set(q_opt, q_curr);
+
+    /*
+     * If the newton offset has been evaluated at the optimum point
+     * then add it to the error radius.
+     */
+    if (q_opt->p_newton)
+    {
+        _arb_vec_add_error_arb_vec(q_opt->x, q_opt->p_newton, n);
+    }
 
     arb_clear(r_curr);
     arb_clear(rho);
@@ -654,7 +738,8 @@ quad_evaluate_gradient(myquad_t q)
     }
 
     /* request only the gradient, not the objective or the hessian */
-    q->f(NULL, quad_alloc_g(q), NULL, q->x, q->param, q->n, q->prec);
+    q->domain_error = q->f(
+            NULL, quad_alloc_g(q), NULL, q->x, q->param, q->n, q->prec);
 }
 
 void
@@ -667,7 +752,8 @@ quad_evaluate_objective(myquad_t q)
     }
 
     /* request only the objective, not the gradient or hessian */
-    q->f(quad_alloc_y(q), NULL, NULL, q->x, q->param, q->n, q->prec);
+    q->domain_error = q->f(
+            quad_alloc_y(q), NULL, NULL, q->x, q->param, q->n, q->prec);
 }
 
 int
@@ -694,7 +780,8 @@ quad_evaluate_newton(myquad_t q)
         {
             h_req = quad_alloc_h(q);
         }
-        q->f(y_req, g_req, h_req, q->x, q->param, q->n, q->prec);
+        q->domain_error = q->f(
+                y_req, g_req, h_req, q->x, q->param, q->n, q->prec);
     }
 
     /* compute the newton offset using the taylor terms */
@@ -748,7 +835,8 @@ quad_evaluate_cauchy(myquad_t q)
         {
             h_req = quad_alloc_h(q);
         }
-        q->f(y_req, g_req, h_req, q->x, q->param, q->n, q->prec);
+        q->domain_error = q->f(
+                y_req, g_req, h_req, q->x, q->param, q->n, q->prec);
     }
 
     /* compute the cauchy offset using the taylor terms */
