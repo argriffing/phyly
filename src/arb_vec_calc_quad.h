@@ -57,12 +57,6 @@ arb_mat_struct * quad_alloc_h(myquad_t q);
 void _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
         const arb_t initial_radius, const arb_t max_radius, slong maxiter);
 
-
-/* todo: move this to an optimization-specific file? */
-void _solve_dogleg_subproblem(
-        arb_struct *p, int *hits_boundary, int *error,
-        myquad_t q, const arb_t trust_radius);
-
 void quad_estimate_improvement(arb_t d, myquad_t q, const arb_struct *p);
 void quad_evaluate_gradient(myquad_t q);
 void quad_evaluate_objective(myquad_t q);

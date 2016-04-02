@@ -1499,7 +1499,6 @@ newton_refine_query(
     slong prec;
     int i, edge_count;
     slong precmax;
-    /* so_t so; */
     arb_struct *x, *x_initial, *x_preliminary, *x_out;
 
     /* arb_calc_verbose = 1; */
@@ -1510,7 +1509,6 @@ newton_refine_query(
     x_initial = _arb_vec_init(edge_count);
     x_preliminary = _arb_vec_init(edge_count);
     x_out = _arb_vec_init(edge_count);
-    /* so_init(so, edge_count); */
 
     /* Extract initial edge rates to x_initial. */
     {
@@ -1526,37 +1524,9 @@ newton_refine_query(
         }
     }
 
-    /*
-     * Use newton iteration without caring about the interval.
-     * Increase precision, looking for a preliminary solution as x_preliminary.
-     */
-    /*
     success = 0;
     precmax = 10000;
-    for (prec = 64; prec < precmax; prec <<= 1)
-    {
-        if (arb_calc_verbose)
-            flint_printf("debug: preliminary newton iter prec=%wd\n", prec);
-        _objective_param_struct s[1];
-        _objective_param_init(s, m, r_site);
-
-        success = _arb_vec_calc_refine_root_newton_midpoint(
-                x_preliminary, _objective, s, x_initial, edge_count, prec);
-
-        _objective_param_clear(s);
-
-        if (success)
-            break;
-    }
-    if (!success)
-    {
-        flint_printf("error: failed to find a plausible starting point\n");
-        abort();
-    }
-    */
-    success = 0;
-    precmax = 10000;
-    for (prec = 64; prec < precmax; prec <<= 1)
+    for (prec = 32; prec < precmax; prec <<= 1)
     {
         if (arb_calc_verbose)
         {
@@ -1723,7 +1693,7 @@ newton_refine_query(
             if (arb_calc_verbose)
                 flint_printf("debug: root is excluded\n");
             result = -1;
-            break;
+            goto finish;
         }
         else if (refinement_result == 0)
         {
@@ -1744,28 +1714,31 @@ newton_refine_query(
                     refinement_result);
             abort();
         }
-        /*
-        else
-        {
-            if (so_hessian_is_negative_definite(so, prec))
-            {
-                success = 1;
-                break;
-            }
-            else
-            {
-                fprintf(stderr, "newton refinement fail: "
-                                "log likelihood shape\n");
-                result = -1;
-                goto finish;
-            }
-        }
-        */
     }
     if (prec >= precmax)
     {
         flint_printf("error: newton interval method exceeded precmax\n");
         abort();
+    }
+
+    /* require that the hessian is negative definite */
+    {
+        int negative_definite;
+        so_t so;
+
+        so_init(so, edge_count);
+        _compute_second_order(so, m, r_site, prec);
+
+        negative_definite = so_hessian_is_negative_definite(so, prec);
+
+        so_clear(so);
+
+        if (!negative_definite)
+        {
+            fprintf(stderr, "newton refinement fail: log likelihood shape\n");
+            result = -1;
+            goto finish;
+        }
     }
 
     /* build the json output */
@@ -1785,6 +1758,8 @@ newton_refine_query(
                 "columns", "edge", "value",
                 "data", j_data);
     }
+
+finish:
 
     _arb_vec_clear(x, edge_count);
     _arb_vec_clear(x_out, edge_count);

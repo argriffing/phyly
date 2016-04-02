@@ -284,6 +284,113 @@ quad_set(myquad_t b, const myquad_t a)
 }
 
 
+/* todo: move this to an optimization-specific file? */
+static void
+_solve_dogleg_subproblem(
+        arb_struct *p, int *hits_boundary, int *error,
+        myquad_t q, const arb_t trust_radius, slong prec)
+{
+    int invertible;
+
+    *error = 0;
+    *hits_boundary = 0;
+
+    /* check if the newton point is within the trust region */
+    if (!q->p_newton)
+    {
+        invertible = quad_evaluate_newton(q);
+        if (!invertible)
+        {
+            *error = -1;
+            return;
+        }
+    }
+    if (_arb_vec_is_small(q->p_newton, q->n, trust_radius, prec))
+    {
+        _arb_vec_set(p, q->p_newton, q->n);
+        if (arb_calc_verbose)
+        {
+            flint_printf("using newton point\n");
+            /* _arb_vec_printd(p, q->n, 15); */
+        }
+        return;
+    }
+
+    /*
+     * The solution is on the boundary, and lies
+     * either between the origin and the cauchy point,
+     * or between the cauchy point and the newton point.
+     */
+    *hits_boundary = 1;
+
+    /* check if the cauchy point is within the trust region */
+    if (!q->p_cauchy)
+    {
+        invertible = quad_evaluate_cauchy(q);
+        if (!invertible)
+        {
+            *error = -1;
+            return;
+        }
+    }
+    if (_arb_vec_is_small(q->p_cauchy, q->n, trust_radius, prec))
+    {
+        arb_t ta, tb;
+        arb_struct *v;
+
+        arb_init(ta);
+        arb_init(tb);
+        v = _arb_vec_init(q->n);
+
+        /* get the vector from the cauchy point to the newton point */
+        _arb_vec_sub(v, q->p_newton, q->p_cauchy, q->n, prec);
+
+        _trust_region_intersections(ta, tb,
+                q->p_cauchy, v, q->n, trust_radius, prec);
+
+        /* p <- cauchy + t * (newton - cauchy) */
+        _arb_vec_set(p, q->p_cauchy, q->n);
+        _arb_vec_scalar_addmul(p, v, q->n, tb, prec);
+
+        _arb_vec_clear(v, q->n);
+        arb_clear(ta);
+        arb_clear(tb);
+
+        if (arb_calc_verbose)
+        {
+            flint_printf("interpolating between cauchy and newton points\n");
+            /* _arb_vec_printd(p, q->n, 15); */
+        }
+
+        return;
+    }
+
+    /* the solution is in the direction of the cauchy point */
+    /* p <- cauchy * (trust_radius / cauchy_distance) */
+    {
+        arb_t d, d2;
+
+        arb_init(d2);
+        _arb_vec_dot(d2, q->p_cauchy, q->p_cauchy, q->n, prec);
+
+        arb_init(d);
+        arb_sqrt(d, d2, prec);
+
+        _arb_vec_scalar_mul(p, q->p_cauchy, q->n, trust_radius, prec);
+        _arb_vec_scalar_div(p, p, q->n, d, prec);
+
+        arb_clear(d2);
+        arb_clear(d);
+
+        if (arb_calc_verbose)
+        {
+            flint_printf("using a point in the cauchy direction\n");
+            /* _arb_vec_printd(p, q->n, 15); */
+        }
+    }
+}
+
+
 
 /* todo: move this to an optimization-specific file? */
 void
@@ -291,7 +398,7 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
         const arb_t initial_radius, const arb_t max_radius, slong maxiter)
 {
     slong iter;
-    slong n, prec;
+    slong n, wp;
     int error, hits_boundary;
     arb_struct *p, *x;
     quad_struct quads[2];
@@ -302,7 +409,9 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
     arb_set_d(eta, 0.15);
 
     n = q_initial->n;
-    prec = q_initial->prec;
+
+    /* use higher precision for bookkeeping */
+    wp = q_initial->prec * 2;
 
     q_curr = quads + 0;
     quad_init_set(q_curr, q_initial);
@@ -321,7 +430,7 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
     iter = 0;
     while (1)
     {
-        _solve_dogleg_subproblem(p, &hits_boundary, &error, q_curr, r_curr);
+        _solve_dogleg_subproblem(p, &hits_boundary, &error, q_curr, r_curr, wp);
         if (error)
         {
             /*
@@ -363,7 +472,7 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
             }
         }
 
-        _arb_vec_add(x, q_curr->x, p, n, prec);
+        _arb_vec_add(x, q_curr->x, p, n, wp);
 
         if (arb_calc_verbose)
         {
@@ -373,7 +482,7 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
 
         /* initialize the local model at the proposed point */
         quad_clear(q_next);
-        quad_init(q_next, q_curr->f, x, q_curr->param, n, prec);
+        quad_init(q_next, q_curr->f, x, q_curr->param, n, wp);
 
         if (q_next->n != n)
         {
@@ -411,10 +520,10 @@ _minimize_dogleg(myquad_t q_opt, myquad_t q_initial,
                     quad_evaluate_objective(q_next);
                 if (!q_curr->y)
                     quad_evaluate_objective(q_curr);
-                arb_sub(observed, q_curr->y, q_next->y, prec);
+                arb_sub(observed, q_curr->y, q_next->y, wp);
 
                 /* set rho to the ratio of observed to expected improvement */
-                arb_div(rho, observed, expected, prec);
+                arb_div(rho, observed, expected, wp);
             }
 
             arb_clear(observed);
@@ -584,111 +693,6 @@ finish:
 }
 
 
-/* todo: move this to an optimization-specific file? */
-void
-_solve_dogleg_subproblem(
-        arb_struct *p, int *hits_boundary, int *error,
-        myquad_t q, const arb_t trust_radius)
-{
-    int invertible;
-
-    *error = 0;
-    *hits_boundary = 0;
-
-    /* check if the newton point is within the trust region */
-    if (!q->p_newton)
-    {
-        invertible = quad_evaluate_newton(q);
-        if (!invertible)
-        {
-            *error = -1;
-            return;
-        }
-    }
-    if (_arb_vec_is_small(q->p_newton, q->n, trust_radius, q->prec))
-    {
-        _arb_vec_set(p, q->p_newton, q->n);
-        if (arb_calc_verbose)
-        {
-            flint_printf("using newton point\n");
-            /* _arb_vec_printd(p, q->n, 15); */
-        }
-        return;
-    }
-
-    /*
-     * The solution is on the boundary, and lies
-     * either between the origin and the cauchy point,
-     * or between the cauchy point and the newton point.
-     */
-    *hits_boundary = 1;
-
-    /* check if the cauchy point is within the trust region */
-    if (!q->p_cauchy)
-    {
-        invertible = quad_evaluate_cauchy(q);
-        if (!invertible)
-        {
-            *error = -1;
-            return;
-        }
-    }
-    if (_arb_vec_is_small(q->p_cauchy, q->n, trust_radius, q->prec))
-    {
-        arb_t ta, tb;
-        arb_struct *v;
-
-        arb_init(ta);
-        arb_init(tb);
-        v = _arb_vec_init(q->n);
-
-        /* get the vector from the cauchy point to the newton point */
-        _arb_vec_sub(v, q->p_newton, q->p_cauchy, q->n, q->prec);
-
-        _trust_region_intersections(ta, tb,
-                q->p_cauchy, v, q->n, trust_radius, q->prec);
-
-        /* p <- cauchy + t * (newton - cauchy) */
-        _arb_vec_set(p, q->p_cauchy, q->n);
-        _arb_vec_scalar_addmul(p, v, q->n, tb, q->prec);
-
-        _arb_vec_clear(v, q->n);
-        arb_clear(ta);
-        arb_clear(tb);
-
-        if (arb_calc_verbose)
-        {
-            flint_printf("interpolating between cauchy and newton points\n");
-            /* _arb_vec_printd(p, q->n, 15); */
-        }
-
-        return;
-    }
-
-    /* the solution is in the direction of the cauchy point */
-    /* p <- cauchy * (trust_radius / cauchy_distance) */
-    {
-        arb_t d, d2;
-
-        arb_init(d2);
-        _arb_vec_dot(d2, q->p_cauchy, q->p_cauchy, q->n, q->prec);
-
-        arb_init(d);
-        arb_sqrt(d, d2, q->prec);
-
-        _arb_vec_scalar_mul(p, q->p_cauchy, q->n, trust_radius, q->prec);
-        _arb_vec_scalar_div(p, p, q->n, d, q->prec);
-
-        arb_clear(d2);
-        arb_clear(d);
-
-        if (arb_calc_verbose)
-        {
-            flint_printf("using a point in the cauchy direction\n");
-            /* _arb_vec_printd(p, q->n, 15); */
-        }
-    }
-}
 
 void
 quad_estimate_improvement(arb_t d, myquad_t q, const arb_struct *p)
