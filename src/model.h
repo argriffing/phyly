@@ -37,26 +37,8 @@ void pmat_update_base_node_vectors(
 
 typedef struct
 {
-    double *data;
-    int r;
-    int c;
-} dmat_struct;
-typedef dmat_struct dmat_t[1];
-
-int dmat_nrows(const dmat_t mat);
-int dmat_ncols(const dmat_t mat);
-double * dmat_entry(dmat_t mat, int i, int j);
-const double * dmat_srcentry(const dmat_t mat, int i, int j);
-void dmat_pre_init(dmat_t mat);
-void dmat_init(dmat_t mat, int r, int c);
-void dmat_clear(dmat_t mat);
-void dmat_get_arb_mat(arb_mat_t dst, const dmat_t src);
-
-
-typedef struct
-{
     csr_graph_t g;
-    dmat_t mat;
+    arb_mat_t mat;
     pmat_t p;
     int root_node_index;
     int *preorder;
@@ -79,7 +61,7 @@ _update_rate_matrix_and_equilibrium(
         arb_t rate_divisor,
         int use_equilibrium_root_prior,
         int use_equilibrium_rate_divisor,
-        const dmat_t mat,
+        const arb_mat_t mat,
         slong prec);
 
 #ifdef __cplusplus

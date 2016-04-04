@@ -17,7 +17,7 @@ model_and_data_init(model_and_data_t m)
     m->preorder = NULL;
     m->edge_rate_coefficients = NULL;
     csr_graph_init(m->g);
-    dmat_pre_init(m->mat);
+    arb_mat_init(m->mat, 0, 0);
     pmat_pre_init(m->p);
     csr_edge_mapper_pre_init(m->edge_map);
     arb_init(m->rate_divisor);
@@ -30,83 +30,11 @@ model_and_data_clear(model_and_data_t m)
     free(m->preorder);
     free(m->edge_rate_coefficients);
     csr_graph_clear(m->g);
-    dmat_clear(m->mat);
+    arb_mat_clear(m->mat);
     pmat_clear(m->p);
     csr_edge_mapper_clear(m->edge_map);
     arb_clear(m->rate_divisor);
 }
-
-
-
-int
-dmat_nrows(const dmat_t mat)
-{
-    return mat->r;
-}
-
-int
-dmat_ncols(const dmat_t mat)
-{
-    return mat->c;
-}
-
-double *
-dmat_entry(dmat_t mat, int i, int j)
-{
-    return mat->data + i * mat->c + j;
-}
-
-const double *
-dmat_srcentry(const dmat_t mat, int i, int j)
-{
-    return mat->data + i * mat->c + j;
-}
-
-void
-dmat_pre_init(dmat_t mat)
-{
-    /* either init or clear may follow this call */
-    mat->data = NULL;
-    mat->r = 0;
-    mat->c = 0;
-}
-
-void
-dmat_init(dmat_t mat, int r, int c)
-{
-    mat->data = malloc(r*c*sizeof(double));
-    mat->r = r;
-    mat->c = c;
-}
-
-void
-dmat_clear(dmat_t mat)
-{
-    free(mat->data);
-}
-
-void
-dmat_get_arb_mat(arb_mat_t dst, const dmat_t src)
-{
-    int i, j;
-    int r, c;
-    r = dmat_nrows(src);
-    c = dmat_ncols(src);
-    if (r != arb_mat_nrows(dst) || c != arb_mat_ncols(dst))
-    {
-        fprintf(stderr, "internal error: matrix size mismatch\n");
-        abort();
-    }
-    for (i = 0; i < r; i++)
-    {
-        for (j = 0; j < c; j++)
-        {
-            arb_set_d(arb_mat_entry(dst, i, j), *dmat_srcentry(src, i, j));
-        }
-    }
-}
-
-
 
 
 int
@@ -209,11 +137,11 @@ _update_rate_matrix_and_equilibrium(
         arb_t rate_divisor,
         int use_equilibrium_root_prior,
         int use_equilibrium_rate_divisor,
-        const dmat_t mat,
+        const arb_mat_t mat,
         slong prec)
 {
     /* Initialize the unscaled arbitrary precision rate matrix. */
-    dmat_get_arb_mat(rate_matrix, mat);
+    arb_mat_set(rate_matrix, mat);
     _arb_mat_zero_diagonal(rate_matrix);
 
     /* Update equilibrium if requested. */
