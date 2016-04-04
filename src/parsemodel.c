@@ -327,7 +327,8 @@ _validate_rate_matrix(model_and_data_t m, json_t *root)
     }
 
     n = json_array_size(root);
-    dmat_init(m->mat, n, n);
+    arb_mat_clear(m->mat);
+    arb_mat_init(m->mat, n, n);
 
     for (i = 0; i < n; i++)
     {
@@ -358,7 +359,7 @@ _validate_rate_matrix(model_and_data_t m, json_t *root)
                 goto finish;
             }
             tmpd = json_number_value(y);
-            *dmat_entry(m->mat, i, j) = tmpd;
+            arb_set_d(arb_mat_entry(m->mat, i, j), tmpd);
         }
     }
 
@@ -378,7 +379,7 @@ _validate_probability_array(model_and_data_t m, json_t *root)
     int result;
 
     node_count = m->g->n;
-    state_count = dmat_nrows(m->mat);
+    state_count = arb_mat_nrows(m->mat);
 
     result = 0;
 
