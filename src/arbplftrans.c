@@ -111,7 +111,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     w->frechet_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
     w->equilibrium = NULL;
-    if (m->use_equilibrium_root_prior)
+    if (m->use_equilibrium_root_prior || m->use_equilibrium_rate_divisor)
     {
         w->equilibrium = _arb_vec_init(w->state_count);
     }
@@ -231,17 +231,14 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
 
     rmat = w->rate_matrix;
 
-    /* update the rate matrix including divisor with the current prec */
-    dmat_get_arb_mat(rmat, m->mat);
-    _arb_mat_zero_diagonal(rmat);
-
-    /* update equilibrium if requested */
-    if (m->use_equilibrium_root_prior)
-    {
-        _arb_vec_rate_matrix_equilibrium(w->equilibrium, rmat, prec);
-    }
-
-    _arb_mat_scalar_div_d(rmat, m->rate_divisor, prec);
+    _update_rate_matrix_and_equilibrium(
+            w->rate_matrix,
+            w->equilibrium,
+            m->rate_divisor,
+            m->use_equilibrium_root_prior,
+            m->use_equilibrium_rate_divisor,
+            m->mat,
+            prec);
 
     /* modify rate matrix diagonals so that the sum of each row is zero */
     _arb_update_rate_matrix_diagonal(rmat, prec);
@@ -403,7 +400,8 @@ _nd_accum_update_state_agg(nd_accum_t arr,
         /* update base node vectors */
         pmat_update_base_node_vectors(
                 w->base_node_vectors, m->p, site,
-                w->equilibrium, m->preorder[0], prec);
+                m->use_equilibrium_root_prior, w->equilibrium,
+                m->preorder[0], prec);
 
         /*
          * Update per-node and per-edge likelihood vectors.
@@ -541,7 +539,8 @@ _nd_accum_update(nd_accum_t arr,
             /* update base node vectors */
             pmat_update_base_node_vectors(
                     w->base_node_vectors, m->p, site,
-                    w->equilibrium, m->preorder[0], prec);
+                    m->use_equilibrium_root_prior, w->equilibrium,
+                    m->preorder[0], prec);
 
             /*
              * Update per-node and per-edge likelihood vectors.

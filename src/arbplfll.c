@@ -136,7 +136,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
     w->lhood_node_column_vectors = flint_malloc(
             w->node_count * sizeof(arb_mat_struct));
     w->equilibrium = NULL;
-    if (m->use_equilibrium_root_prior)
+    if (m->use_equilibrium_root_prior || m->use_equilibrium_rate_divisor)
     {
         w->equilibrium = _arb_vec_init(w->state_count);
     }
@@ -177,17 +177,14 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
         arb_set_d(w->edge_rates + idx, tmpd);
     }
 
-    /* Initialize the unscaled arbitrary precision rate matrix. */
-    dmat_get_arb_mat(w->rate_matrix, m->mat);
-    _arb_mat_zero_diagonal(w->rate_matrix);
-
-    /* Update equilibrium if requested. */
-    if (m->use_equilibrium_root_prior)
-    {
-        _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
-    }
-
-    _arb_mat_scalar_div_d(w->rate_matrix, m->rate_divisor, prec);
+    _update_rate_matrix_and_equilibrium(
+            w->rate_matrix,
+            w->equilibrium,
+            m->rate_divisor,
+            m->use_equilibrium_root_prior,
+            m->use_equilibrium_rate_divisor,
+            m->mat,
+            prec);
 
     /*
      * Modify the diagonals of the unscaled rate matrix
@@ -387,7 +384,8 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
             pmat_update_base_node_vectors(
                     w->base_node_column_vectors, m->p, site,
-                    w->equilibrium, m->preorder[0], w->prec);
+                    m->use_equilibrium_root_prior, w->equilibrium,
+                    m->preorder[0], w->prec);
 
             evaluate_site_lhood(lhood,
                     w->lhood_node_column_vectors,

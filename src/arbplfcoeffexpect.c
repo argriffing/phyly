@@ -105,7 +105,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     w->dwell_frechet_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
     w->equilibrium = NULL;
-    if (m->use_equilibrium_root_prior)
+    if (m->use_equilibrium_root_prior || m->use_equilibrium_rate_divisor)
     {
         w->equilibrium = _arb_vec_init(w->state_count);
     }
@@ -229,8 +229,7 @@ likelihood_ws_clear(likelihood_ws_t w)
 }
 
 static void
-likelihood_ws_update(likelihood_ws_t w,
-        const dmat_t rate_matrix, double rate_divisor,
+likelihood_ws_update(likelihood_ws_t w, model_and_data_t m,
         const int *edge_is_requested, slong prec)
 {
     /* arrays are already allocated and initialized */
@@ -238,17 +237,14 @@ likelihood_ws_update(likelihood_ws_t w,
     arb_mat_t P, L;
     arb_struct *rates_out;
 
-    /* update rate matrix with new precision */
-    dmat_get_arb_mat(w->rate_matrix, rate_matrix);
-    _arb_mat_zero_diagonal(w->rate_matrix);
-
-    /* update equilibrium if requested */
-    if (w->equilibrium)
-    {
-        _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
-    }
-
-    _arb_mat_scalar_div_d(w->rate_matrix, rate_divisor, prec);
+    _update_rate_matrix_and_equilibrium(
+            w->rate_matrix,
+            w->equilibrium,
+            m->rate_divisor,
+            m->use_equilibrium_root_prior,
+            m->use_equilibrium_rate_divisor,
+            m->mat,
+            prec);
 
     /* clear accumulators */
     _arb_vec_zero(w->dwell_accum, w->edge_count);
@@ -478,7 +474,8 @@ _accum(likelihood_ws_t w, model_and_data_t m, column_reduction_t r_site,
         /* update base node vectors */
         pmat_update_base_node_vectors(
                 w->base_node_vectors, m->p, site,
-                w->equilibrium, m->preorder[0], prec);
+                m->use_equilibrium_root_prior, w->equilibrium,
+                m->preorder[0], prec);
 
         /*
          * Update per-node and per-edge likelihood vectors.
@@ -574,8 +571,7 @@ _query(model_and_data_t m,
     for (success = 0, prec=4; !success; prec <<= 1)
     {
         /* this does not update per-edge or per-node likelihood vectors */
-        likelihood_ws_update(w, m->mat, m->rate_divisor,
-                edge_is_requested, prec);
+        likelihood_ws_update(w, m, edge_is_requested, prec);
 
         /* accumulate numerators and denominators over sites */
         _accum(w, m, r_site, edge_is_requested, prec);
