@@ -21,7 +21,7 @@ myext = Extension(
             'arbplfhess.c',
             'arbplfmarginal.c',
             'arbplfdwell.c',
-            'arbplfcoeffexpect.c',
+            'arbplfem.c',
             'arbplftrans.c',
             'csr_graph.c',
             'util.c',

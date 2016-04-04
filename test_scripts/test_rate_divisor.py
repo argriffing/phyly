@@ -15,8 +15,16 @@ from numpy.testing import (
 
 from arbplf import (
         arbplf_ll, arbplf_marginal,
-        arbplf_dwell, arbplf_trans, arbplf_coeff_expect,
-        arbplf_newton_delta, arbplf_newton_point,
+        arbplf_dwell, arbplf_trans, arbplf_em_update,
+        arbplf_newton_delta, arbplf_newton_update,
+        arbplf_newton_refine, arbplf_deriv, arbplf_hess,
+        arbplf_inv_hess,
+        )
+
+_funcs = (
+        arbplf_ll, arbplf_marginal,
+        arbplf_dwell, arbplf_trans, arbplf_em_update,
+        arbplf_newton_delta, arbplf_newton_update,
         arbplf_newton_refine, arbplf_deriv, arbplf_hess,
         arbplf_inv_hess,
         )
@@ -86,14 +94,8 @@ _B = {
 
 
 def test_rate_divisor():
-
-    for f in (
-            arbplf_ll, arbplf_marginal,
-            arbplf_dwell, arbplf_trans, arbplf_coeff_expect,
-            arbplf_newton_delta, arbplf_newton_point,
-            arbplf_newton_refine, arbplf_deriv, arbplf_hess,
-            arbplf_inv_hess,
-            ):
+    for f in _funcs:
+        print('rate divisor test test', f.__name__)
 
         a_in = copy.deepcopy(_A)
         b_in = copy.deepcopy(_B)
@@ -112,14 +114,7 @@ def test_rate_divisor():
 
 
 def test_equilibrium():
-    for f in (
-            arbplf_ll, arbplf_marginal,
-            arbplf_dwell, arbplf_trans, arbplf_coeff_expect,
-            arbplf_newton_delta, arbplf_newton_point,
-            arbplf_newton_refine, arbplf_deriv, arbplf_hess,
-            arbplf_inv_hess,
-            ):
-
+    for f in _funcs:
         print('equilibrium test', f.__name__)
 
         a_in = copy.deepcopy(_A)
@@ -147,14 +142,7 @@ def test_equilibrium():
 def test_rate_matrix_diagonal_entries():
     # diagonal entries should be ignored
 
-    for f in (
-            arbplf_ll, arbplf_marginal,
-            arbplf_dwell, arbplf_trans, arbplf_coeff_expect,
-            arbplf_newton_delta, arbplf_newton_point,
-            arbplf_newton_refine, arbplf_deriv, arbplf_hess,
-            arbplf_inv_hess,
-            ):
-
+    for f in _funcs:
         print('equilibrium test', f.__name__)
 
         _C = copy.deepcopy(_A)
@@ -207,13 +195,7 @@ _D = {
 
 
 def test_equilibrium_rate_divisor():
-    for f in (
-            arbplf_ll, arbplf_marginal,
-            arbplf_newton_delta, arbplf_newton_point,
-            arbplf_newton_refine, arbplf_deriv, arbplf_hess, arbplf_inv_hess,
-            arbplf_dwell, arbplf_trans, arbplf_coeff_expect,
-            ):
-
+    for f in _funcs:
         print('equilibrium rate divisor test', f.__name__)
 
         c_in = copy.deepcopy(_C)

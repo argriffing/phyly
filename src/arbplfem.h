@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-json_t *arbplf_coeff_expect_run(void *userdata, json_t *root, int *retcode);
+json_t *arbplf_em_update_run(void *userdata, json_t *root, int *retcode);
 
 #ifdef __cplusplus
 }

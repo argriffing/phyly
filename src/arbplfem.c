@@ -1,5 +1,5 @@
 /*
- * Full precision edge rate coefficient expectations.
+ * Full precision edge rate coefficient EM update.
  *
  * The JSON format is used for both input and output.
  * Arbitrary precision is used only internally;
@@ -48,7 +48,7 @@
 #include "parsemodel.h"
 #include "parsereduction.h"
 #include "runjson.h"
-#include "arbplfcoeffexpect.h"
+#include "arbplfem.h"
 
 
 
@@ -725,7 +725,7 @@ _parse(model_and_data_t m, column_reduction_t r_site, json_t *root)
 }
 
 
-json_t *arbplf_coeff_expect_run(void *userdata, json_t *root, int *retcode)
+json_t *arbplf_em_update_run(void *userdata, json_t *root, int *retcode)
 {
     json_t *j_out = NULL;
     model_and_data_t m;

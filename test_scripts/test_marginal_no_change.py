@@ -25,7 +25,7 @@ from numpy.testing import (
 from arbplf import arbplf_ll
 from arbplf import arbplf_dwell
 from arbplf import arbplf_marginal
-from arbplf import arbplf_coeff_expect
+from arbplf import arbplf_em_update
 
 # remains constant across all tests in the module
 desired_marginal = {
@@ -50,7 +50,7 @@ desired_dwell = {
     }
 
 # remains constant across all tests in the module
-desired_coeff_expect = {
+desired_em_update = {
     "columns": ["edge", "value"],
     "data": [
         [0, 0.0],
@@ -82,8 +82,8 @@ def test_marginal_no_change():
     assert_equal(actual_ll, desired_ll)
 
     d['site_reduction'] = {'aggregation' : 'sum'}
-    actual_coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
-    assert_equal(actual_coeff_expect, desired_coeff_expect)
+    actual_em_update = json.loads(arbplf_em_update(json.dumps(d)))
+    assert_equal(actual_em_update, desired_em_update)
 
 
 def test_marginal_no_change_heterogeneous_edge_rates():
@@ -111,8 +111,8 @@ def test_marginal_no_change_heterogeneous_edge_rates():
     assert_equal(actual_ll, desired_ll)
 
     d['site_reduction'] = {'aggregation' : 'sum'}
-    actual_coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
-    assert_equal(actual_coeff_expect, desired_coeff_expect)
+    actual_em_update = json.loads(arbplf_em_update(json.dumps(d)))
+    assert_equal(actual_em_update, desired_em_update)
 
 
 def test_marginal_no_change_edges_are_not_preordered():
@@ -141,5 +141,5 @@ def test_marginal_no_change_edges_are_not_preordered():
     assert_equal(actual_ll, desired_ll)
 
     d['site_reduction'] = {'aggregation' : 'sum'}
-    actual_coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
-    assert_equal(actual_coeff_expect, desired_coeff_expect)
+    actual_em_update = json.loads(arbplf_em_update(json.dumps(d)))
+    assert_equal(actual_em_update, desired_em_update)

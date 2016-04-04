@@ -8,7 +8,7 @@
 #include "arbplfmarginal.h"
 #include "arbplfdwell.h"
 #include "arbplftrans.h"
-#include "arbplfcoeffexpect.h"
+#include "arbplfem.h"
 #include "runjson.h"
 
 
@@ -20,24 +20,24 @@ PyDoc_STRVAR(arbplf_ll__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_deriv__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_hess__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_inv_hess__doc__, "json in -> json out");
-PyDoc_STRVAR(arbplf_newton_point__doc__, "json in -> json out");
+PyDoc_STRVAR(arbplf_newton_update__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_newton_delta__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_newton_refine__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_marginal__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_dwell__doc__, "json in -> json out");
 PyDoc_STRVAR(arbplf_trans__doc__, "json in -> json out");
-PyDoc_STRVAR(arbplf_coeff_expect__doc__, "json in -> json out");
+PyDoc_STRVAR(arbplf_em_update__doc__, "json in -> json out");
 
 /* The wrapper to the underlying C function */
 static PyObject *
-py_arbplf_coeff_expect(PyObject *self, PyObject *args)
+py_arbplf_em_update(PyObject *self, PyObject *args)
 {
     const char *s_in;
     char *s_out;
     PyObject *ret;
     int retcode = 0;
 
-	if (!PyArg_ParseTuple(args, "s:arbplf_coeff_expect", &s_in))
+	if (!PyArg_ParseTuple(args, "s:arbplf_em_update", &s_in))
 		return NULL;
 	
 	/* Call the C function */
@@ -47,7 +47,7 @@ py_arbplf_coeff_expect(PyObject *self, PyObject *args)
     json_hom_t j_hom;
     j_hom->userdata = NULL;
     j_hom->clear = NULL;
-    j_hom->f = arbplf_coeff_expect_run;
+    j_hom->f = arbplf_em_update_run;
     {
         /* define the string->string map */
         string_hom_ptr s_hom = json_induced_string_hom(j_hom);
@@ -383,14 +383,14 @@ py_arbplf_inv_hess(PyObject *self, PyObject *args)
 
 /* The wrapper to the underlying C function */
 static PyObject *
-py_arbplf_newton_point(PyObject *self, PyObject *args)
+py_arbplf_newton_update(PyObject *self, PyObject *args)
 {
     const char *s_in;
     char *s_out;
     PyObject *ret;
     int retcode = 0;
 
-	if (!PyArg_ParseTuple(args, "s:arbplf_newton_point", &s_in))
+	if (!PyArg_ParseTuple(args, "s:arbplf_newton_update", &s_in))
 		return NULL;
 	
 	/* Call the C function */
@@ -523,13 +523,13 @@ static PyMethodDef arbplf_methods[] = {
 	{"arbplf_deriv",  py_arbplf_deriv, METH_VARARGS, arbplf_deriv__doc__},
 	{"arbplf_hess",  py_arbplf_hess, METH_VARARGS, arbplf_hess__doc__},
 	{"arbplf_inv_hess",  py_arbplf_inv_hess, METH_VARARGS, arbplf_inv_hess__doc__},
-	{"arbplf_newton_point",  py_arbplf_newton_point, METH_VARARGS, arbplf_newton_point__doc__},
+	{"arbplf_newton_update",  py_arbplf_newton_update, METH_VARARGS, arbplf_newton_update__doc__},
 	{"arbplf_newton_delta",  py_arbplf_newton_delta, METH_VARARGS, arbplf_newton_delta__doc__},
 	{"arbplf_newton_refine",  py_arbplf_newton_refine, METH_VARARGS, arbplf_newton_refine__doc__},
 	{"arbplf_marginal",  py_arbplf_marginal, METH_VARARGS, arbplf_marginal__doc__},
 	{"arbplf_dwell",  py_arbplf_dwell, METH_VARARGS, arbplf_dwell__doc__},
 	{"arbplf_trans",  py_arbplf_trans, METH_VARARGS, arbplf_trans__doc__},
-	{"arbplf_coeff_expect",  py_arbplf_coeff_expect, METH_VARARGS, arbplf_coeff_expect__doc__},
+	{"arbplf_em_update",  py_arbplf_em_update, METH_VARARGS, arbplf_em_update__doc__},
 	{NULL, NULL}      /* sentinel */
 };
 

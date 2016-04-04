@@ -27,7 +27,7 @@ from numpy.testing import (
 
 from arbplf import arbplf_ll
 from arbplf import arbplf_dwell
-from arbplf import arbplf_coeff_expect
+from arbplf import arbplf_em_update
 
 def _shuffle_edges(d_in):
     """
@@ -140,7 +140,7 @@ def test_shuffled_nodes():
 
     d = copy.deepcopy(d_original)
     d['site_reduction'] = {'aggregation' : 'sum'}
-    original_coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
+    original_em_update = json.loads(arbplf_em_update(json.dumps(d)))
 
     iter_count = 10
     for i in range(iter_count):
@@ -156,8 +156,8 @@ def test_shuffled_nodes():
 
         d = copy.deepcopy(d_shuffled)
         d['site_reduction'] = {'aggregation' : 'sum'}
-        coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
-        assert_equal(coeff_expect, original_coeff_expect)
+        em_update = json.loads(arbplf_em_update(json.dumps(d)))
+        assert_equal(em_update, original_em_update)
 
 
 def test_shuffled_edges():
@@ -170,7 +170,7 @@ def test_shuffled_edges():
 
     d = copy.deepcopy(d_original)
     d['site_reduction'] = {'aggregation' : 'sum'}
-    original_coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
+    original_em_update = json.loads(arbplf_em_update(json.dumps(d)))
 
     iter_count = 10
     for i in range(iter_count):
@@ -189,7 +189,7 @@ def test_shuffled_edges():
 
         d = copy.deepcopy(d_shuffled)
         d['site_reduction'] = {'aggregation' : 'sum'}
-        coeff_expect = json.loads(arbplf_coeff_expect(json.dumps(d)))
-        coeff_expect_prime = _perm_output_edges(coeff_expect, perm)
-        coeff_expect_prime['data'].sort()
-        assert_equal(coeff_expect_prime, original_coeff_expect)
+        em_update = json.loads(arbplf_em_update(json.dumps(d)))
+        em_update_prime = _perm_output_edges(em_update, perm)
+        em_update_prime['data'].sort()
+        assert_equal(em_update_prime, original_em_update)
