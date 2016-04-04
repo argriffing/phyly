@@ -13,30 +13,51 @@
 
 
 
+/*
+ * This optional argument can be a positive real number,
+ * or it can be the string "equilibrium_exit_rate_expectation".
+ */
 static int
 _validate_rate_divisor(model_and_data_t m, json_t *root)
 {
     if (root && !json_is_null(root))
     {
-        double tmpd;
+        const char s_option[] = "equilibrium_exit_rate_expectation";
+        const char s_msg[] = (
+                "_validate_rate_divisor: the optional rate_divisor "
+                "argument must be either a positive number or the string "
+                "\"equilibrium_exit_rate_expectation\"\n");
 
-        if (!json_is_number(root))
+        if (json_is_string(root))
         {
-            fprintf(stderr, "_validate_rate_divisor: ");
-            fprintf(stderr, "not a number\n");
+            if (!strcmp(json_string_value(root), s_option))
+            {
+                m->use_equilibrium_rate_divisor = 1;
+            }
+            else
+            {
+                fprintf(stderr, s_msg);
+                return -1;
+            }
+        }
+        else if (json_is_number(root))
+        {
+            double tmpd;
+            tmpd = json_number_value(root);
+
+            if (tmpd <= 0)
+            {
+                fprintf(stderr, s_msg);
+                return -1;
+            }
+
+            arb_set_d(m->rate_divisor, tmpd);
+        }
+        else
+        {
+            fprintf(stderr, s_msg);
             return -1;
         }
-
-        tmpd = json_number_value(root);
-
-        if (tmpd <= 0)
-        {
-            fprintf(stderr, "_validate_rate_divisor: ");
-            fprintf(stderr, "rate divisor must be positive\n");
-            return -1;
-        }
-
-        m->rate_divisor = tmpd;
     }
 
     return 0;

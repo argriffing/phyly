@@ -330,7 +330,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m,
     w->transition_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
     w->equilibrium = NULL;
-    if (m->use_equilibrium_root_prior)
+    if (m->use_equilibrium_root_prior || m->use_equilibrium_rate_divisor)
     {
         w->equilibrium = _arb_vec_init(w->state_count);
     }
@@ -378,17 +378,14 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m,
         }
     }
 
-    /* update rate matrix including rate divisor */
-    dmat_get_arb_mat(w->rate_matrix, m->mat);
-    _arb_mat_zero_diagonal(w->rate_matrix);
-
-    /* update equilibrium if requested */
-    if (m->use_equilibrium_root_prior)
-    {
-        _arb_vec_rate_matrix_equilibrium(w->equilibrium, w->rate_matrix, prec);
-    }
-
-    _arb_mat_scalar_div_d(w->rate_matrix, m->rate_divisor, w->prec);
+    _update_rate_matrix_and_equilibrium(
+            w->rate_matrix,
+            w->equilibrium,
+            m->rate_divisor,
+            m->use_equilibrium_root_prior,
+            m->use_equilibrium_rate_divisor,
+            m->mat,
+            prec);
 
     /*
      * Initialize the unscaled arbitrary precision rate matrix.
@@ -659,7 +656,8 @@ _recompute_second_order(so_t so,
          */
         pmat_update_base_node_vectors(
                 w->base_plane->node_vectors, m->p, site,
-                w->equilibrium, m->preorder[0], prec);
+                m->use_equilibrium_root_prior, w->equilibrium,
+                m->preorder[0], prec);
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < w->node_count; a++)
@@ -991,7 +989,8 @@ void _compute_ll(arb_t ll,
          */
         pmat_update_base_node_vectors(
                 w->base_plane->node_vectors, p->m->p, site,
-                w->equilibrium, p->m->preorder[0], prec);
+                p->m->use_equilibrium_root_prior, w->equilibrium,
+                p->m->preorder[0], prec);
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < w->node_count; a++)
