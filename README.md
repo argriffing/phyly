@@ -36,11 +36,11 @@ The package depends on recent versions of these C libraries:
  * [jansson](https://github.com/akheron/jansson)
    -- C library for encoding, decoding and manipulating JSON data
  * [gmp](https://gmplib.org/)
-   -- The GNU Multiple Precision Arithmetic Library
+   -- The <b>G</b>NU <b>M</b>ultiple <b>P</b>recision Arithmetic Library
  * [flint2](https://github.com/wbhart/flint2)
    -- <b>F</b>ast <b>Li</b>brary for <b>N</b>umber <b>T</b>heory
  * [arb](https://github.com/fredrik-johansson/arb)
-   -- C library for arbitrary-precision interval arithmetic
+   -- C library for <b>arb</b>itrary-precision interval arithmetic
 
 The [jq](https://stedolan.github.io/jq/) tool may be used for json filtering.
 
