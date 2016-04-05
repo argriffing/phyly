@@ -1,3 +1,29 @@
+Overview
+--------
+
+This package implements functions related to statistical models
+of the continuous-time evolution of finite-state random variables
+along branches of a phylogenetic tree with a known shape,
+with full or partial observations available only at some nodes
+of the tree.
+The distinguishing characteristic of this package is that these functions
+are computed without accumulating numerical errors when the inputs
+are exactly represented by double precision floating point numbers.
+
+
+Limitations
+-----------
+
+This collection of functions is not meant as a practical tool for biologists
+but rather as a reference point for methods development researchers.
+Neither maximum likelihood nor Bayesian inference is implemented, but some
+of the implemented functions may be useful in the context of inference.
+The functions may be much slower than their counterparts in other packages.
+Because of the numerical guarantees of the function evaluations,
+failure modes include aborting with an error or hanging forever
+while the internal working precision is repeatedly doubled.
+
+
 Requirements
 ------------
 
@@ -53,14 +79,14 @@ If the Python extension is installed, the features are available in the
 `arbplf` module with function names like `arbplf_newton_update`
 using a JSON string API.
 
- - ll -- log likelihood
- - deriv -- derivative of log likelihood w.r.t. edge rate coefficients
- - hess -- hessian matrix of log likelihood w.r.t. edge rate coefficients
- - inv-hess -- inverse of hessian matrix
- - marginal -- marginal state distributions at nodes
- - dwell -- linear combinations of dwell time expectations in states on edges
- - trans -- linear combinations of labeled transition count expectations on edges
- - em-update -- update edge rate coefficients using one step of EM
- - newton-update -- update edge rate coefficients using one step of Newton's method
- - newton-delta -- the difference between the newton update and the current values
- - newton-refine -- certify an interior local optimum near an initial guess of edge rate coefficients
+ * ll -- log likelihood
+ * deriv -- derivative of log likelihood w.r.t. edge rate coefficients
+ * hess -- hessian matrix of log likelihood w.r.t. edge rate coefficients
+ * inv-hess -- inverse of hessian matrix
+ * marginal -- marginal state distributions at nodes
+ * dwell -- linear combinations of dwell time expectations in states on edges
+ * trans -- linear combinations of labeled transition count expectations on edges
+ * em-update -- update edge rate coefficients using one step of EM
+ * newton-update -- update edge rate coefficients using one step of Newton's method
+ * newton-delta -- the difference between the newton update and the current values
+ * newton-refine -- certify an interior local optimum near an initial guess of edge rate coefficients
