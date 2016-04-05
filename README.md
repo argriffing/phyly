@@ -34,12 +34,12 @@ $ make install
 ```
 
 A rudimentary Python interface can be installed using the `setup.py`
-script as follows:
+script and tested as follows:
 
 ```shell
 $ cd src
 src$ python setup.py install --user
-src$ cd..
+src$ cd ..
 $ nosetests
 ```
 
