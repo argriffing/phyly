@@ -53,15 +53,15 @@ If the Python extension is installed, the features are available in the
 `arbplf` module with function names like `arbplf_newton_update`
 using a JSON string API.
 
-ll -- log likelihood
-deriv -- derivative of log likelihood w.r.t. edge rate coefficients
-hess -- hessian matrix of log likelihood w.r.t. edge rate coefficients
-inv-hess -- inverse of hessian matrix
-marginal -- marginal state distributions at nodes
-dwell -- linear combinations of dwell time expectations in states on edges
-trans -- linear combinations of labeled transition count expectations on edges
-em-update -- update edge rate coefficients using one step of EM
-newton-update -- update edge rate coefficients using one step of Newton's method
-newton-delta -- the difference between the newton update and the current values
-newton-refine -- certify an interior local optimum near an initial
-guess of edge rate coefficients
+ - ll -- log likelihood
+ - deriv -- derivative of log likelihood w.r.t. edge rate coefficients
+ - hess -- hessian matrix of log likelihood w.r.t. edge rate coefficients
+ - inv-hess -- inverse of hessian matrix
+ - marginal -- marginal state distributions at nodes
+ - dwell -- linear combinations of dwell time expectations in states on edges
+ - trans -- linear combinations of labeled transition count expectations on edges
+ - em-update -- update edge rate coefficients using one step of EM
+ - newton-update -- update edge rate coefficients using one step of Newton's method
+ - newton-delta -- the difference between the newton update and the current values
+ - newton-refine -- certify an interior local optimum near an initial
+ - guess of edge rate coefficients
