@@ -27,7 +27,7 @@ work if you are lucky:
 
 ```shell
 $ ./autogen.sh
-$ ./configure --prefix=/my/prefix CFLAGS='-march=native -O3 -ffast-math -g -Wall -Wextra'"
+$ ./configure --prefix=/my/prefix CFLAGS='-march=native -O3 -ffast-math -g -Wall -Wextra'
 $ make
 $ make check
 $ make install
