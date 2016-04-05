@@ -63,5 +63,4 @@ using a JSON string API.
  - em-update -- update edge rate coefficients using one step of EM
  - newton-update -- update edge rate coefficients using one step of Newton's method
  - newton-delta -- the difference between the newton update and the current values
- - newton-refine -- certify an interior local optimum near an initial
- - guess of edge rate coefficients
+ - newton-refine -- certify an interior local optimum near an initial guess of edge rate coefficients
