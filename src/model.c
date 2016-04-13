@@ -5,6 +5,7 @@
 #include "arb_mat.h"
 
 #include "util.h"
+#include "equilibrium.h"
 #include "model.h"
 
 

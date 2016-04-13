@@ -299,6 +299,13 @@ _validate_edge_rate_coefficients(model_and_data_t m, json_t *root)
             goto finish;
         }
         tmpd = json_number_value(x);
+        if (tmpd < 0)
+        {
+            fprintf(stderr, "_validate_edge_rate_coefficients: ");
+            fprintf(stderr, "edge rate coefficients must be nonnegative\n");
+            result = -1;
+            goto finish;
+        }
         m->edge_rate_coefficients[i] = tmpd;
     }
 
@@ -359,6 +366,13 @@ _validate_rate_matrix(model_and_data_t m, json_t *root)
                 goto finish;
             }
             tmpd = json_number_value(y);
+            if (tmpd < 0)
+            {
+                fprintf(stderr, "_validate_rate_matrix: ");
+                fprintf(stderr, "rate matrix entries must be nonnegative\n");
+                result = -1;
+                goto finish;
+            }
             arb_set_d(arb_mat_entry(m->mat, i, j), tmpd);
         }
     }

@@ -137,6 +137,12 @@ def test_bad_edge_coeffs_number_as_string():
     m['edge_rate_coefficients'] = [1, 2, "3"]
     yield _myfail, x
 
+def test_bad_edge_coeffs_negative():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']
+    m['edge_rate_coefficients'] = [-1, 2, 3]
+    yield _myfail, x
+
 def test_bad_rate_matrix_not_array():
     x = copy.deepcopy(good_input)
     m = x['model_and_data']['rate_matrix'] = {"hello" : "world"}
@@ -179,6 +185,14 @@ def test_bad_rate_matrix_number_as_string_entry():
     m = x['model_and_data']['rate_matrix'] = [
             [0, 4.2, 3.0],
             [1.0, "42", 5.0],
+            [6.0, 0.5, 0]]
+    yield _myfail, x
+
+def test_bad_rate_matrix_negative_entry():
+    x = copy.deepcopy(good_input)
+    m = x['model_and_data']['rate_matrix'] = [
+            [0, 4.2, 3.0],
+            [1.0, 0, -5.0],
             [6.0, 0.5, 0]]
     yield _myfail, x
 
