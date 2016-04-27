@@ -14,14 +14,6 @@ evaluate_site_lhood(arb_t lhood,
     int start, stop;
     arb_mat_struct *nmat, *nmatb, *tmat, *emat;
 
-    /*
-     * Fill all of the per-node and per-edge likelihood-related vectors.
-     * Note that because edge derivatives are requested,
-     * the vectors on edges are stored explicitly.
-     * In the likelihood-only variant of this function, these per-edge
-     * vectors are temporary variables whose lifespan is only long enough
-     * to update the vector associated with the parent node of the edge.
-     */
     for (u = 0; u < node_count; u++)
     {
         a = preorder[node_count - 1 - u];

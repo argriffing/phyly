@@ -576,7 +576,10 @@ evaluate_site_derivatives(arb_t derivative,
 
 
 
-/* Optionally allow custom edge rate coefficients. */
+/*
+ * Optionally allow custom edge rate coefficients.
+ * {y, g, h} indicate the function evaluation and its gradient and hessian.
+ */
 static int
 _recompute_second_order(so_t so,
         model_and_data_t m, column_reduction_t r_site,
