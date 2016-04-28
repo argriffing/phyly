@@ -11,6 +11,60 @@
 #include "model.h"
 #include "csr_graph.h"
 
+/*
+ * Array size must already be known.
+ * Memory must already have been allocated.
+ */
+static int
+_validate_nonnegative_array(double *dest, int desired_length, json_t *root)
+{
+    int i, n;
+
+    if (!dest)
+    {
+        flint_fprintf(stderr, "_validate_nonnegative_array "
+                "internal error: dest array is NULL\n");
+        abort();
+    }
+
+    if (!json_is_array(root))
+    {
+        fprintf(stderr, "_validate_nonnegative_array: not an array\n");
+        return -1;
+    }
+
+    n = json_array_size(root);
+
+    if (n != desired_length)
+    {
+        fprintf(stderr, "_validate_nonnegative_array: unexpected array length "
+                "(actual: %d desired: %d)\n", n, desired_length);
+        return -1;
+    }
+
+    for (i = 0; i < desired_length; i++)
+    {
+        double d;
+        json_t *x;
+
+        x = json_array_get(root, i);
+        if (!json_is_number(x))
+        {
+            fprintf(stderr, "_validate_nonnegative_array: not a number\n");
+            return -1;
+        }
+        d = json_number_value(x);
+        if (d < 0)
+        {
+            fprintf(stderr, "_validate_nonnegative_array: "
+                    "array entries must be nonnegative\n");
+            return -1;
+        }
+        dest[i] = d;
+    }
+
+    return 0;
+}
 
 
 /*
@@ -57,6 +111,60 @@ _validate_rate_divisor(model_and_data_t m, json_t *root)
         {
             fprintf(stderr, s_msg);
             return -1;
+        }
+    }
+
+    return 0;
+}
+
+
+static int
+_validate_root_prior(model_and_data_t m, json_t *root)
+{
+    int state_count = model_and_data_state_count(m);
+    if (m->root_prior)
+    {
+        flint_fprintf(stderr, "_validate_root_prior "
+                "internal error: root_prior is not NULL\n");
+        abort();
+    }
+    if (root && !json_is_null(root))
+    {
+        const char s_equilibrium[] = "equilibrium_distribution";
+        const char s_uniform[] = "uniform_distribution";
+        const char s_msg[] = (
+                "_validate_root_prior: the optional \"root_prior\" "
+                "must be either a list of probabilities"
+                "or one of the strings "
+                "{\"equilibrium_distribution\", \"uniform_distribution\"\n");
+
+        if (json_is_string(root))
+        {
+            if (!strcmp(json_string_value(root), s_equilibrium))
+            {
+                m->use_equilibrium_root_prior = 1;
+            }
+            else if (!strcmp(json_string_value(root), s_uniform))
+            {
+                m->use_uniform_root_prior = 1;
+            }
+            else
+            {
+                fprintf(stderr, s_msg);
+                return -1;
+            }
+        }
+        else
+        {
+            int result;
+            m->root_prior = malloc(state_count * sizeof(double));
+            result = _validate_nonnegative_array(
+                    m->root_prior, state_count, root);
+            if (result)
+            {
+                fprintf(stderr, s_msg);
+                return result;
+            }
         }
     }
 
@@ -255,65 +363,25 @@ finish:
     return result;
 }
 
-
 static int
 _validate_edge_rate_coefficients(model_and_data_t m, json_t *root)
 {
-    int i;
-    int n;
-    int edge_count;
-    json_t *x;
-
-    int result;
-    double tmpd;
+    int edge_count, result;
 
     edge_count = m->g->nnz;
-    result = 0;
-
-    if (!json_is_array(root))
-    {
-        fprintf(stderr, "_validate_edge_rate_coefficients: not an array\n");
-        result = -1;
-        goto finish;
-    }
-
-    n = json_array_size(root);
-    if (n != edge_count)
-    {
-        fprintf(stderr, "_validate_edge_rate_coefficients: ");
-        fprintf(stderr, "unexpected array length ");
-        fprintf(stderr, "(actual: %d desired: %d)\n", n, edge_count);
-        result = -1;
-        goto finish;
-    }
-
     m->edge_rate_coefficients = malloc(edge_count * sizeof(double));
-    for (i = 0; i < edge_count; i++)
+
+    result = _validate_nonnegative_array(
+            m->edge_rate_coefficients, edge_count, root);
+    if (result)
     {
-        x = json_array_get(root, i);
-        if (!json_is_number(x))
-        {
-            fprintf(stderr, "_validate_edge_rate_coefficients: ");
-            fprintf(stderr, "not a number\n");
-            result = -1;
-            goto finish;
-        }
-        tmpd = json_number_value(x);
-        if (tmpd < 0)
-        {
-            fprintf(stderr, "_validate_edge_rate_coefficients: ");
-            fprintf(stderr, "edge rate coefficients must be nonnegative\n");
-            result = -1;
-            goto finish;
-        }
-        m->edge_rate_coefficients[i] = tmpd;
+        fprintf(stderr, "_validate_edge_rate_coefficients: "
+                "array validation has failed\n");
+        return result;
     }
 
-finish:
-
-    return result;
+    return 0;
 }
-
 
 static int
 _validate_rate_matrix(model_and_data_t m, json_t *root)
@@ -470,11 +538,12 @@ finish:
 int
 validate_model_and_data(model_and_data_t m, json_t *root)
 {
-    json_t *rate_divisor = NULL;
     json_t *edges = NULL;
     json_t *edge_rate_coefficients = NULL;
     json_t *rate_matrix = NULL;
     json_t *probability_array = NULL;
+    json_t *rate_divisor = NULL;
+    json_t *root_prior = NULL;
 
     int result;
     json_error_t err;
@@ -484,13 +553,13 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     flags = JSON_STRICT;
 
     result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o, s:o, s:o, s?o, s?b}",
+            "{s:o, s:o, s:o, s:o, s?o, s?o}",
             "edges", &edges,
             "edge_rate_coefficients", &edge_rate_coefficients,
             "rate_matrix", &rate_matrix,
             "probability_array", &probability_array,
             "rate_divisor", &rate_divisor,
-            "use_equilibrium_root_prior", &m->use_equilibrium_root_prior);
+            "root_prior", &root_prior);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
@@ -510,6 +579,9 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     if (result) return result;
 
     result = _validate_rate_divisor(m, rate_divisor);
+    if (result) return result;
+
+    result = _validate_root_prior(m, root_prior);
     if (result) return result;
 
     return result;

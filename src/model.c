@@ -23,6 +23,7 @@ model_and_data_init(model_and_data_t m)
     csr_edge_mapper_pre_init(m->edge_map);
     arb_init(m->rate_divisor);
     arb_one(m->rate_divisor);
+    m->root_prior = NULL;
 }
 
 void
@@ -35,6 +36,31 @@ model_and_data_clear(model_and_data_t m)
     pmat_clear(m->p);
     csr_edge_mapper_clear(m->edge_map);
     arb_clear(m->rate_divisor);
+    free(m->root_prior);
+}
+
+int
+model_and_data_edge_count(model_and_data_t m)
+{
+    return m->g->nnz;
+}
+
+int
+model_and_data_node(model_and_data_t m)
+{
+    return m->g->n;
+}
+
+int
+model_and_data_state_count(model_and_data_t m)
+{
+    return arb_mat_nrows(m->mat);
+}
+
+int
+model_and_data_site_count(model_and_data_t m)
+{
+    return pmat_nsites(m->p);
 }
 
 

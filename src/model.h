@@ -42,9 +42,11 @@ typedef struct
     pmat_t p;
     int root_node_index;
     int *preorder;
+    int use_uniform_root_prior;
     int use_equilibrium_root_prior;
     int use_equilibrium_rate_divisor;
     arb_t rate_divisor;
+    double *root_prior;
     double *edge_rate_coefficients;
     csr_edge_mapper_t edge_map;
 } model_and_data_struct;
@@ -52,6 +54,11 @@ typedef model_and_data_struct model_and_data_t[1];
 
 void model_and_data_init(model_and_data_t m);
 void model_and_data_clear(model_and_data_t m);
+
+int model_and_data_edge_count(model_and_data_t m);
+int model_and_data_node(model_and_data_t m);
+int model_and_data_state_count(model_and_data_t m);
+int model_and_data_site_count(model_and_data_t m);
 
 /* Update using a new level of precision. */
 void

@@ -120,7 +120,7 @@ def test_equilibrium():
         a_in = copy.deepcopy(_A)
         for arr in a_in['model_and_data']['probability_array']:
             arr[0] = [1, 1]
-        a_in['model_and_data']['use_equilibrium_root_prior'] = True
+        a_in['model_and_data']['root_prior'] = 'equilibrium_distribution'
 
         b_in = copy.deepcopy(_B)
         for arr in b_in['model_and_data']['probability_array']:
@@ -148,7 +148,7 @@ def test_rate_matrix_diagonal_entries():
         _C = copy.deepcopy(_A)
         for arr in _C['model_and_data']['probability_array']:
             arr[0] = [1, 1]
-        _C['model_and_data']['use_equilibrium_root_prior'] = True
+        _C['model_and_data']['root_prior'] = 'equilibrium_distribution'
 
         a_in = copy.deepcopy(_C)
 
