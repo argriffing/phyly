@@ -122,13 +122,17 @@ static int
 _validate_root_prior(model_and_data_t m, json_t *root)
 {
     int state_count = model_and_data_state_count(m);
-    if (m->root_prior)
+    if (m->root_prior->mode != ROOT_PRIOR_UNDEFINED)
     {
         flint_fprintf(stderr, "_validate_root_prior "
-                "internal error: root_prior is not NULL\n");
+                "internal error: root prior is already defined\n");
         abort();
     }
-    if (root && !json_is_null(root))
+    if (!root || json_is_null(root))
+    {
+        root_prior_init(m->root_prior, state_count, ROOT_PRIOR_NONE);
+    }
+    else
     {
         const char s_equilibrium[] = "equilibrium_distribution";
         const char s_uniform[] = "uniform_distribution";
@@ -140,26 +144,30 @@ _validate_root_prior(model_and_data_t m, json_t *root)
 
         if (json_is_string(root))
         {
+            enum root_prior_mode mode;
             if (!strcmp(json_string_value(root), s_equilibrium))
             {
-                m->use_equilibrium_root_prior = 1;
+                mode = ROOT_PRIOR_EQUILIBRIUM;
             }
             else if (!strcmp(json_string_value(root), s_uniform))
             {
-                m->use_uniform_root_prior = 1;
+                mode = ROOT_PRIOR_UNIFORM;
             }
             else
             {
                 fprintf(stderr, s_msg);
                 return -1;
             }
+            root_prior_init(m->root_prior, state_count, mode);
         }
         else
         {
             int result;
-            m->root_prior = malloc(state_count * sizeof(double));
+            root_prior_init(m->root_prior, state_count, ROOT_PRIOR_CUSTOM);
+            m->root_prior->custom_distribution = malloc(
+                    state_count * sizeof(double));
             result = _validate_nonnegative_array(
-                    m->root_prior, state_count, root);
+                    m->root_prior->custom_distribution, state_count, root);
             if (result)
             {
                 fprintf(stderr, s_msg);
