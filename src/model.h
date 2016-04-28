@@ -60,6 +60,8 @@ int model_and_data_node(model_and_data_t m);
 int model_and_data_state_count(model_and_data_t m);
 int model_and_data_site_count(model_and_data_t m);
 
+int model_and_data_uses_equilibrium(model_and_data_t m);
+
 /* Update using a new level of precision. */
 void
 _update_rate_matrix_and_equilibrium(

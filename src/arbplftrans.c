@@ -111,7 +111,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     w->frechet_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
     w->equilibrium = NULL;
-    if (m->use_equilibrium_root_prior || m->use_equilibrium_rate_divisor)
+    if (model_and_data_uses_equilibrium(m))
     {
         w->equilibrium = _arb_vec_init(w->state_count);
     }

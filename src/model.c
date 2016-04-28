@@ -63,6 +63,12 @@ model_and_data_site_count(model_and_data_t m)
     return pmat_nsites(m->p);
 }
 
+int
+model_and_data_uses_equilibrium(model_and_data_t m)
+{
+    return m->use_equilibrium_root_prior || m->use_equilibrium_rate_divisor;
+}
+
 
 int
 pmat_nsites(const pmat_t mat)
