@@ -15,18 +15,18 @@
 
 /*
  * This optional argument can be a positive real number,
- * or it can be the string "equilibrium_exit_rate_expectation".
+ * or it can be the string "equilibrium_exit_rate".
  */
 static int
 _validate_rate_divisor(model_and_data_t m, json_t *root)
 {
     if (root && !json_is_null(root))
     {
-        const char s_option[] = "equilibrium_exit_rate_expectation";
+        const char s_option[] = "equilibrium_exit_rate";
         const char s_msg[] = (
                 "_validate_rate_divisor: the optional rate_divisor "
                 "argument must be either a positive number or the string "
-                "\"equilibrium_exit_rate_expectation\"\n");
+                "\"equilibrium_exit_rate\"\n");
 
         if (json_is_string(root))
         {

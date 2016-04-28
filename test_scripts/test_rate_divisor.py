@@ -188,7 +188,7 @@ _D = {
             "rate_matrix" : [
                 [0, 9],
                 [3, 0]],
-            'rate_divisor' : 'equilibrium_exit_rate_expectation',
+            'rate_divisor' : 'equilibrium_exit_rate',
             "probability_array" : _probability_array},
         "site_reduction" : {"aggregation" : _site_weights}
         }

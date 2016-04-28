@@ -1,0 +1,12 @@
+Makefile.in
+config.guess
+config.h.in
+config.sub
+configure
+compile
+depcomp
+aclocal.m4
+install-sh
+missing
+test-driver
+test_scripts/*.pyc
