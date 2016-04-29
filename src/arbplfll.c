@@ -384,7 +384,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
             pmat_update_base_node_vectors(
                     w->base_node_column_vectors, m->p, site,
-                    m->use_equilibrium_root_prior, w->equilibrium,
+                    m->root_prior, w->equilibrium,
                     m->preorder[0], w->prec);
 
             evaluate_site_lhood(lhood,

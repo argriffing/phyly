@@ -311,7 +311,7 @@ _update_lhood_vectors(arb_t lhood,
 {
     pmat_update_base_node_vectors(
             w->base_node_column_vectors, m->p, site,
-            m->use_equilibrium_root_prior, w->equilibrium,
+            m->root_prior, w->equilibrium,
             m->preorder[0], w->prec);
 
     evaluate_site_lhood(lhood,
@@ -391,12 +391,11 @@ evaluate_site_derivatives(arb_struct *derivatives,
             {
                 tmpd = *pmat_srcentry(m->p, site, a, state);
                 arb_set_d(arb_mat_entry(nmat, state, 0), tmpd);
-                if (m->use_equilibrium_root_prior && a == m->preorder[0])
-                {
-                    arb_mul(arb_mat_entry(nmat, state, 0),
-                            arb_mat_entry(nmat, state, 0),
-                            w->equilibrium + state, w->prec);
-                }
+            }
+            if (a == m->preorder[0])
+            {
+                root_prior_mul_col_vec(
+                        nmat, m->root_prior, w->equilibrium, w->prec);
             }
 
             /*

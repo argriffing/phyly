@@ -273,7 +273,7 @@ _nd_accum_update(nd_accum_t arr,
         /* update base node vectors */
         pmat_update_base_node_vectors(
                 w->base_node_vectors, m->p, site,
-                m->use_equilibrium_root_prior, w->equilibrium,
+                m->root_prior, w->equilibrium,
                 m->preorder[0], prec);
 
         /*

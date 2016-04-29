@@ -659,7 +659,7 @@ _recompute_second_order(so_t so,
          */
         pmat_update_base_node_vectors(
                 w->base_plane->node_vectors, m->p, site,
-                m->use_equilibrium_root_prior, w->equilibrium,
+                m->root_prior, w->equilibrium,
                 m->preorder[0], prec);
 
         /* Reset pointers in the virtual plane. */
@@ -992,7 +992,7 @@ void _compute_ll(arb_t ll,
          */
         pmat_update_base_node_vectors(
                 w->base_plane->node_vectors, p->m->p, site,
-                p->m->use_equilibrium_root_prior, w->equilibrium,
+                p->m->root_prior, w->equilibrium,
                 p->m->preorder[0], prec);
 
         /* Reset pointers in the virtual plane. */

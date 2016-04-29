@@ -65,7 +65,7 @@ model_and_data_site_count(model_and_data_t m)
 int
 model_and_data_uses_equilibrium(model_and_data_t m)
 {
-    return (m->root_prior == ROOT_PRIOR_EQUILIBRIUM ||
+    return (m->root_prior->mode == ROOT_PRIOR_EQUILIBRIUM ||
             m->use_equilibrium_rate_divisor);
 }
 
@@ -129,7 +129,8 @@ void
 pmat_update_base_node_vectors(
         arb_mat_struct *base_node_vectors,
         const pmat_t p, slong site,
-        int use_equilibrium_root_prior, arb_struct *equilibrium,
+        const root_prior_t root_prior,
+        const arb_struct *equilibrium,
         slong root_node_index, slong prec)
 {
     slong i, j;
@@ -146,17 +147,9 @@ pmat_update_base_node_vectors(
         }
     }
 
-    /* optionally multiply by an equilibrium at the root node */
-    if (use_equilibrium_root_prior)
-    {
-        bvec = base_node_vectors + root_node_index;
-        for (j = 0; j < state_count; j++)
-        {
-            arb_struct *p;
-            p = arb_mat_entry(bvec, j, 0);
-            arb_mul(p, p, equilibrium + j, prec);
-        }
-    }
+    /* Optionally update the root node vector. */
+    bvec = base_node_vectors + root_node_index;
+    root_prior_mul_col_vec(bvec, root_prior, equilibrium, prec);
 }
 
 

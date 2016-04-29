@@ -12,30 +12,6 @@ extern "C" {
 #endif
 
 
-typedef struct
-{
-    double *data;
-    int s;
-    int r;
-    int c;
-} pmat_struct;
-typedef pmat_struct pmat_t[1];
-
-int pmat_nsites(const pmat_t mat);
-int pmat_nrows(const pmat_t mat);
-int pmat_ncols(const pmat_t mat);
-double * pmat_entry(pmat_t mat, int i, int j, int k);
-const double * pmat_srcentry(const pmat_t mat, int i, int j, int k);
-void pmat_pre_init(pmat_t mat);
-void pmat_init(pmat_t mat, int s, int r, int c);
-void pmat_clear(pmat_t mat);
-void pmat_update_base_node_vectors(
-        arb_mat_struct *base_node_vectors, const pmat_t p, slong site,
-        int use_equilibrium_root_prior, arb_struct *equilibrium,
-        slong root_node_index, slong prec);
-
-
-
 
 enum root_prior_mode {
     ROOT_PRIOR_UNDEFINED,
@@ -57,6 +33,30 @@ void root_prior_init(root_prior_t r, int n, enum root_prior_mode mode);
 void root_prior_clear(root_prior_t r);
 void root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
         const arb_struct *equilibrium, slong prec);
+
+
+
+typedef struct
+{
+    double *data;
+    int s;
+    int r;
+    int c;
+} pmat_struct;
+typedef pmat_struct pmat_t[1];
+
+int pmat_nsites(const pmat_t mat);
+int pmat_nrows(const pmat_t mat);
+int pmat_ncols(const pmat_t mat);
+double * pmat_entry(pmat_t mat, int i, int j, int k);
+const double * pmat_srcentry(const pmat_t mat, int i, int j, int k);
+void pmat_pre_init(pmat_t mat);
+void pmat_init(pmat_t mat, int s, int r, int c);
+void pmat_clear(pmat_t mat);
+void pmat_update_base_node_vectors(
+        arb_mat_struct *base_node_vectors, const pmat_t p, slong site,
+        const root_prior_t root_prior, const arb_struct *equilibrium,
+        slong root_node_index, slong prec);
 
 
 
