@@ -111,7 +111,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
     w->frechet_matrices = flint_malloc(
             w->edge_count * sizeof(arb_mat_struct));
     w->equilibrium = NULL;
-    if (m->use_equilibrium_root_prior || m->use_equilibrium_rate_divisor)
+    if (model_and_data_uses_equilibrium(m))
     {
         w->equilibrium = _arb_vec_init(w->state_count);
     }
@@ -234,8 +234,8 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
             w->rate_matrix,
             w->equilibrium,
             m->rate_divisor,
-            m->use_equilibrium_root_prior,
             m->use_equilibrium_rate_divisor,
+            m->root_prior,
             m->mat,
             prec);
 
@@ -391,7 +391,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
         /* update base node vectors */
         pmat_update_base_node_vectors(
                 w->base_node_vectors, m->p, site,
-                m->use_equilibrium_root_prior, w->equilibrium,
+                m->root_prior, w->equilibrium,
                 m->preorder[0], prec);
 
         /*
@@ -520,7 +520,7 @@ _nd_accum_update(nd_accum_t arr,
             /* update base node vectors */
             pmat_update_base_node_vectors(
                     w->base_node_vectors, m->p, site,
-                    m->use_equilibrium_root_prior, w->equilibrium,
+                    m->root_prior, w->equilibrium,
                     m->preorder[0], prec);
 
             /*
