@@ -34,6 +34,19 @@ void root_prior_clear(root_prior_t r);
 void root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
         const arb_struct *equilibrium, slong prec);
 
+typedef struct
+{
+    int n;
+    double *rates;
+    double *prior;
+    int use_uniform_prior;
+} rate_mixture_struct;
+typedef rate_mixture_struct rate_mixture_t[1];
+
+void rate_mixture_pre_init(rate_mixture_t x);
+void rate_mixture_init(rate_mixture_t x, int n);
+void rate_mixture_clear(rate_mixture_t x);
+void rate_mixture_expected_rate(arb_t rate, const rate_mixture_t x);
 
 
 typedef struct
@@ -73,6 +86,7 @@ typedef struct
     root_prior_t root_prior;
     double *edge_rate_coefficients;
     csr_edge_mapper_t edge_map;
+    rate_mixture_t rate_mixture;
 } model_and_data_struct;
 typedef model_and_data_struct model_and_data_t[1];
 

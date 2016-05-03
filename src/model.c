@@ -23,6 +23,7 @@ model_and_data_init(model_and_data_t m)
     arb_init(m->rate_divisor);
     arb_one(m->rate_divisor);
     root_prior_pre_init(m->root_prior);
+    rate_mixture_pre_init(m->rate_mixture);
 }
 
 void
@@ -36,6 +37,7 @@ model_and_data_clear(model_and_data_t m)
     csr_edge_mapper_clear(m->edge_map);
     arb_clear(m->rate_divisor);
     root_prior_clear(m->root_prior);
+    rate_mixture_clear(m->rate_mixture);
 }
 
 int
@@ -225,6 +227,64 @@ root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
 
 
 
+
+void
+rate_mixture_pre_init(rate_mixture_t x)
+{
+    x->n = 0;
+    x->use_uniform_prior = 0;
+    x->rates = NULL;
+    x->prior = NULL;
+}
+
+void
+rate_mixture_init(rate_mixture_t x, int n)
+{
+    x->n = n;
+    x->rates = flint_malloc(n * sizeof(double));
+    x->prior = flint_malloc(n * sizeof(double));
+}
+
+void
+rate_mixture_clear(rate_mixture_t x)
+{
+    flint_free(x->rates);
+    flint_free(x->prior);
+}
+
+void
+rate_mixture_expectation(arb_t rate, const rate_mixture_t x, slong prec)
+{
+    slong i;
+    arb_t tmp, tmpb;
+    arb_init(tmp);
+    arb_init(tmpb);
+    arb_zero(rate);
+    if (x->use_uniform_prior)
+    {
+        for (i = 0; i < x->n; i++)
+        {
+            arb_set_d(tmp, x->rates + i);
+            arb_add(rate, rate, tmp, prec);
+        }
+        arb_div_si(rate, rate, x->n, prec);
+    }
+    else
+    {
+        for (i = 0; i < x->n; i++)
+        {
+            arb_set_d(tmp, x->rates + i);
+            arb_set_d(tmpb, x->prior + i);
+            arb_addmul(rate, tmp, tmpb, prec);
+        }
+    }
+    arb_clear(tmp);
+    arb_clear(tmpb);
+}
+
+
+
+
 /*
  * Does not include scaling by edge rate coefficients.
  */
@@ -235,6 +295,7 @@ _update_rate_matrix_and_equilibrium(
         arb_t rate_divisor,
         int use_equilibrium_rate_divisor,
         const root_prior_t root_prior,
+        const rate_mixture_t rate_mixture,
         const arb_mat_t mat,
         slong prec)
 {
@@ -252,18 +313,28 @@ _update_rate_matrix_and_equilibrium(
     /*
      * Optionally update the rate matrix divisor.
      * This is the dot product of the rate matrix row sums
-     * and the equilibrium distribution.
+     * and the equilibrium distribution,
+     * multiplied by the dot product of the mixture rates
+     * and their stationary probabilities.
      */
     if (use_equilibrium_rate_divisor)
     {
-        slong n;
+        slong state_count;
         arb_struct *row_sums;
 
-        n = arb_mat_nrows(rate_matrix);
-        row_sums = _arb_vec_init(n);
+        state_count = arb_mat_nrows(rate_matrix);
+        row_sums = _arb_vec_init(state_count);
         _arb_mat_row_sums(row_sums, rate_matrix, prec);
         _arb_vec_dot(rate_divisor, row_sums, equilibrium, n, prec);
-        _arb_vec_clear(row_sums, n);
+        _arb_vec_clear(row_sums, state_count);
+        if (rate_mixture)
+        {
+            arb_t tmp;
+            arb_init(tmp);
+            rate_mixture_expectation(tmp, rate_mixture, prec);
+            arb_mul(rate_divisor, rate_divisor, tmp, prec);
+            arb_clear(tmp);
+        }
     }
 
     arb_mat_scalar_div_arb(rate_matrix, rate_matrix, rate_divisor, prec);

@@ -183,6 +183,7 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
             m->rate_divisor,
             m->use_equilibrium_rate_divisor,
             m->root_prior,
+            m->rate_mixture,
             m->mat,
             prec);
 
@@ -288,6 +289,50 @@ likelihood_ws_clear(likelihood_ws_t w)
 }
 
 
+static int
+aggregate_across_sites(arb_t aggregate,
+        const arb_struct *site_log_likelihoods,
+        const column_reduction_t r, slong prec)
+{
+    slong i;
+    int mode = r->agg_mode;
+
+    arb_zero(aggregate);
+    if (mode == AGG_SUM || mode == AGG_AVG)
+    {
+        for (i = 0; i < r->selection_len; i++)
+        {
+            arb_srcptr ll = site_log_likelihoods + r->selection[i];
+            arb_add(aggregate, aggregate, ll, prec);
+        }
+        if (mode == AGG_AVG)
+        {
+            arb_div_si(aggregate, aggregate, r->selection_len, prec);
+        }
+    }
+    else if (r->agg_mode == AGG_WEIGHTED_SUM)
+    {
+        arb_t weight;
+        arb_init(weight);
+        for (i = 0; i < r->selection_len; i++)
+        {
+            slong site = r->selection[i];
+            arb_scrptr ll = site_log_likelihoods + site;
+            arb_set_d(weight, r->weights[i]);
+            arb_addmul(aggregate, ll, weight, prec);
+        }
+        arb_clear(weight);
+    }
+    else
+    {
+        fprintf(stderr, "error: unexpected aggregation mode\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+
 json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 {
     json_t *j_out = NULL;
@@ -300,12 +345,11 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     int *site_is_selected = NULL;
     arb_struct * site_likelihoods = NULL;
     arb_struct * site_log_likelihoods = NULL;
-    arb_t aggregate, tmp, weight;
+    arb_t aggregate, tmp;
     likelihood_ws_t w;
     int iter = 0;
 
     arb_init(tmp);
-    arb_init(weight);
     arb_init(aggregate);
 
     likelihood_ws_init(w, NULL, 0);
@@ -410,23 +454,12 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         /* compute the aggregate if any */
         if (r->agg_mode != AGG_NONE)
         {
-            arb_zero(aggregate);
-            arb_one(weight);
-            for (i = 0; i < r->selection_len; i++)
+            result = aggregate_across_sites(
+                    aggregate, site_log_likelihoods, r, prec);
+            if (result)
             {
-                site = r->selection[i];
-                if (r->agg_mode == AGG_WEIGHTED_SUM)
-                {
-                    arb_set_d(weight, r->weights[i]);
-                }
-                ll = site_log_likelihoods + site;
-                arb_addmul(aggregate, ll, weight, prec);
+                goto finish;
             }
-            if (r->agg_mode == AGG_AVG)
-            {
-                arb_div_si(aggregate, aggregate, r->selection_len, prec);
-            }
-            /* if aggregate has bad bounds then fail */
             if (!_can_round(aggregate))
             {
                 failed = 1;
@@ -465,7 +498,6 @@ finish:
 
     arb_clear(aggregate);
     arb_clear(tmp);
-    arb_clear(weight);
     free(site_is_selected);
     if (site_likelihoods)
     {
