@@ -273,7 +273,7 @@ rate_mixture_get_rate(arb_t rate, const rate_mixture_t x, slong idx)
     }
     else if (x->mode == RATE_MIXTURE_UNIFORM || x->mode == RATE_MIXTURE_CUSTOM)
     {
-        arb_set(rate, x->rates + idx);
+        arb_set_d(rate, x->rates[idx]);
     }
     else
     {

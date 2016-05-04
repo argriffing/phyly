@@ -22,6 +22,8 @@
 #include "csr_graph.h"
 #include "model.h"
 #include "equilibrium.h"
+#include "util.h"
+#include "cross_site_ws.h"
 
 
 void
@@ -29,7 +31,7 @@ tmat_collection_pre_init(tmat_collection_t x)
 {
     x->rate_category_count = 0;
     x->edge_count = 0;
-    x->transition_matrices = NULL;
+    x->matrices = NULL;
 }
 
 void
@@ -37,13 +39,18 @@ tmat_collection_init(tmat_collection_t x,
         slong rate_category_count, slong edge_count, slong state_count)
 {
     slong i, n;
+    if (rate_category_count != 1)
+    {
+        flint_fprintf(stderr, "debug: expected one rate category\n");
+        abort();
+    }
     n = rate_category_count * edge_count;
     x->rate_category_count = rate_category_count;
     x->edge_count = edge_count;
-    x->transition_matrices = flint_malloc(n * sizeof(arb_mat_struct));
+    x->matrices = flint_malloc(n * sizeof(arb_mat_struct));
     for (i = 0; i < n; i++)
     {
-        arb_mat_struct *p = x->transition_matrices + i;
+        arb_mat_struct *p = x->matrices + i;
         arb_mat_init(p, state_count, state_count);
     }
 }
@@ -53,15 +60,13 @@ tmat_collection_clear(tmat_collection_t x)
 {
     slong i, n;
     n = x->rate_category_count * x->edge_count;
-    x->rate_category_count = rate_category_count;
-    x->edge_count = edge_count;
-    if (x->transition_matrices)
+    if (x->matrices)
     {
         for (i = 0; i < n; i++)
         {
-            arb_mat_clear(x->transition_matrices + i);
+            arb_mat_clear(x->matrices + i);
         }
-        flint_free(x->transition_matrices);
+        flint_free(x->matrices);
     }
 }
 
@@ -70,8 +75,8 @@ tmat_collection_entry(tmat_collection_t x,
         slong rate_category_idx, slong edge_idx)
 {
     slong offset;
-    offset = category_idx * x->edge_count + edge_idx;
-    return x->transition_matrices + offset;
+    offset = rate_category_idx * x->edge_count + edge_idx;
+    return x->matrices + offset;
 }
 
 
@@ -144,7 +149,7 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
     {
         w->equilibrium = _arb_vec_init(w->state_count);
         _arb_vec_rate_matrix_equilibrium(
-                w->equilibrium, m->rate_matrix, w->prec);
+                w->equilibrium, m->mat, w->prec);
     }
 
     /* initialize the unscaled rate matrix, and zero the diagonal */
@@ -162,7 +167,7 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
      * be a function of the rate matrix and of the rate mixture expectation.
      */
     {
-        w->rate_divisor = flint_malloc(sizeof(arb_mat_struct));
+        w->rate_divisor = flint_malloc(sizeof(arb_struct));
         arb_init(w->rate_divisor);
         if (m->use_equilibrium_rate_divisor)
         {
@@ -171,13 +176,18 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
             _arb_mat_row_sums(row_sums, w->rate_matrix, prec);
             _arb_vec_dot(w->rate_divisor,
                     row_sums, w->equilibrium, w->state_count, w->prec);
-            _arb_vec_clear(row_sums, state_count);
-            if (rate_mixture->mode != RATE_MIXTURE_NONE)
+            _arb_vec_clear(row_sums, w->state_count);
+            if (m->rate_mixture->mode != RATE_MIXTURE_NONE)
             {
                 arb_t tmp;
                 arb_init(tmp);
-                rate_mixture_expectation(tmp, rate_mixture, prec);
-                arb_mul(rate_divisor, rate_divisor, tmp, prec);
+                rate_mixture_expectation(tmp, m->rate_mixture, w->prec);
+                if (!arb_is_one(tmp))
+                {
+                    flint_fprintf(stderr, "debug: expectation is not 1\n");
+                    arb_fprintd(stderr, tmp, 15);
+                }
+                arb_mul(w->rate_divisor, w->rate_divisor, tmp, w->prec);
                 arb_clear(tmp);
             }
         }
@@ -186,6 +196,10 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
             arb_set(w->rate_divisor, m->rate_divisor);
         }
     }
+
+    /* fixme: remove */
+    /* for backward compatibility, update m->rate_divisor */
+    /* arb_set(m->rate_divisor, w->rate_divisor); */
 
     /*
      * Scale the rate matrix according to the rate divisor.
@@ -196,6 +210,9 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
         arb_mat_scalar_div_arb(w->rate_matrix,
                 w->rate_matrix, w->rate_divisor, w->prec);
     }
+
+    /* Update the diagonal of the rate matrix. */
+    _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
 
     /* allocate transition matrices */
     tmat_collection_init(w->transition_matrices,
@@ -214,7 +231,7 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
                 tmat = tmat_collection_entry(w->transition_matrices, i, j);
                 rate_mixture_get_rate(s, m->rate_mixture, i);
                 arb_mul(s, s, w->edge_rates + j, w->prec);
-                arb_mat_sclar_mul_arb(tmat, w->rate_matrix, s, w->prec);
+                arb_mat_scalar_mul_arb(tmat, w->rate_matrix, s, w->prec);
                 arb_mat_exp(tmat, tmat, w->prec);
             }
         }

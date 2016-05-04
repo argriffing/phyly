@@ -69,6 +69,7 @@
 #include "util.h"
 #include "evaluate_site_lhood.h"
 #include "equilibrium.h"
+#include "cross_site_ws.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -76,216 +77,80 @@
 #include "arbplfll.h"
 
 
-/*
- * Likelihood workspace.
- * The object lifetime is limited to only one level of precision,
- * but it extends across site evaluations.
- */
+/* This object changes in the course of the iteration over sites. */
 typedef struct
 {
-    slong prec;
-    int node_count;
-    int edge_count;
-    int state_count;
-    arb_struct *edge_rates;
-    arb_struct *equilibrium;
-    arb_mat_t rate_matrix;
-    arb_mat_struct *transition_matrices;
+    slong node_count;
     arb_mat_struct *base_node_column_vectors;
     arb_mat_struct *lhood_node_column_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
 static void
-likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
+likelihood_ws_pre_init(likelihood_ws_t w)
 {
-    csr_graph_struct *g;
-    int i, j, k;
-    arb_mat_struct * tmat;
+    w->node_count = 0;
+    w->base_node_column_vectors = NULL;
+    w->lhood_node_column_vectors = NULL;
+}
+
+static void
+likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
+{
+    slong i, node_count, state_count;
     arb_mat_struct * nmat;
-    double tmpd;
 
-    if (!m)
-    {
-        arb_mat_init(w->rate_matrix, 0, 0);
-        w->transition_matrices = NULL;
-        w->base_node_column_vectors = NULL;
-        w->lhood_node_column_vectors = NULL;
-        w->edge_rates = NULL;
-        w->equilibrium = NULL;
-        w->node_count = 0;
-        w->edge_count = 0;
-        w->state_count = 0;
-        w->prec = 0;
-        return;
-    }
-
-    g = m->g;
-
-    w->prec = prec;
-    w->node_count = g->n;
-    w->edge_count = g->nnz;
-    w->state_count = arb_mat_nrows(m->mat);
-
-    w->edge_rates = _arb_vec_init(w->edge_count);
-    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
-    w->transition_matrices = flint_malloc(
-            w->edge_count * sizeof(arb_mat_struct));
-    w->base_node_column_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->lhood_node_column_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->equilibrium = NULL;
-    if (model_and_data_uses_equilibrium(m))
-    {
-        w->equilibrium = _arb_vec_init(w->state_count);
-    }
-
-    /*
-     * This is the csr graph index of edge (a, b).
-     * Given this index, node b is directly available
-     * from the csr data structure.
-     * The rate coefficient associated with the edge will also be available.
-     * On the other hand, the index of node 'a' will be available through
-     * the iteration order rather than directly from the index.
-     */
-    int idx;
-
-    /*
-     * Define the map from csr edge index to edge rate.
-     * The edge rate is represented in arbitrary precision.
-     */
-    if (!m->edge_map)
-    {
-        fprintf(stderr, "internal error: edge map is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_map->order)
-    {
-        fprintf(stderr, "internal error: edge map order is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_rate_coefficients)
-    {
-        fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
-        abort();
-    }
-    for (i = 0; i < w->edge_count; i++)
-    {
-        idx = m->edge_map->order[i];
-        tmpd = m->edge_rate_coefficients[i];
-        arb_set_d(w->edge_rates + idx, tmpd);
-    }
-
-    _update_rate_matrix_and_equilibrium(
-            w->rate_matrix,
-            w->equilibrium,
-            m->rate_divisor,
-            m->use_equilibrium_rate_divisor,
-            m->root_prior,
-            m->rate_mixture,
-            m->mat,
-            prec);
-
-    /*
-     * Modify the diagonals of the unscaled rate matrix
-     * so that the sum of each row is zero.
-     */
-    _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
-
-    /*
-     * Initialize the array of arbitrary precision transition matrices.
-     * They will initially contain appropriately scaled rate matrices.
-     * Although the unscaled rates have zero arb radius and the
-     * scaling coefficients have zero arb radius, the entries of the
-     * scaled rate matrices will in general have positive arb radius.
-     */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_init(tmat, w->state_count, w->state_count);
-    }
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        for (j = 0; j < w->state_count; j++)
-        {
-            for (k = 0; k < w->state_count; k++)
-            {
-                arb_mul(arb_mat_entry(tmat, j, k),
-                        arb_mat_entry(w->rate_matrix, j, k),
-                        w->edge_rates + idx, w->prec);
-            }
-        }
-    }
-
-    /*
-     * Compute the matrix exponentials of the scaled transition rate matrices.
-     * Note that the arb matrix exponential function allows aliasing,
-     * so we do not need to allocate a temporary array (although a temporary
-     * array will be created by the arb function).
-     */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_exp(tmat, tmat, w->prec);
-    }
+    node_count = model_and_data_node_count(m);
+    state_count = model_and_data_state_count(m);
+    w->node_count = node_count;
 
     /*
      * Allocate an arbitrary precision column vector for each node.
      * These are for base likelihoods involving data or the prior.
      */
-    for (i = 0; i < w->node_count; i++)
+    w->base_node_column_vectors = flint_malloc(
+            node_count * sizeof(arb_mat_struct));
+    for (i = 0; i < node_count; i++)
     {
         nmat = w->base_node_column_vectors + i;
-        arb_mat_init(nmat, w->state_count, 1);
+        arb_mat_init(nmat, state_count, 1);
     }
 
     /*
      * Allocate an arbitrary precision column vector for each node.
      * This will be used to accumulate conditional likelihoods.
      */
-    for (i = 0; i < w->node_count; i++)
+    w->lhood_node_column_vectors = flint_malloc(
+            node_count * sizeof(arb_mat_struct));
+    for (i = 0; i < node_count; i++)
     {
         nmat = w->lhood_node_column_vectors + i;
-        arb_mat_init(nmat, w->state_count, 1);
+        arb_mat_init(nmat, state_count, 1);
     }
 }
 
 static void
 likelihood_ws_clear(likelihood_ws_t w)
 {
-    int i, idx;
+    slong i;
 
-    if (w->edge_rates)
+    if (w->base_node_column_vectors)
     {
-        _arb_vec_clear(w->edge_rates, w->edge_count);
+        for (i = 0; i < w->node_count; i++)
+        {
+            arb_mat_clear(w->base_node_column_vectors + i);
+        }
+        flint_free(w->base_node_column_vectors);
     }
 
-    if (w->equilibrium)
+    if (w->lhood_node_column_vectors)
     {
-        _arb_vec_clear(w->equilibrium, w->state_count);
+        for (i = 0; i < w->node_count; i++)
+        {
+            arb_mat_clear(w->lhood_node_column_vectors + i);
+        }
+        flint_free(w->lhood_node_column_vectors);
     }
-
-    arb_mat_clear(w->rate_matrix);
-
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        arb_mat_clear(w->transition_matrices + idx);
-    }
-    flint_free(w->transition_matrices);
-    
-    for (i = 0; i < w->node_count; i++)
-    {
-        arb_mat_clear(w->base_node_column_vectors + i);
-    }
-    flint_free(w->base_node_column_vectors);
-
-    for (i = 0; i < w->node_count; i++)
-    {
-        arb_mat_clear(w->lhood_node_column_vectors + i);
-    }
-    flint_free(w->lhood_node_column_vectors);
 }
 
 
@@ -346,13 +211,15 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     arb_struct * site_likelihoods = NULL;
     arb_struct * site_log_likelihoods = NULL;
     arb_t aggregate, tmp;
+    cross_site_ws_t csw;
     likelihood_ws_t w;
     int iter = 0;
 
     arb_init(tmp);
     arb_init(aggregate);
 
-    likelihood_ws_init(w, NULL, 0);
+    cross_site_ws_pre_init(csw);
+    likelihood_ws_pre_init(w);
     model_and_data_init(m);
     column_reduction_init(r);
 
@@ -410,8 +277,10 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     while (failed)
     {
         failed = 0;
+        cross_site_ws_clear(csw);
+        cross_site_ws_init(csw, m, prec);
         likelihood_ws_clear(w);
-        likelihood_ws_init(w, m, prec);
+        likelihood_ws_init(w, m);
         /* if any likelihood is exactly zero then return an error */
         for (site = 0; site < site_count; site++)
         {
@@ -428,15 +297,15 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
             pmat_update_base_node_vectors(
                     w->base_node_column_vectors, m->p, site,
-                    m->root_prior, w->equilibrium,
-                    m->preorder[0], w->prec);
+                    m->root_prior, csw->equilibrium,
+                    m->preorder[0], prec);
 
             evaluate_site_lhood(lhood,
                     w->lhood_node_column_vectors,
                     NULL,
                     w->base_node_column_vectors,
-                    w->transition_matrices,
-                    m->g, m->preorder, w->node_count, w->prec);
+                    csw->transition_matrices->matrices,
+                    m->g, m->preorder, csw->node_count, prec);
 
             if (arb_is_zero(lhood))
             {
@@ -510,6 +379,7 @@ finish:
     column_reduction_clear(r);
     model_and_data_clear(m);
     likelihood_ws_clear(w);
+    cross_site_ws_clear(csw);
     flint_cleanup();
     return j_out;
 }

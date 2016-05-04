@@ -16,7 +16,7 @@ typedef struct
 {
     slong rate_category_count;
     slong edge_count;
-    arb_mat_struct *transition_matrices;
+    arb_mat_struct *matrices;
 } tmat_collection_struct;
 typedef tmat_collection_struct tmat_collection_t[1];
 
