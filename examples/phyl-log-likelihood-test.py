@@ -95,7 +95,8 @@ def discretized_gamma(N, alpha, use_mean=1):
     #print(rates)
     return rates
 
-def objective(X):
+def mixture_objective(X):
+    # same as block_objective, but implemented with a rate mixture
     print(X)
     kappa, logit_theta, alpha = X[-3:]
     edge_rates = X[:-3].tolist()
@@ -118,7 +119,85 @@ def objective(X):
     R, x = T92(kappa, theta)
     mixture_rates = discretized_gamma(rate_category_count, alpha)
     #mixture_rates = _numerically_discretized_gamma(rate_category_count, alpha)
+    rate_matrix = block_rate_mixture(R, [1])
+
+    # Sequences at internal nodes consist of unobserved nucleotide N.
+    # The gamma rate class is unobserved.
+    sequences = [
+            "AAATGGCTGTGCACGTC",
+            "GACTGGATCTGCACGTC",
+            "CTCTGGATGTGCACGTG",
+            "AAATGGCGGTGCGCCTA",
+            "NNNNNNNNNNNNNNNNN",
+            "NNNNNNNNNNNNNNNNN"]
+
+    state_map = dict(
+            A = [1, 0, 0, 0],
+            C = [0, 1, 0, 0],
+            G = [0, 0, 1, 0],
+            T = [0, 0, 0, 1],
+            N = [1, 1, 1, 1])
+
+    root_node = 5
+    probability_array = []
+    for column in zip(*sequences):
+        arr = []
+        for s in column:
+            row = state_map[s] * 1
+            arr.append(row)
+        for k in range(1):
+            for i in range(state_count):
+                arr[root_node][k*1 + i] *= (
+                        pi[i] / 1)
+        probability_array.append(arr)
+    model_and_data = {
+            "edges" : edges,
+            "rate_divisor" : 100 * x,
+            "rate_mixture" : {
+                'rates' : mixture_rates.tolist(),
+                'prior' : 'uniform_distribution'},
+            "edge_rate_coefficients" : edge_rates,
+            "rate_matrix" : rate_matrix,
+            "probability_array" : probability_array}
+    d = {
+            "model_and_data" : model_and_data,
+            "site_reduction" : {"aggregation" : "sum"}}
+    s = json.dumps(d)
+    try:
+        s = arbplf_ll(s)
+    except RuntimeError as e:
+        return np.inf
+    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
+    y = -df.value.values[0]
+    print(y)
+    return y
+
+
+def block_objective(X):
+    # implemented with a block matrix
+    print(X)
+    kappa, logit_theta, alpha = X[-3:]
+    edge_rates = X[:-3].tolist()
+
+    theta = expit(logit_theta)
+    t = theta
+    pi = [(1-t)/2, t/2, t/2, (1-t)/2]
+
+    #alpha = 1.0
+
+    rate_category_count = 4
+    state_count = 4
+    edge_count = 5
+    node_count = edge_count + 1
+
+    # Define the tree used in the phyl transition mapping example.
+    edges = [[4, 0], [4, 1], [5, 4], [5, 2], [5, 3]]
+
+    # Use a T92 rate matrix.
+    R, x = T92(kappa, theta)
+    mixture_rates = discretized_gamma(rate_category_count, alpha)
     rate_matrix = block_rate_mixture(R, mixture_rates)
+
 
     # Sequences at internal nodes consist of unobserved nucleotide N.
     # The gamma rate class is unobserved.
@@ -175,6 +254,9 @@ def main():
     #_numerically_discretized_gamma(4, alpha, use_mean=1);
     #return
 
+    #objective = mixture_objective
+    objective = block_objective
+
     edge_rates = [1, 30, 1, 30, 30]
     kappa = 0.2
     theta = 0.5
@@ -189,8 +271,6 @@ def main():
     bounds = [(a, None) for i in X0[:5]] + [(a, None), (a, 1), (a, None)]
     result = optimize.minimize(
             objective, X0, method='L-BFGS-B', bounds=bounds)
-    #result = optimize.minimize(
-            #objective, X0, method='Nelder-Mead', bounds=bounds)
     print(result)
 
 main()

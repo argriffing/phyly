@@ -208,14 +208,16 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     model_and_data_t m;
     column_reduction_t r;
     int *site_is_selected = NULL;
+    arb_struct * cat_lhoods = NULL;
     arb_struct * site_likelihoods = NULL;
     arb_struct * site_log_likelihoods = NULL;
-    arb_t aggregate, tmp;
+    arb_t aggregate;
     cross_site_ws_t csw;
     likelihood_ws_t w;
     int iter = 0;
+    slong cat;
+    slong ncats = 0;
 
-    arb_init(tmp);
     arb_init(aggregate);
 
     cross_site_ws_pre_init(csw);
@@ -260,6 +262,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
     int i;
     int site;
+    ncats = rate_mixture_category_count(m->rate_mixture);
     site_is_selected = calloc(site_count, sizeof(int));
     for (i = 0; i < r->selection_len; i++)
     {
@@ -267,6 +270,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         site_is_selected[site] = 1;
     }
 
+    cat_lhoods = _arb_vec_init(ncats);
     site_likelihoods = _arb_vec_init(site_count);
     site_log_likelihoods = _arb_vec_init(site_count);
 
@@ -281,6 +285,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         cross_site_ws_init(csw, m, prec);
         likelihood_ws_clear(w);
         likelihood_ws_init(w, m);
+
         /* if any likelihood is exactly zero then return an error */
         for (site = 0; site < site_count; site++)
         {
@@ -300,12 +305,50 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
                     m->root_prior, csw->equilibrium,
                     m->preorder[0], prec);
 
-            evaluate_site_lhood(lhood,
-                    w->lhood_node_column_vectors,
-                    NULL,
-                    w->base_node_column_vectors,
-                    csw->transition_matrices->matrices,
-                    m->g, m->preorder, csw->node_count, prec);
+            /* compute the per-category likelihoods for this site */
+            for (cat = 0; cat < ncats; cat++)
+            {
+                arb_mat_struct *tmat_base;
+                tmat_base = tmat_collection_entry(
+                        csw->transition_matrices, cat, 0);
+                evaluate_site_lhood(cat_lhoods + cat,
+                        w->lhood_node_column_vectors,
+                        NULL,
+                        w->base_node_column_vectors,
+                        tmat_base,
+                        m->g, m->preorder, csw->node_count, prec);
+            }
+
+            /* combine the per-category likelihoods for this site */
+            if (m->rate_mixture->mode == RATE_MIXTURE_NONE)
+            {
+                arb_set(lhood, cat_lhoods);
+            }
+            else if (m->rate_mixture->mode == RATE_MIXTURE_UNIFORM)
+            {
+                _arb_sum(lhood, cat_lhoods, ncats, prec);
+                arb_div_si(lhood, lhood, ncats, prec);
+            }
+            else if (m->rate_mixture->mode == RATE_MIXTURE_CUSTOM)
+            {
+                /* todo: use _arb_vec_dot if the rate mixture prior
+                 * is changed from double precision to arb precision */
+                arb_t tmp;
+                arb_init(tmp);
+                arb_zero(lhood);
+                for (i = 0; i < ncats; i++)
+                {
+                    arb_set_d(tmp, m->rate_mixture->prior[i]);
+                    arb_addmul(lhood, tmp, cat_lhoods + i, prec);
+                }
+                arb_clear(tmp);
+            }
+            else
+            {
+                fprintf(stderr, "internal error: unrecognized or undefined "
+                        "rate mixture mode\n");
+                abort();
+            }
 
             if (arb_is_zero(lhood))
             {
@@ -313,7 +356,9 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
                 result = -1;
                 goto finish;
             }
+
             arb_log(ll, lhood, prec);
+
             /* if no aggregation and still bad bounds then fail */
             if (r->agg_mode == AGG_NONE && !_can_round(ll))
             {
@@ -366,8 +411,11 @@ finish:
     *retcode = result;
 
     arb_clear(aggregate);
-    arb_clear(tmp);
     free(site_is_selected);
+    if (cat_lhoods)
+    {
+        _arb_vec_clear(cat_lhoods, ncats);
+    }
     if (site_likelihoods)
     {
         _arb_vec_clear(site_likelihoods, site_count);

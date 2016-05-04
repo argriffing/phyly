@@ -39,11 +39,13 @@ tmat_collection_init(tmat_collection_t x,
         slong rate_category_count, slong edge_count, slong state_count)
 {
     slong i, n;
+    /*
     if (rate_category_count != 1)
     {
         flint_fprintf(stderr, "debug: expected one rate category\n");
         abort();
     }
+    */
     n = rate_category_count * edge_count;
     x->rate_category_count = rate_category_count;
     x->edge_count = edge_count;
@@ -182,11 +184,13 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
                 arb_t tmp;
                 arb_init(tmp);
                 rate_mixture_expectation(tmp, m->rate_mixture, w->prec);
+                /*
                 if (!arb_is_one(tmp))
                 {
                     flint_fprintf(stderr, "debug: expectation is not 1\n");
                     arb_fprintd(stderr, tmp, 15);
                 }
+                */
                 arb_mul(w->rate_divisor, w->rate_divisor, tmp, w->prec);
                 arb_clear(tmp);
             }

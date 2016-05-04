@@ -13,6 +13,7 @@
 extern "C" {
 #endif
 
+void _arb_sum(arb_t dest, arb_struct *src, slong len, slong prec);
 int _arb_is_indeterminate(const arb_t x);
 void _arb_set_si_2exp_si(arb_t x, slong man, slong exp);
 void _arb_init_set(arb_t dest, const arb_t src);

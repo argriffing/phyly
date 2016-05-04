@@ -590,6 +590,7 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
             rate_mixture_init(x, n);
 
             result = _validate_nonnegative_array(x->rates, n, rates);
+            if (result)
             {
                 fprintf(stderr, "_validate_rate_mixture: "
                         "invalid 'rates' array\n");
@@ -619,6 +620,7 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
             else if (json_is_array(prior))
             {
                 result = _validate_nonnegative_array(x->prior, n, prior);
+                if (result)
                 {
                     fprintf(stderr, "_validate_rate_mixture: "
                             "invalid 'prior' array\n");

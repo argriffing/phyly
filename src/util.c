@@ -7,6 +7,17 @@
 
 #define FULL_RELATIVE_PRECISION 53
 
+void
+_arb_sum(arb_t dest, arb_struct *src, slong len, slong prec)
+{
+    slong i;
+    arb_zero(dest);
+    for (i = 0; i < len; i++)
+    {
+        arb_add(dest, dest, src + i, prec);
+    }
+}
+
 int _can_round(arb_t x)
 {
     /* This cannot deal with values like -1 +/- 1e-1000000000000 */
