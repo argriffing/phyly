@@ -12,6 +12,27 @@ extern "C" {
 #endif
 
 
+enum rate_mixture_mode {
+    RATE_MIXTURE_UNDEFINED,
+    RATE_MIXTURE_NONE,
+    RATE_MIXTURE_CUSTOM,
+    RATE_MIXTURE_UNIFORM};
+
+typedef struct
+{
+    int n;
+    double *rates;
+    double *prior;
+    enum rate_mixture_mode mode;
+} rate_mixture_struct;
+typedef rate_mixture_struct rate_mixture_t[1];
+
+void rate_mixture_pre_init(rate_mixture_t x);
+void rate_mixture_init(rate_mixture_t x, int n);
+void rate_mixture_clear(rate_mixture_t x);
+void rate_mixture_expected_rate(arb_t rate, const rate_mixture_t x);
+
+
 
 enum root_prior_mode {
     ROOT_PRIOR_UNDEFINED,
@@ -34,19 +55,6 @@ void root_prior_clear(root_prior_t r);
 void root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
         const arb_struct *equilibrium, slong prec);
 
-typedef struct
-{
-    int n;
-    double *rates;
-    double *prior;
-    int use_uniform_prior;
-} rate_mixture_struct;
-typedef rate_mixture_struct rate_mixture_t[1];
-
-void rate_mixture_pre_init(rate_mixture_t x);
-void rate_mixture_init(rate_mixture_t x, int n);
-void rate_mixture_clear(rate_mixture_t x);
-void rate_mixture_expected_rate(arb_t rate, const rate_mixture_t x);
 
 
 typedef struct
@@ -110,6 +118,7 @@ _update_rate_matrix_and_equilibrium(
         arb_t rate_divisor,
         int use_equilibrium_rate_divisor,
         const root_prior_t root_prior,
+        const rate_mixture_t rate_mixture,
         const arb_mat_t mat,
         slong prec);
 

@@ -561,64 +561,76 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
     size_t flags;
 
     result = 0;
-    flags = JSON_STRICT;
 
-    result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o}",
-            "rates", &rates,
-            "prior", &prior);
-    if (result)
+    if (root && !json_is_null(root))
     {
-        fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-        return result;
-    }
+        flags = JSON_STRICT;
 
-    /* read the 'rates' array */
-    {
-        if (!json_is_array(rates))
+        result = json_unpack_ex(root, &err, flags,
+                "{s:o, s:o}",
+                "rates", &rates,
+                "prior", &prior);
+        if (result)
         {
-            fprintf(stderr, "_validate_rate_mixture: 'rates' is not an array\n");
-            return -1;
+            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+            return result;
         }
 
-        n = json_array_size(rates);
-
-        rate_mixture_init(x, n);
-
-        result = _validate_nonnegative_array(x->rates, n, rates);
+        /* read the 'rates' array */
         {
-            fprintf(stderr, "_validate_rate_mixture: invalid 'rates' array\n");
-            return -1;
-        }
-    }
-
-    /* read the 'prior' array (or the string "uniform_distribution") */
-    {
-        const char s_uniform[] = "uniform_distribution";
-        const char s_msg[] = (
-                "_validate_rate_mixture: the 'prior'"
-                "argument must be either a nonnegative array or the string "
-                "\"uniform_distribution\"\n");
-        if (json_is_string(prior))
-        {
-            if (!strcmp(json_string_value(prior), s_uniform))
+            if (!json_is_array(rates))
             {
-                x->use_uniform_prior = 1;
+                fprintf(stderr, "_validate_rate_mixture: "
+                        "'rates' is not an array\n");
+                return -1;
             }
-            else
+
+            n = json_array_size(rates);
+
+            rate_mixture_init(x, n);
+
+            result = _validate_nonnegative_array(x->rates, n, rates);
             {
-                fprintf(stderr, s_msg);
+                fprintf(stderr, "_validate_rate_mixture: "
+                        "invalid 'rates' array\n");
                 return -1;
             }
         }
-        else if (json_is_array(prior))
+
+        /* read the 'prior' array (or the string "uniform_distribution") */
         {
-            result = _validate_nonnegative_array(x->prior, n, prior);
+            const char s_uniform[] = "uniform_distribution";
+            const char s_msg[] = (
+                    "_validate_rate_mixture: the 'prior'"
+                    "argument must be either a nonnegative array or the string "
+                    "\"uniform_distribution\"\n");
+            if (json_is_string(prior))
             {
-                fprintf(stderr, "_validate_rate_mixture: invalid 'prior' array\n");
-                return -1;
+                if (!strcmp(json_string_value(prior), s_uniform))
+                {
+                    x->mode = RATE_MIXTURE_UNIFORM;
+                }
+                else
+                {
+                    fprintf(stderr, s_msg);
+                    return -1;
+                }
+            }
+            else if (json_is_array(prior))
+            {
+                result = _validate_nonnegative_array(x->prior, n, prior);
+                {
+                    fprintf(stderr, "_validate_rate_mixture: "
+                            "invalid 'prior' array\n");
+                    return -1;
+                }
+                x->mode = RATE_MIXTURE_CUSTOM;
             }
         }
+    }
+    else
+    {
+        x->mode = RATE_MIXTURE_NONE;
     }
 
     return result;

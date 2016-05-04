@@ -317,7 +317,7 @@ aggregate_across_sites(arb_t aggregate,
         for (i = 0; i < r->selection_len; i++)
         {
             slong site = r->selection[i];
-            arb_scrptr ll = site_log_likelihoods + site;
+            arb_srcptr ll = site_log_likelihoods + site;
             arb_set_d(weight, r->weights[i]);
             arb_addmul(aggregate, ll, weight, prec);
         }

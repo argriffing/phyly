@@ -243,6 +243,7 @@ likelihood_ws_update(likelihood_ws_t w, model_and_data_t m,
             m->rate_divisor,
             m->use_equilibrium_rate_divisor,
             m->root_prior,
+            m->rate_mixture,
             m->mat,
             prec);
 

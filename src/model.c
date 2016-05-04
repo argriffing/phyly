@@ -232,9 +232,9 @@ void
 rate_mixture_pre_init(rate_mixture_t x)
 {
     x->n = 0;
-    x->use_uniform_prior = 0;
     x->rates = NULL;
     x->prior = NULL;
+    x->mode = RATE_MIXTURE_UNDEFINED;
 }
 
 void
@@ -250,6 +250,7 @@ rate_mixture_clear(rate_mixture_t x)
 {
     flint_free(x->rates);
     flint_free(x->prior);
+    x->mode = RATE_MIXTURE_UNDEFINED;
 }
 
 void
@@ -257,29 +258,48 @@ rate_mixture_expectation(arb_t rate, const rate_mixture_t x, slong prec)
 {
     slong i;
     arb_t tmp, tmpb;
-    arb_init(tmp);
-    arb_init(tmpb);
-    arb_zero(rate);
-    if (x->use_uniform_prior)
+    if (x->mode == RATE_MIXTURE_UNDEFINED)
     {
-        for (i = 0; i < x->n; i++)
+        flint_fprintf(stderr, "internal error: undefined rate mixture\n");
+        abort();
+    }
+    else if (x->mode == RATE_MIXTURE_NONE)
+    {
+        flint_fprintf(stderr, "internal error: computing the expected rate "
+                      "of a trivial rate mixture\n");
+        abort();
+    }
+    else if (x->mode == RATE_MIXTURE_UNIFORM || x->mode == RATE_MIXTURE_CUSTOM)
+    {
+        arb_init(tmp);
+        arb_init(tmpb);
+        arb_zero(rate);
+        if (x->mode == RATE_MIXTURE_UNIFORM)
         {
-            arb_set_d(tmp, x->rates + i);
-            arb_add(rate, rate, tmp, prec);
+            for (i = 0; i < x->n; i++)
+            {
+                arb_set_d(tmp, x->rates[i]);
+                arb_add(rate, rate, tmp, prec);
+            }
+            arb_div_si(rate, rate, x->n, prec);
         }
-        arb_div_si(rate, rate, x->n, prec);
+        else if (x->mode == RATE_MIXTURE_CUSTOM)
+        {
+            for (i = 0; i < x->n; i++)
+            {
+                arb_set_d(tmp, x->rates[i]);
+                arb_set_d(tmpb, x->prior[i]);
+                arb_addmul(rate, tmp, tmpb, prec);
+            }
+        }
+        arb_clear(tmp);
+        arb_clear(tmpb);
     }
     else
     {
-        for (i = 0; i < x->n; i++)
-        {
-            arb_set_d(tmp, x->rates + i);
-            arb_set_d(tmpb, x->prior + i);
-            arb_addmul(rate, tmp, tmpb, prec);
-        }
+        flint_fprintf(stderr, "internal error: unrecognized rate mixture mode\n");
+        abort();
     }
-    arb_clear(tmp);
-    arb_clear(tmpb);
 }
 
 
@@ -325,9 +345,9 @@ _update_rate_matrix_and_equilibrium(
         state_count = arb_mat_nrows(rate_matrix);
         row_sums = _arb_vec_init(state_count);
         _arb_mat_row_sums(row_sums, rate_matrix, prec);
-        _arb_vec_dot(rate_divisor, row_sums, equilibrium, n, prec);
+        _arb_vec_dot(rate_divisor, row_sums, equilibrium, state_count, prec);
         _arb_vec_clear(row_sums, state_count);
-        if (rate_mixture)
+        if (rate_mixture->mode != RATE_MIXTURE_NONE)
         {
             arb_t tmp;
             arb_init(tmp);
