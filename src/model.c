@@ -40,32 +40,38 @@ model_and_data_clear(model_and_data_t m)
     rate_mixture_clear(m->rate_mixture);
 }
 
-int
-model_and_data_edge_count(model_and_data_t m)
+slong
+model_and_data_edge_count(const model_and_data_t m)
 {
     return m->g->nnz;
 }
 
-int
-model_and_data_node(model_and_data_t m)
+slong
+model_and_data_node_count(const model_and_data_t m)
 {
     return m->g->n;
 }
 
-int
-model_and_data_state_count(model_and_data_t m)
+slong
+model_and_data_state_count(const model_and_data_t m)
 {
     return arb_mat_nrows(m->mat);
 }
 
-int
-model_and_data_site_count(model_and_data_t m)
+slong
+model_and_data_site_count(const model_and_data_t m)
 {
     return pmat_nsites(m->p);
 }
 
+slong
+model_and_data_rate_category_count(const model_and_data_t m)
+{
+    return rate_mixture_category_count(m->rate_mixture);
+}
+
 int
-model_and_data_uses_equilibrium(model_and_data_t m)
+model_and_data_uses_equilibrium(const model_and_data_t m)
 {
     return (m->root_prior->mode == ROOT_PRIOR_EQUILIBRIUM ||
             m->use_equilibrium_rate_divisor);
@@ -254,6 +260,54 @@ rate_mixture_clear(rate_mixture_t x)
 }
 
 void
+rate_mixture_get_rate(arb_t rate, const rate_mixture_t x, slong idx)
+{
+    if (x->mode == RATE_MIXTURE_UNDEFINED)
+    {
+        flint_fprintf(stderr, "internal error: undefined rate mixture\n");
+        abort();
+    }
+    else if (x->mode == RATE_MIXTURE_NONE)
+    {
+        arb_one(rate);
+    }
+    else if (x->mode == RATE_MIXTURE_UNIFORM || x->mode == RATE_MIXTURE_CUSTOM)
+    {
+        arb_set(rate, x->rates + idx);
+    }
+    else
+    {
+        flint_fprintf(stderr, "internal error: "
+                      "unrecognized rate mixture mode\n");
+        abort();
+    }
+}
+
+slong
+rate_mixture_category_count(const rate_mixture_t x)
+{
+    if (x->mode == RATE_MIXTURE_UNDEFINED)
+    {
+        flint_fprintf(stderr, "internal error: undefined rate mixture\n");
+        abort();
+    }
+    else if (x->mode == RATE_MIXTURE_NONE)
+    {
+        return 1;
+    }
+    else if (x->mode == RATE_MIXTURE_UNIFORM || x->mode == RATE_MIXTURE_CUSTOM)
+    {
+        return x->n;
+    }
+    else
+    {
+        flint_fprintf(stderr, "internal error: "
+                      "unrecognized rate mixture mode\n");
+        abort();
+    }
+}
+
+void
 rate_mixture_expectation(arb_t rate, const rate_mixture_t x, slong prec)
 {
     slong i;
@@ -297,7 +351,8 @@ rate_mixture_expectation(arb_t rate, const rate_mixture_t x, slong prec)
     }
     else
     {
-        flint_fprintf(stderr, "internal error: unrecognized rate mixture mode\n");
+        flint_fprintf(stderr, "internal error: "
+                      "unrecognized rate mixture mode\n");
         abort();
     }
 }

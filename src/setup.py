@@ -37,6 +37,7 @@ myext = Extension(
             'arb_vec_calc_quad.c',
             'rosenbrock.c',
             'equilibrium.c',
+            'cross_site_ws.c',
             'finite_differences.c',
             ])
 

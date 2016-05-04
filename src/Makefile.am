@@ -37,6 +37,8 @@ CORE_SOURCES = \
 	rosenbrock.h \
 	equilibrium.c \
 	equilibrium.h \
+	cross_site_ws.c \
+	cross_site_ws.h \
 	finite_differences.c \
 	finite_differences.h \
 	parsemodel.c \
