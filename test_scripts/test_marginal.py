@@ -14,7 +14,6 @@ from numpy.testing import (
         assert_, assert_equal, assert_raises, assert_allclose, TestCase)
 
 from arbplf import arbplf_ll
-from arbplf import arbplf_deriv
 from arbplf import arbplf_marginal
 
 
@@ -62,14 +61,6 @@ def myll(d):
     Provides a dict -> pandas.DataFrame wrapper of the JSON arbplf_ll.
     """
     s = arbplf_ll(json.dumps(d))
-    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
-    return df
-
-def myderiv(d):
-    """
-    Provides a dict -> pandas.DataFrame wrapper of the pure JSON arbplf_deriv.
-    """
-    s = arbplf_deriv(json.dumps(d))
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     return df
 

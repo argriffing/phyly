@@ -62,14 +62,15 @@ evaluate_site_marginal(
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
-        arb_mat_struct *transition_matrices,
+        const arb_mat_struct *transition_matrices,
         csr_graph_struct *g, const int *preorder,
         int node_count, int state_count, slong prec)
 {
     int u, a, b;
     int idx;
     int start, stop;
-    arb_mat_struct *tmat, *lvec, *mvec, *mvecb, *evec;
+    arb_mat_struct *lvec, *mvec, *mvecb, *evec;
+    const arb_mat_struct *tmat;
     arb_mat_t tmp;
 
     arb_mat_init(tmp, state_count, 1);

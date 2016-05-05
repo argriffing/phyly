@@ -297,9 +297,11 @@ likelihood_ws_clear(likelihood_ws_t w)
     
     for (i = 0; i < w->node_count; i++)
     {
+        arb_mat_clear(w->base_node_column_vectors + i);
         arb_mat_clear(w->lhood_node_column_vectors + i);
         arb_mat_clear(w->deriv_node_column_vectors + i);
     }
+    flint_free(w->base_node_column_vectors);
     flint_free(w->lhood_node_column_vectors);
     flint_free(w->deriv_node_column_vectors);
 }

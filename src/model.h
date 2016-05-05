@@ -31,6 +31,7 @@ void rate_mixture_pre_init(rate_mixture_t x);
 void rate_mixture_init(rate_mixture_t x, int n);
 void rate_mixture_clear(rate_mixture_t x);
 void rate_mixture_get_rate(arb_t rate, const rate_mixture_t x, slong idx);
+void rate_mixture_get_prob(arb_t prob, const rate_mixture_t x, slong idx, slong prec);
 slong rate_mixture_category_count(const rate_mixture_t x);
 void rate_mixture_expectation(arb_t rate, const rate_mixture_t x, slong prec);
 

@@ -208,7 +208,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     model_and_data_t m;
     column_reduction_t r;
     int *site_is_selected = NULL;
-    arb_struct * cat_lhoods = NULL;
+    arb_t cat_lhood, prior_prob;
     arb_struct * site_likelihoods = NULL;
     arb_struct * site_log_likelihoods = NULL;
     arb_t aggregate;
@@ -219,6 +219,8 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     slong ncats = 0;
 
     arb_init(aggregate);
+    arb_init(cat_lhood);
+    arb_init(prior_prob);
 
     cross_site_ws_pre_init(csw);
     likelihood_ws_pre_init(w);
@@ -270,7 +272,6 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         site_is_selected[site] = 1;
     }
 
-    cat_lhoods = _arb_vec_init(ncats);
     site_likelihoods = _arb_vec_init(site_count);
     site_log_likelihoods = _arb_vec_init(site_count);
 
@@ -281,8 +282,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     while (failed)
     {
         failed = 0;
-        cross_site_ws_clear(csw);
-        cross_site_ws_init(csw, m, prec);
+        cross_site_ws_reinit(csw, m, prec);
         likelihood_ws_clear(w);
         likelihood_ws_init(w, m);
 
@@ -305,49 +305,21 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
                     m->root_prior, csw->equilibrium,
                     m->preorder[0], prec);
 
-            /* compute the per-category likelihoods for this site */
+            /* compute a weighted sum of per-category likelihoods */
+            arb_zero(lhood);
             for (cat = 0; cat < ncats; cat++)
             {
-                arb_mat_struct *tmat_base;
+                const arb_mat_struct *tmat_base;
                 tmat_base = tmat_collection_entry(
                         csw->transition_matrices, cat, 0);
-                evaluate_site_lhood(cat_lhoods + cat,
+                evaluate_site_lhood(cat_lhood,
                         w->lhood_node_column_vectors,
                         NULL,
                         w->base_node_column_vectors,
                         tmat_base,
                         m->g, m->preorder, csw->node_count, prec);
-            }
-
-            /* combine the per-category likelihoods for this site */
-            if (m->rate_mixture->mode == RATE_MIXTURE_NONE)
-            {
-                arb_set(lhood, cat_lhoods);
-            }
-            else if (m->rate_mixture->mode == RATE_MIXTURE_UNIFORM)
-            {
-                _arb_sum(lhood, cat_lhoods, ncats, prec);
-                arb_div_si(lhood, lhood, ncats, prec);
-            }
-            else if (m->rate_mixture->mode == RATE_MIXTURE_CUSTOM)
-            {
-                /* todo: use _arb_vec_dot if the rate mixture prior
-                 * is changed from double precision to arb precision */
-                arb_t tmp;
-                arb_init(tmp);
-                arb_zero(lhood);
-                for (i = 0; i < ncats; i++)
-                {
-                    arb_set_d(tmp, m->rate_mixture->prior[i]);
-                    arb_addmul(lhood, tmp, cat_lhoods + i, prec);
-                }
-                arb_clear(tmp);
-            }
-            else
-            {
-                fprintf(stderr, "internal error: unrecognized or undefined "
-                        "rate mixture mode\n");
-                abort();
+                rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
+                arb_addmul(lhood, prior_prob, cat_lhood, prec);
             }
 
             if (arb_is_zero(lhood))
@@ -412,10 +384,8 @@ finish:
 
     arb_clear(aggregate);
     free(site_is_selected);
-    if (cat_lhoods)
-    {
-        _arb_vec_clear(cat_lhoods, ncats);
-    }
+    arb_clear(cat_lhood);
+    arb_clear(prior_prob);
     if (site_likelihoods)
     {
         _arb_vec_clear(site_likelihoods, site_count);

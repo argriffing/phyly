@@ -47,7 +47,7 @@ typedef cross_site_ws_struct cross_site_ws_t[1];
 void cross_site_ws_pre_init(cross_site_ws_t w);
 void cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec);
 void cross_site_ws_clear(cross_site_ws_t w);
-
+void cross_site_ws_reinit(cross_site_ws_t w, model_and_data_t m, slong prec);
 
 
 #ifdef __cplusplus

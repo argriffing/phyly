@@ -34,15 +34,11 @@ nd_axis_init(nd_axis_t axis,
     axis->k = r->selection_len;
 
     /* allocate some bookkeeping vectors  */
-    axis->selection = malloc(axis->k * sizeof(int));
-    axis->is_selected = malloc(axis->n * sizeof(int));
-    axis->request_update = malloc(axis->n * sizeof(int));
+    axis->selection = calloc(axis->k, sizeof(int));
+    axis->is_selected = calloc(axis->n, sizeof(int));
+    axis->request_update = calloc(axis->n, sizeof(int));
 
     /* initialize the bookkeeping vectors */
-    for (i = 0; i < axis->n; i++)
-    {
-        axis->is_selected[i] = 0;
-    }
     for (i = 0; i < axis->k; i++)
     {
         idx = r->selection[i];

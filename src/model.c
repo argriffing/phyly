@@ -283,6 +283,40 @@ rate_mixture_get_rate(arb_t rate, const rate_mixture_t x, slong idx)
     }
 }
 
+void
+rate_mixture_get_prob(arb_t prob, const rate_mixture_t x,
+        slong idx, slong prec)
+{
+    if (x->mode == RATE_MIXTURE_UNDEFINED)
+    {
+        flint_fprintf(stderr, "internal error: undefined rate mixture\n");
+        abort();
+    }
+    else if (x->mode == RATE_MIXTURE_NONE)
+    {
+        arb_one(prob);
+    }
+    else if (x->mode == RATE_MIXTURE_UNIFORM)
+    {
+        /*
+         * This code branch involves a division that could
+         * unnecessarily lose exactness in some situations.
+         */
+        arb_set_si(prob, x->n);
+        arb_inv(prob, prob, prec);
+    }
+    else if (x->mode == RATE_MIXTURE_CUSTOM)
+    {
+        arb_set_d(prob, x->prior[idx]);
+    }
+    else
+    {
+        flint_fprintf(stderr, "internal error: "
+                      "unrecognized rate mixture mode\n");
+        abort();
+    }
+}
+
 slong
 rate_mixture_category_count(const rate_mixture_t x)
 {

@@ -266,3 +266,10 @@ cross_site_ws_clear(cross_site_ws_t w)
     }
     tmat_collection_clear(w->transition_matrices);
 }
+
+void
+cross_site_ws_reinit(cross_site_ws_t w, model_and_data_t m, slong prec)
+{
+    cross_site_ws_clear(w);
+    cross_site_ws_init(w, m ,prec);
+}
