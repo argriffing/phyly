@@ -198,15 +198,12 @@ aggregate_across_sites(arb_t aggregate,
 }
 
 
-json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
+static json_t *
+_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
 {
     json_t *j_out = NULL;
-    json_t *model_and_data = NULL;
-    json_t *site_reduction = NULL;
     int result = 0;
     int site_count = 0;
-    model_and_data_t m;
-    column_reduction_t r;
     int *site_is_selected = NULL;
     arb_t cat_lhood, prior_prob;
     arb_struct * site_likelihoods = NULL;
@@ -217,6 +214,10 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     int iter = 0;
     slong cat;
     slong ncats = 0;
+    int i, site;
+    slong prec = 4;
+    int failed = 1;
+    arb_ptr lhood, ll;
 
     arb_init(aggregate);
     arb_init(cat_lhood);
@@ -224,51 +225,14 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
     cross_site_ws_pre_init(csw);
     likelihood_ws_pre_init(w);
-    model_and_data_init(m);
-    column_reduction_init(r);
 
-    if (userdata)
-    {
-        fprintf(stderr, "error: unexpected userdata\n");
-        result = -1;
-        goto finish;
-    }
+    site_count = model_and_data_site_count(m);
+    ncats = model_and_data_rate_category_count(m);
 
-    /* parse the json input */
-    {
-        json_error_t err;
-        size_t flags;
-        
-        flags = JSON_STRICT;
-        result = json_unpack_ex(root, &err, flags,
-                "{s:o, s?o}",
-                "model_and_data", &model_and_data,
-                "site_reduction", &site_reduction
-                );
-        if (result)
-        {
-            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-            goto finish;
-        }
-    }
-
-    /* validate the model and data section of the json input */
-    result = validate_model_and_data(m, model_and_data);
-    if (result) goto finish;
-
-    site_count = pmat_nsites(m->p);
-
-    /* validate the (optional) site reduction section of the json input */
-    result = validate_column_reduction(r, site_count, "site", site_reduction);
-    if (result) goto finish;
-
-    int i;
-    int site;
-    ncats = rate_mixture_category_count(m->rate_mixture);
     site_is_selected = calloc(site_count, sizeof(int));
-    for (i = 0; i < r->selection_len; i++)
+    for (i = 0; i < r_site->selection_len; i++)
     {
-        site = r->selection[i];
+        site = r_site->selection[i];
         site_is_selected[site] = 1;
     }
 
@@ -276,9 +240,6 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
     site_log_likelihoods = _arb_vec_init(site_count);
 
     /* repeat site evaluations with increasing precision */
-    slong prec = 4;
-    int failed = 1;
-    arb_ptr lhood, ll;
     while (failed)
     {
         failed = 0;
@@ -297,7 +258,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
                 continue;
 
             /* if the log likelihood is fully evaluated then skip it */
-            if (iter && r->agg_mode == AGG_NONE && _can_round(ll))
+            if (iter && r_site->agg_mode == AGG_NONE && _can_round(ll))
                 continue;
 
             pmat_update_base_node_vectors(
@@ -332,16 +293,16 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
             arb_log(ll, lhood, prec);
 
             /* if no aggregation and still bad bounds then fail */
-            if (r->agg_mode == AGG_NONE && !_can_round(ll))
+            if (r_site->agg_mode == AGG_NONE && !_can_round(ll))
             {
                 failed = 1;
             }
         }
         /* compute the aggregate if any */
-        if (r->agg_mode != AGG_NONE)
+        if (r_site->agg_mode != AGG_NONE)
         {
             result = aggregate_across_sites(
-                    aggregate, site_log_likelihoods, r, prec);
+                    aggregate, site_log_likelihoods, r_site, prec);
             if (result)
             {
                 goto finish;
@@ -355,14 +316,14 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         iter++;
     }
 
-    if (r->agg_mode == AGG_NONE)
+    if (r_site->agg_mode == AGG_NONE)
     {
         double d;
         json_t *j_data, *x;
         j_data = json_array();
-        for (i = 0; i < r->selection_len; i++)
+        for (i = 0; i < r_site->selection_len; i++)
         {
-            site = r->selection[i];
+            site = r_site->selection[i];
             ll = site_log_likelihoods + site;
             d = arf_get_d(arb_midref(ll), ARF_RND_NEAR);
             x = json_pack("[i, f]", site, d);
@@ -380,7 +341,7 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
 
 finish:
 
-    *retcode = result;
+    *result_out = result;
 
     arb_clear(aggregate);
     free(site_is_selected);
@@ -394,10 +355,83 @@ finish:
     {
         _arb_vec_clear(site_log_likelihoods, site_count);
     }
-    column_reduction_clear(r);
-    model_and_data_clear(m);
     likelihood_ws_clear(w);
     cross_site_ws_clear(csw);
+    return j_out;
+}
+
+
+static int
+_parse(model_and_data_t m, column_reduction_t r_site, json_t *root)
+{
+    json_t *model_and_data = NULL;
+    json_t *site_reduction = NULL;
+    slong site_count;
+    int result = 0;
+
+    /* unpack the top level of json input */
+    {
+        size_t flags;
+        json_error_t err;
+        flags = JSON_STRICT;
+        result = json_unpack_ex(root, &err, flags,
+                "{s:o, s?o}",
+                "model_and_data", &model_and_data,
+                "site_reduction", &site_reduction
+                );
+        if (result)
+        {
+            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+            return result;
+        }
+    }
+
+    /* validate the model and data section of the json input */
+    result = validate_model_and_data(m, model_and_data);
+    if (result) return result;
+
+    /* initialize counts */
+    site_count = model_and_data_site_count(m);
+
+    /* validate the site reduction section of the json input */
+    result = validate_column_reduction(
+            r_site, site_count, "site", site_reduction);
+    if (result) return result;
+
+    return result;
+}
+
+
+json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
+{
+    json_t *j_out = NULL;
+    model_and_data_t m;
+    column_reduction_t r_site;
+    int result = 0;
+
+    model_and_data_init(m);
+    column_reduction_init(r_site);
+
+    if (userdata)
+    {
+        fprintf(stderr, "internal error: unexpected userdata\n");
+        result = -1;
+        goto finish;
+    }
+
+    result = _parse(m, r_site, root);
+    if (result) goto finish;
+
+    j_out = _query(m, r_site, &result);
+    if (result) goto finish;
+
+finish:
+
+    *retcode = result;
+
+    model_and_data_clear(m);
+    column_reduction_clear(r_site);
+
     flint_cleanup();
     return j_out;
 }
