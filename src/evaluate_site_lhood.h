@@ -13,8 +13,8 @@ extern "C" {
 void evaluate_site_lhood(arb_t lhood,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
-        arb_mat_struct *base_node_vectors,
-        arb_mat_struct *transition_matrices,
+        const arb_mat_struct *base_node_vectors,
+        const arb_mat_struct *transition_matrices,
         csr_graph_struct *g, int *preorder, int node_count, slong prec);
 
 #ifdef __cplusplus

@@ -223,7 +223,8 @@ _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec)
 
 
 void
-_prune_update(arb_mat_t D, arb_mat_t C, arb_mat_t A, arb_mat_t B, slong prec)
+_prune_update(arb_mat_t D,
+        const arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec)
 {
     /*
      * D = C o (A * B)
