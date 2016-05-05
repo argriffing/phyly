@@ -686,7 +686,7 @@ _query(model_and_data_t m,
 
         /*
          * Recompute the output array with increased working precision.
-         * This also updates the workspace conditional and merginal
+         * This also updates the workspace conditional and marginal
          * per-node and per-edge likelihood column state vectors.
          */
         if (r_trans->agg_mode == AGG_NONE)
