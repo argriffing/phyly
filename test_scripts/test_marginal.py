@@ -191,6 +191,27 @@ def test_rates_across_sites_invariant_c():
     u = mymarginal(x)
     assert_allclose(u.values, v.values)
 
+def test_rates_across_sites_invariant_d():
+    # Same as invariant_c except with reductions.
+    # Pick an arbitrary site and an arbitrary node.
+    node = 6
+    site = 1
+    #
+    x = copy.deepcopy(default_in)
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    v = mymarginal(x)
+    # the only rate category with a nonzero rate*probability
+    # has a rate of 1, so the output should not be affected
+    rates = [0, 1, 2]
+    prior = [0.2, 0.8, 0.0]
+    x = copy.deepcopy(default_in)
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    u = mymarginal(x)
+    assert_allclose(u.values, v.values)
+
 def test_rates_across_sites_uniform():
     rates = [1, 2, 3]
     #
@@ -205,3 +226,52 @@ def test_rates_across_sites_uniform():
     v = mymarginal(x)
     #
     assert_allclose(u.values, v.values)
+
+def test_rates_across_sites_vs_block_diagonal():
+    # Compare rates across sites vs. a block diagonal workaround.
+    rates = [1, 2]
+    prior = [0.25, 0.75]
+    # Pick an arbitrary site and an arbitrary node.
+    node = 6
+    site = 1
+    #
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_matrix'] = [
+            [0., .3, .4, .5, 0., 0., 0., 0.],
+            [.3, 0., .3, .3, 0., 0., 0., 0.],
+            [.3, .6, 0., .3, 0., 0., 0., 0.],
+            [.3, .3, .3, 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., .6, .8, 1.],
+            [0., 0., 0., 0., .6, 0., .6, .6],
+            [0., 0., 0., 0., .6, 1.2, 0., .6],
+            [0., 0., 0., 0., .6, .6, .6, .0]]
+    x['model_and_data']['probability_array'] = [
+            [
+            [1, 0, 0, 0,   1, 0, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 0, 1, 0,   0, 0, 1, 0],
+            [0.0625, 0.0625, 0.0625, 0.0625, 0.1875, 0.1875, 0.1875, 0.1875],
+            [1, 1, 1, 1,   1, 1, 1, 1],
+            [1, 1, 1, 1,   1, 1, 1, 1]],
+            [
+            [1, 0, 0, 0,   1, 0, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 0, 0, 1,   0, 0, 0, 1],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 0, 1, 0,   0, 0, 1, 0],
+            [0.0625, 0.0625, 0.0625, 0.0625, 0.1875, 0.1875, 0.1875, 0.1875],
+            [1, 1, 1, 1,   1, 1, 1, 1],
+            [1, 1, 1, 1,   1, 1, 1, 1]]]
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    u = mymarginal(x).set_index('state').value.sort_index().values
+    #
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    v = mymarginal(x).set_index('state').value.sort_index().values
+    #
+    assert_allclose(u[:4] + u[4:], v)
