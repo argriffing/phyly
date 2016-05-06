@@ -213,6 +213,14 @@ _nd_accum_update(nd_accum_t arr,
             /* Compute the likelihood for the site and category. */
             rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
             arb_mul(post_lhood, prior_prob, cat_lhood, prec);
+
+            /*
+             * If the posterior probability is zero,
+             * then ignore marginal probabilities for this category.
+             */
+            if (arb_is_zero(post_lhood))
+                continue;
+
             arb_add(post_lhood_sum, post_lhood_sum, post_lhood, prec);
 
             /*

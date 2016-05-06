@@ -86,7 +86,7 @@ def test_default_marginal_vs_empty_reductions():
     assert_allclose(u.values, v.values)
 
 
-def test_marginal_sum_over_sites():
+def test_sum_over_sites():
     # see comments in test_deriv_sum_over_sites for more detail
 
     full = mymarginal(default_in)
@@ -108,7 +108,7 @@ def test_marginal_sum_over_sites():
     _assert_allclose_series(pd_sum, phyly_sum)
 
 
-def test_marginal_weighted_sum_over_states():
+def test_weighted_sum_over_states():
     full = mymarginal(default_in)
     state_weights = [0.1, 0.2, 0.3, 0.4]
 
@@ -126,7 +126,7 @@ def test_marginal_weighted_sum_over_states():
     _assert_allclose_series(pd_sum, phyly_sum)
 
 
-def test_marginal_via_likelihood():
+def test_via_likelihood():
     # A marginal state distribution at a node can be computed
     # inefficiently using only a likelihood calculation.
     # Check that this inefficient likelihood-only method gives the same
@@ -158,3 +158,50 @@ def test_marginal_via_likelihood():
     distn_via_likelihood = lhoods / lhoods.sum()
 
     _assert_allclose_series(distn_via_marginal, distn_via_likelihood)
+
+def test_rates_across_sites_invariant_a():
+    v = mymarginal(default_in)
+    # because all the rates are 1, the output should not be affected
+    rates = [1, 1, 1, 1]
+    for prior in [0.1, 0.2, 0.3, 0.4], 'uniform_distribution':
+        x = copy.deepcopy(default_in)
+        x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+        u = mymarginal(x)
+        assert_allclose(u.values, v.values)
+
+def test_rates_across_sites_invariant_b():
+    v = mymarginal(default_in)
+    # none of the original sites are invariant,
+    # so the output should not be affected
+    rates = [0, 1]
+    for prior in [0.4, 0.6], 'uniform_distribution':
+        x = copy.deepcopy(default_in)
+        x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+        u = mymarginal(x)
+        assert_allclose(u.values, v.values)
+
+def test_rates_across_sites_invariant_c():
+    v = mymarginal(default_in)
+    # the only rate category with a nonzero rate*probability
+    # has a rate of 1, so the output should not be affected
+    rates = [0, 1, 2]
+    prior = [0.2, 0.8, 0.0]
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    u = mymarginal(x)
+    assert_allclose(u.values, v.values)
+
+def test_rates_across_sites_uniform():
+    rates = [1, 2, 3]
+    #
+    prior = 'uniform_distribution'
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    u = mymarginal(x)
+    #
+    prior = [1/3, 1/3, 1/3]
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    v = mymarginal(x)
+    #
+    assert_allclose(u.values, v.values)
