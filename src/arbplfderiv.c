@@ -50,6 +50,8 @@
 #include "util.h"
 #include "evaluate_site_lhood.h"
 #include "equilibrium.h"
+#include "arb_mat_extras.h"
+#include "cross_site_ws.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -58,272 +60,84 @@
 
 
 
-/*
- * Likelihood workspace.
- * The object lifetime is limited to only one level of precision,
- * but it extends across site evaluations.
- */
 typedef struct
 {
-    slong prec;
-    int node_count;
-    int edge_count;
-    int state_count;
-    arb_struct *edge_rates;
-    arb_struct *equilibrium;
-    arb_mat_t rate_matrix;
-    arb_mat_struct *transition_matrices;
-    arb_mat_struct *base_node_column_vectors;
-    arb_mat_struct *lhood_node_column_vectors;
-    arb_mat_struct *lhood_edge_column_vectors;
-    arb_mat_struct *deriv_node_column_vectors;
+    arb_mat_struct *base_node_vectors;
+    arb_mat_struct *lhood_node_vectors;
+    arb_mat_struct *lhood_edge_vectors;
+    arb_mat_struct *deriv_node_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
 static void
-likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
+likelihood_ws_pre_init(likelihood_ws_t w)
 {
-    csr_graph_struct *g;
-    int i, j, k;
-    arb_mat_struct * tmat;
-    arb_mat_struct * nmat;
-    double tmpd;
-
-    if (!m)
-    {
-        arb_mat_init(w->rate_matrix, 0, 0);
-        w->transition_matrices = NULL;
-        w->base_node_column_vectors = NULL;
-        w->lhood_node_column_vectors = NULL;
-        w->lhood_edge_column_vectors = NULL;
-        w->deriv_node_column_vectors = NULL;
-        w->edge_rates = NULL;
-        w->equilibrium = NULL;
-        w->node_count = 0;
-        w->edge_count = 0;
-        w->state_count = 0;
-        w->prec = 0;
-        return;
-    }
-
-    g = m->g;
-
-    w->prec = prec;
-    w->node_count = g->n;
-    w->edge_count = g->nnz;
-    w->state_count = arb_mat_nrows(m->mat);
-
-    w->edge_rates = _arb_vec_init(w->edge_count);
-    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
-    w->transition_matrices = flint_malloc(
-            w->edge_count * sizeof(arb_mat_struct));
-    w->base_node_column_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->lhood_edge_column_vectors = flint_malloc(
-            w->edge_count * sizeof(arb_mat_struct));
-    w->lhood_node_column_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->deriv_node_column_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->equilibrium = NULL;
-    if (model_and_data_uses_equilibrium(m))
-    {
-        w->equilibrium = _arb_vec_init(w->state_count);
-    }
-
-    /*
-     * This is the csr graph index of edge (a, b).
-     * Given this index, node b is directly available
-     * from the csr data structure.
-     * The rate coefficient associated with the edge will also be available.
-     * On the other hand, the index of node 'a' will be available through
-     * the iteration order rather than directly from the index.
-     */
-    int idx;
-
-    /*
-     * Define the map from csr edge index to edge rate.
-     * The edge rate is represented in arbitrary precision.
-     */
-    if (!m->edge_map)
-    {
-        fprintf(stderr, "internal error: edge map is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_map->order)
-    {
-        fprintf(stderr, "internal error: edge map order is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_rate_coefficients)
-    {
-        fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
-        abort();
-    }
-    for (i = 0; i < w->edge_count; i++)
-    {
-        idx = m->edge_map->order[i];
-        tmpd = m->edge_rate_coefficients[i];
-        arb_set_d(w->edge_rates + idx, tmpd);
-    }
-
-    _update_rate_matrix_and_equilibrium(
-            w->rate_matrix,
-            w->equilibrium,
-            m->rate_divisor,
-            m->use_equilibrium_rate_divisor,
-            m->root_prior,
-            m->rate_mixture,
-            m->mat,
-            prec);
-
-    /*
-     * Modify the diagonals of the unscaled rate matrix
-     * so that the sum of each row is zero.
-     */
-    _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
-
-    /*
-     * Initialize the array of arbitrary precision transition matrices.
-     * They will initially contain appropriately scaled rate matrices.
-     * Although the unscaled rates have zero arb radius and the
-     * scaling coefficients have zero arb radius, the entries of the
-     * scaled rate matrices will in general have positive arb radius.
-     */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_init(tmat, w->state_count, w->state_count);
-    }
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        for (j = 0; j < w->state_count; j++)
-        {
-            for (k = 0; k < w->state_count; k++)
-            {
-                arb_mul(arb_mat_entry(tmat, j, k),
-                        arb_mat_entry(w->rate_matrix, j, k),
-                        w->edge_rates + idx, w->prec);
-            }
-        }
-    }
-
-    /*
-     * Compute the matrix exponentials of the scaled transition rate matrices.
-     * Note that the arb matrix exponential function allows aliasing,
-     * so we do not need to allocate a temporary array (although a temporary
-     * array will be created by the arb function).
-     */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_exp(tmat, tmat, w->prec);
-    }
-
-    /*
-     * Workspace for state distributions at nodes.
-     * The contents of these vectors can depend on the prior distribution
-     * or on data, for example.
-     */
-    for (i = 0; i < w->node_count; i++)
-    {
-        nmat = w->base_node_column_vectors + i;
-        arb_mat_init(nmat, w->state_count, 1);
-    }
-
-    /*
-     * Allocate an arbitrary precision column vector for each node.
-     * This will be used to accumulate conditional likelihoods.
-     */
-    for (i = 0; i < w->node_count; i++)
-    {
-        nmat = w->lhood_node_column_vectors + i;
-        arb_mat_init(nmat, w->state_count, 1);
-    }
-
-    /*
-     * Allocate an arbitrary precision column vector for each node.
-     * This will be used to accumulate derivatives of likelihoods.
-     */
-    for (i = 0; i < w->node_count; i++)
-    {
-        nmat = w->deriv_node_column_vectors + i;
-        arb_mat_init(nmat, w->state_count, 1);
-    }
-
-    /*
-     * Allocate an arbitrary precision column vector for each edge.
-     * This will be used to cache intermediate values created during
-     * the likelihood dynamic programming and which can be reused
-     * for derivative calculations.
-     * For a given edge of interest, the computation of the derivative
-     * with respect to the rate coefficient of that edge can use precomputed
-     * per-edge vectors for all edges except the ones on the path from that
-     * edge to the root of the tree.
-     */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        nmat = w->lhood_edge_column_vectors + idx;
-        arb_mat_init(nmat, w->state_count, 1);
-    }
-
+    w->base_node_vectors = NULL;
+    w->lhood_node_vectors = NULL;
+    w->lhood_edge_vectors = NULL;
+    w->deriv_node_vectors = NULL;
 }
 
 static void
-likelihood_ws_clear(likelihood_ws_t w)
+likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 {
-    int i, idx;
+    slong edge_count = model_and_data_edge_count(m);
+    slong node_count = model_and_data_node_count(m);
+    slong state_count = model_and_data_state_count(m);
 
-    if (w->edge_rates)
-    {
-        _arb_vec_clear(w->edge_rates, w->edge_count);
-    }
+    /* initialize per-edge state vectors */
+    w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
 
-    if (w->equilibrium)
-    {
-        _arb_vec_clear(w->equilibrium, w->state_count);
-    }
+    /* initialize per-node state vectors */
+    w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->deriv_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+}
 
-    arb_mat_clear(w->rate_matrix);
+static void
+likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
+{
+    slong edge_count = model_and_data_edge_count(m);
+    slong node_count = model_and_data_node_count(m);
 
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        arb_mat_clear(w->transition_matrices + idx);
-        arb_mat_clear(w->lhood_edge_column_vectors + idx);
-    }
-    flint_free(w->transition_matrices);
-    flint_free(w->lhood_edge_column_vectors);
-    
-    for (i = 0; i < w->node_count; i++)
-    {
-        arb_mat_clear(w->base_node_column_vectors + i);
-        arb_mat_clear(w->lhood_node_column_vectors + i);
-        arb_mat_clear(w->deriv_node_column_vectors + i);
-    }
-    flint_free(w->base_node_column_vectors);
-    flint_free(w->lhood_node_column_vectors);
-    flint_free(w->deriv_node_column_vectors);
+    /* clear per-edge state vectors */
+    _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
+
+    /* clear per-node state vectors */
+    _arb_mat_vec_clear(w->base_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
+    _arb_mat_vec_clear(w->deriv_node_vectors, node_count);
 }
 
 
 /* Helper function to update likelihood-related vectors at a site. */
 static int
 _update_lhood_vectors(arb_t lhood,
-        model_and_data_t m, likelihood_ws_t w, int site)
+        model_and_data_t m, cross_site_ws_t csw, likelihood_ws_t w,
+        slong site, slong prec)
 {
+    arb_mat_struct *tmat_base;
+    slong cat;
+    slong node_count = model_and_data_node_count(m);
+
+    /* todo: allow more than one category */
+    cat = 0;
+
+    tmat_base = tmat_collection_entry(csw->transition_matrices, cat, 0);
+
     pmat_update_base_node_vectors(
-            w->base_node_column_vectors, m->p, site,
-            m->root_prior, w->equilibrium,
-            m->preorder[0], w->prec);
+            w->base_node_vectors, m->p, site,
+            m->root_prior, csw->equilibrium,
+            m->preorder[0], prec);
 
     evaluate_site_lhood(lhood,
-            w->lhood_node_column_vectors,
-            w->lhood_edge_column_vectors,
-            w->base_node_column_vectors,
-            w->transition_matrices,
-            m->g, m->preorder, w->node_count, w->prec);
+            w->lhood_node_vectors,
+            w->lhood_edge_vectors,
+            w->base_node_vectors,
+            tmat_base,
+            m->g, m->preorder, node_count, prec);
 
+    /* todo: allow individual likelihoods in the mixture to be zero */
     if (arb_is_zero(lhood))
     {
         fprintf(stderr, "error: infeasible\n");
@@ -350,9 +164,9 @@ _update_lhood_vectors(arb_t lhood,
  * edge->initial_node and final_node->edge respectively.
  */
 static void
-evaluate_site_derivatives(arb_struct *derivatives,
-        int *edge_is_requested, model_and_data_t m, likelihood_ws_t w,
-        int *idx_to_a, int *b_to_idx, int site)
+evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
+        model_and_data_t m, cross_site_ws_t csw, likelihood_ws_t w,
+        int *idx_to_a, int *b_to_idx, int site, slong prec)
 {
     int a, b, idx;
     int start, stop;
@@ -364,9 +178,18 @@ evaluate_site_derivatives(arb_struct *derivatives,
     arb_mat_struct * emat;
     arb_mat_struct * rmat;
     csr_graph_struct *g;
+    arb_mat_struct *tmat_base;
+    slong cat;
+
+    slong state_count = model_and_data_state_count(m);
+    slong edge_count = model_and_data_edge_count(m);
+
+    /* todo: allow more than one rate category */
+    cat = 0;
+    tmat_base = tmat_collection_entry(csw->transition_matrices, cat, 0);
 
     g = m->g;
-    _arb_vec_zero(derivatives, w->edge_count);
+    _arb_vec_zero(derivatives, edge_count);
 
     /*
      * For each requested edge at this site,
@@ -375,7 +198,7 @@ evaluate_site_derivatives(arb_struct *derivatives,
      */
     int deriv_idx;
     int curr_idx;
-    for (deriv_idx = 0; deriv_idx < w->edge_count; deriv_idx++)
+    for (deriv_idx = 0; deriv_idx < edge_count; deriv_idx++)
     {
         if (!edge_is_requested[deriv_idx])
             continue;
@@ -389,8 +212,8 @@ evaluate_site_derivatives(arb_struct *derivatives,
              * instead of duplicating the base node vector creation code?
              */
             /* initialize the state vector for node a */
-            nmat = w->deriv_node_column_vectors + a;
-            for (state = 0; state < w->state_count; state++)
+            nmat = w->deriv_node_vectors + a;
+            for (state = 0; state < state_count; state++)
             {
                 tmpd = *pmat_srcentry(m->p, site, a, state);
                 arb_set_d(arb_mat_entry(nmat, state, 0), tmpd);
@@ -398,7 +221,7 @@ evaluate_site_derivatives(arb_struct *derivatives,
             if (a == m->preorder[0])
             {
                 root_prior_mul_col_vec(
-                        nmat, m->root_prior, w->equilibrium, w->prec);
+                        nmat, m->root_prior, csw->equilibrium, prec);
             }
 
             /*
@@ -414,21 +237,21 @@ evaluate_site_derivatives(arb_struct *derivatives,
             {
                 if (idx == deriv_idx)
                 {
-                    rmat = w->rate_matrix;
-                    emat = w->lhood_edge_column_vectors + idx;
-                    _prune_update(nmat, nmat, rmat, emat, w->prec);
+                    rmat = csw->rate_matrix;
+                    emat = w->lhood_edge_vectors + idx;
+                    _prune_update(nmat, nmat, rmat, emat, prec);
                 }
                 else if (idx == curr_idx)
                 {
                     b = g->indices[idx];
-                    tmat = w->transition_matrices + idx;
-                    nmatb = w->deriv_node_column_vectors + b;
-                    _prune_update(nmat, nmat, tmat, nmatb, w->prec);
+                    tmat = tmat_base + idx;
+                    nmatb = w->deriv_node_vectors + b;
+                    _prune_update(nmat, nmat, tmat, nmatb, prec);
                 }
                 else
                 {
-                    emat = w->lhood_edge_column_vectors + idx;
-                    _arb_mat_mul_entrywise(nmat, nmat, emat, w->prec);
+                    emat = w->lhood_edge_vectors + idx;
+                    _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
                 }
             }
 
@@ -437,12 +260,12 @@ evaluate_site_derivatives(arb_struct *derivatives,
         }
 
         /* Report the sum of state entries associated with the root. */
-        nmat = w->deriv_node_column_vectors + m->root_node_index;
+        nmat = w->deriv_node_vectors + m->root_node_index;
         arb_struct * deriv = derivatives + deriv_idx;
         arb_zero(deriv);
-        for (state = 0; state < w->state_count; state++)
+        for (state = 0; state < state_count; state++)
         {
-            arb_add(deriv, deriv, arb_mat_entry(nmat, state, 0), w->prec);
+            arb_add(deriv, deriv, arb_mat_entry(nmat, state, 0), prec);
         }
     }
 
@@ -462,6 +285,7 @@ _agg_site_edge_yy(
         int *result_out)
 {
     json_t * j_out = NULL;
+    cross_site_ws_t csw;
     likelihood_ws_t w;
     int result = 0;
     int site;
@@ -493,7 +317,8 @@ _agg_site_edge_yy(
     arb_init(site_weight_divisor);
     site_weights = _arb_vec_init(site_count);
 
-    likelihood_ws_init(w, NULL, 0);
+    cross_site_ws_pre_init(csw);
+    likelihood_ws_pre_init(w);
 
     /*
      * The recipe is:
@@ -523,8 +348,9 @@ _agg_site_edge_yy(
                 site_weight_divisor, site_weights, site_count, r_site, prec);
         if (result) goto finish;
 
-        likelihood_ws_clear(w);
-        likelihood_ws_init(w, m, prec);
+        cross_site_ws_reinit(csw, m, prec);
+        likelihood_ws_clear(w, m);
+        likelihood_ws_init(w, m);
 
         /* clear the accumulation across sites */
         arb_zero(deriv_ll_site_accum);
@@ -534,7 +360,8 @@ _agg_site_edge_yy(
             if (!site_selection_count[site])
                 continue;
 
-            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            result = _update_lhood_vectors(
+                    site_likelihood, m, csw, w, site, prec);
             if (result) goto finish;
 
             /*
@@ -546,8 +373,8 @@ _agg_site_edge_yy(
             evaluate_site_derivatives(
                     derivatives,
                     edge_selection_count,
-                    m, w,
-                    idx_to_a, b_to_idx, site);
+                    m, csw, w,
+                    idx_to_a, b_to_idx, site, prec);
 
             /*
              * Aggregate the site derivatives.
@@ -592,7 +419,7 @@ _agg_site_edge_yy(
 
 finish:
 
-    likelihood_ws_clear(w);
+    likelihood_ws_clear(w, m);
     arb_clear(site_likelihood);
     arb_clear(deriv_lhood_edge_accum);
     arb_clear(deriv_ll_site_accum);
@@ -618,6 +445,7 @@ _agg_site_edge_yn(
         int *result_out)
 {
     json_t * j_out = NULL;
+    cross_site_ws_t csw;
     likelihood_ws_t w;
     int result = 0;
     int i, idx, site, edge;
@@ -647,7 +475,8 @@ _agg_site_edge_yn(
     arb_init(site_weight_divisor);
     site_weights = _arb_vec_init(site_count);
 
-    likelihood_ws_init(w, NULL, 0);
+    cross_site_ws_pre_init(csw);
+    likelihood_ws_pre_init(w);
 
     /*
      * Initially we want edge derivatives that have been selected.
@@ -669,8 +498,9 @@ _agg_site_edge_yn(
                 site_weight_divisor, site_weights, site_count, r_site, prec);
         if (result) goto finish;
 
-        likelihood_ws_clear(w);
-        likelihood_ws_init(w, m, prec);
+        cross_site_ws_reinit(csw, m, prec);
+        likelihood_ws_clear(w, m);
+        likelihood_ws_init(w, m);
 
         /* clear the accumulation across sites */
         _arb_vec_zero(deriv_ll_accum, edge_count);
@@ -680,7 +510,8 @@ _agg_site_edge_yn(
             if (!site_selection_count[site])
                 continue;
 
-            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            result = _update_lhood_vectors(
+                    site_likelihood, m, csw, w, site, prec);
             if (result) goto finish;
 
             /*
@@ -692,8 +523,8 @@ _agg_site_edge_yn(
             evaluate_site_derivatives(
                     derivatives,
                     edge_is_requested,
-                    m, w,
-                    idx_to_a, b_to_idx, site);
+                    m, csw, w,
+                    idx_to_a, b_to_idx, site, prec);
 
             /* define a site-specific coefficient */
             arb_div(x, site_weights+site, site_weight_divisor, prec);
@@ -771,7 +602,7 @@ _agg_site_edge_yn(
 finish:
 
     free(edge_is_requested);
-    likelihood_ws_clear(w);
+    likelihood_ws_clear(w, m);
 
     arb_clear(x);
     arb_clear(site_likelihood);
@@ -796,6 +627,7 @@ _agg_site_edge_ny(
         int *result_out)
 {
     json_t * j_out = NULL;
+    cross_site_ws_t csw;
     likelihood_ws_t w;
     int result = 0;
     int i, site;
@@ -822,7 +654,8 @@ _agg_site_edge_ny(
     arb_init(edge_weight_divisor);
     edge_weights = _arb_vec_init(edge_count);
 
-    likelihood_ws_init(w, NULL, 0);
+    cross_site_ws_pre_init(csw);
+    likelihood_ws_pre_init(w);
 
     /*
      * Initially we want edge derivatives that have been selected.
@@ -845,8 +678,9 @@ _agg_site_edge_ny(
                 edge_count, m->edge_map->order, r_edge, prec);
         if (result) goto finish;
 
-        likelihood_ws_clear(w);
-        likelihood_ws_init(w, m, prec);
+        cross_site_ws_reinit(csw, m, prec);
+        likelihood_ws_clear(w, m);
+        likelihood_ws_init(w, m);
 
         /* update edge derivative accumulations at requested sites */
         for (site = 0; site < site_count; site++)
@@ -854,14 +688,15 @@ _agg_site_edge_ny(
             if (!site_is_requested[site])
                 continue;
 
-            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            result = _update_lhood_vectors(
+                    site_likelihood, m, csw, w, site, prec);
             if (result) goto finish;
 
             evaluate_site_derivatives(
                     derivatives,
                     edge_selection_count,
-                    m, w,
-                    idx_to_a, b_to_idx, site);
+                    m, csw, w,
+                    idx_to_a, b_to_idx, site, prec);
             p = final + site;
             _arb_vec_dot(p, derivatives, edge_weights, edge_count, prec);
             arb_div(p, p, edge_weight_divisor, prec);
@@ -913,7 +748,7 @@ _agg_site_edge_ny(
 finish:
 
     free(site_is_requested);
-    likelihood_ws_clear(w);
+    likelihood_ws_clear(w, m);
 
     arb_clear(site_likelihood);
     _arb_vec_clear(derivatives, edge_count);
@@ -936,6 +771,7 @@ _agg_site_edge_nn(
         int *result_out)
 {
     json_t * j_out = NULL;
+    cross_site_ws_t csw;
     likelihood_ws_t w;
     int result = 0;
     int i, idx, edge, site;
@@ -957,7 +793,8 @@ _agg_site_edge_nn(
     derivatives = _arb_vec_init(edge_count);
     arb_mat_init(final, site_count, edge_count);
 
-    likelihood_ws_init(w, NULL, 0);
+    cross_site_ws_pre_init(csw);
+    likelihood_ws_pre_init(w);
 
     /* These will be updated each time the precision is bumped. */
     site_is_requested = malloc(site_count * sizeof(int));
@@ -974,8 +811,9 @@ _agg_site_edge_nn(
     /* repeat with increasing precision until there is no precision failure */
     for (failed=1, prec=4; failed; prec<<=1)
     {
-        likelihood_ws_clear(w);
-        likelihood_ws_init(w, m, prec);
+        cross_site_ws_reinit(csw, m, prec);
+        likelihood_ws_clear(w, m);
+        likelihood_ws_init(w, m);
 
         /* update requested sites */
         for (site = 0; site < site_count; site++)
@@ -983,14 +821,15 @@ _agg_site_edge_nn(
             if (!site_is_requested[site])
                 continue;
 
-            result = _update_lhood_vectors(site_likelihood, m, w, site);
+            result = _update_lhood_vectors(
+                    site_likelihood, m, csw, w, site, prec);
             if (result) goto finish;
 
             evaluate_site_derivatives(
                     derivatives,
                     edge_is_requested,
-                    m, w,
-                    idx_to_a, b_to_idx, site);
+                    m, csw, w,
+                    idx_to_a, b_to_idx, site, prec);
             for (idx = 0; idx < edge_count; idx++)
             {
                 if (edge_is_requested[idx])
@@ -1073,7 +912,7 @@ _agg_site_edge_nn(
 finish:
 
     free(site_is_requested);
-    likelihood_ws_clear(w);
+    likelihood_ws_clear(w, m);
 
     arb_clear(site_likelihood);
     _arb_vec_clear(derivatives, edge_count);

@@ -49,6 +49,7 @@
 #include "evaluate_site_marginal.h"
 #include "ndaccum.h"
 #include "equilibrium.h"
+#include "arb_mat_extras.h"
 #include "cross_site_ws.h"
 
 #include "parsemodel.h"
@@ -71,63 +72,34 @@ typedef likelihood_ws_struct likelihood_ws_t[1];
 static void
 likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 {
-    int i, idx;
-    size_t nbytes;
-
     slong node_count = model_and_data_node_count(m);
     slong edge_count = model_and_data_edge_count(m);
     slong state_count = model_and_data_state_count(m);
 
     /* initialize per-edge state vectors */
-    nbytes = edge_count * sizeof(arb_mat_struct);
-    w->lhood_edge_vectors = flint_malloc(nbytes);
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        arb_mat_init(w->lhood_edge_vectors + idx, state_count, 1);
-    }
+    w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
 
     /* initialize per-node state vectors */
-    nbytes = node_count * sizeof(arb_mat_struct);
-    w->base_node_vectors = flint_malloc(nbytes);
-    w->lhood_node_vectors = flint_malloc(nbytes);
-    w->marginal_node_vectors = flint_malloc(nbytes);
-    w->cc_marginal_node_vectors = flint_malloc(nbytes);
-    for (i = 0; i < node_count; i++)
-    {
-        arb_mat_init(w->base_node_vectors+i, state_count, 1);
-        arb_mat_init(w->lhood_node_vectors+i, state_count, 1);
-        arb_mat_init(w->marginal_node_vectors+i, state_count, 1);
-        arb_mat_init(w->cc_marginal_node_vectors+i, state_count, 1);
-    }
+    w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->cc_marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
 }
 
 static void
 likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 {
-    int i, idx;
-
     slong node_count = model_and_data_node_count(m);
     slong edge_count = model_and_data_edge_count(m);
 
     /* clear per-edge column vectors */
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        arb_mat_clear(w->lhood_edge_vectors + idx);
-    }
-    flint_free(w->lhood_edge_vectors);
+    _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
 
     /* clear per-node column vectors */
-    for (i = 0; i < node_count; i++)
-    {
-        arb_mat_clear(w->base_node_vectors + i);
-        arb_mat_clear(w->lhood_node_vectors + i);
-        arb_mat_clear(w->marginal_node_vectors + i);
-        arb_mat_clear(w->cc_marginal_node_vectors + i);
-    }
-    flint_free(w->base_node_vectors);
-    flint_free(w->lhood_node_vectors);
-    flint_free(w->marginal_node_vectors);
-    flint_free(w->cc_marginal_node_vectors);
+    _arb_mat_vec_clear(w->base_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
+    _arb_mat_vec_clear(w->marginal_node_vectors, node_count);
+    _arb_mat_vec_clear(w->cc_marginal_node_vectors, node_count);
 }
 
 

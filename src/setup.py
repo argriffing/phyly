@@ -32,6 +32,7 @@ myext = Extension(
             'parsemodel.c',
             'reduction.c',
             'parsereduction.c',
+            'arb_mat_extras.c',
             'arb_vec_extras.c',
             'arb_vec_calc.c',
             'arb_vec_calc_quad.c',

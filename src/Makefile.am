@@ -27,6 +27,8 @@ CORE_SOURCES = \
 	evaluate_site_lhood.h \
 	evaluate_site_marginal.c \
 	evaluate_site_marginal.h \
+	arb_mat_extras.c \
+	arb_mat_extras.h \
 	arb_vec_extras.c \
 	arb_vec_extras.h \
 	arb_vec_calc.c \
