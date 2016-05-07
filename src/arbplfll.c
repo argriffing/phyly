@@ -155,7 +155,6 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
 {
     json_t *j_out = NULL;
     int result = 0;
-    int site_count = 0;
     int *site_is_selected = NULL;
     arb_t cat_lhood, prior_prob;
     arb_struct * site_likelihoods = NULL;
@@ -165,11 +164,13 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
     likelihood_ws_t w;
     int iter = 0;
     slong cat;
-    slong ncats = 0;
     int i, site;
     slong prec = 4;
     int failed = 1;
     arb_ptr lhood, ll;
+
+    slong site_count = model_and_data_site_count(m);
+    slong ncats = model_and_data_rate_category_count(m);
 
     arb_init(aggregate);
     arb_init(cat_lhood);
@@ -177,9 +178,6 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
 
     cross_site_ws_pre_init(csw);
     likelihood_ws_init(w, m);
-
-    site_count = model_and_data_site_count(m);
-    ncats = model_and_data_rate_category_count(m);
 
     site_is_selected = calloc(site_count, sizeof(int));
     for (i = 0; i < r_site->selection_len; i++)

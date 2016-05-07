@@ -58,8 +58,6 @@
 #include "runjson.h"
 #include "arbplfderiv.h"
 
-
-
 typedef struct
 {
     arb_mat_struct *base_node_vectors;
@@ -70,25 +68,13 @@ typedef struct
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
 static void
-likelihood_ws_pre_init(likelihood_ws_t w)
-{
-    w->base_node_vectors = NULL;
-    w->lhood_node_vectors = NULL;
-    w->lhood_edge_vectors = NULL;
-    w->deriv_node_vectors = NULL;
-}
-
-static void
 likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 {
     slong edge_count = model_and_data_edge_count(m);
     slong node_count = model_and_data_node_count(m);
     slong state_count = model_and_data_state_count(m);
 
-    /* initialize per-edge state vectors */
     w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
-
-    /* initialize per-node state vectors */
     w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->deriv_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
@@ -100,10 +86,7 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
     slong edge_count = model_and_data_edge_count(m);
     slong node_count = model_and_data_node_count(m);
 
-    /* clear per-edge state vectors */
     _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
-
-    /* clear per-node state vectors */
     _arb_mat_vec_clear(w->base_node_vectors, node_count);
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
     _arb_mat_vec_clear(w->deriv_node_vectors, node_count);
@@ -318,7 +301,7 @@ _agg_site_edge_yy(
     site_weights = _arb_vec_init(site_count);
 
     cross_site_ws_pre_init(csw);
-    likelihood_ws_pre_init(w);
+    likelihood_ws_init(w, m);
 
     /*
      * The recipe is:
@@ -349,8 +332,6 @@ _agg_site_edge_yy(
         if (result) goto finish;
 
         cross_site_ws_reinit(csw, m, prec);
-        likelihood_ws_clear(w, m);
-        likelihood_ws_init(w, m);
 
         /* clear the accumulation across sites */
         arb_zero(deriv_ll_site_accum);
@@ -476,7 +457,7 @@ _agg_site_edge_yn(
     site_weights = _arb_vec_init(site_count);
 
     cross_site_ws_pre_init(csw);
-    likelihood_ws_pre_init(w);
+    likelihood_ws_init(w, m);
 
     /*
      * Initially we want edge derivatives that have been selected.
@@ -499,8 +480,6 @@ _agg_site_edge_yn(
         if (result) goto finish;
 
         cross_site_ws_reinit(csw, m, prec);
-        likelihood_ws_clear(w, m);
-        likelihood_ws_init(w, m);
 
         /* clear the accumulation across sites */
         _arb_vec_zero(deriv_ll_accum, edge_count);
@@ -655,7 +634,7 @@ _agg_site_edge_ny(
     edge_weights = _arb_vec_init(edge_count);
 
     cross_site_ws_pre_init(csw);
-    likelihood_ws_pre_init(w);
+    likelihood_ws_init(w, m);
 
     /*
      * Initially we want edge derivatives that have been selected.
@@ -679,8 +658,6 @@ _agg_site_edge_ny(
         if (result) goto finish;
 
         cross_site_ws_reinit(csw, m, prec);
-        likelihood_ws_clear(w, m);
-        likelihood_ws_init(w, m);
 
         /* update edge derivative accumulations at requested sites */
         for (site = 0; site < site_count; site++)
@@ -794,7 +771,7 @@ _agg_site_edge_nn(
     arb_mat_init(final, site_count, edge_count);
 
     cross_site_ws_pre_init(csw);
-    likelihood_ws_pre_init(w);
+    likelihood_ws_init(w, m);
 
     /* These will be updated each time the precision is bumped. */
     site_is_requested = malloc(site_count * sizeof(int));
@@ -812,8 +789,6 @@ _agg_site_edge_nn(
     for (failed=1, prec=4; failed; prec<<=1)
     {
         cross_site_ws_reinit(csw, m, prec);
-        likelihood_ws_clear(w, m);
-        likelihood_ws_init(w, m);
 
         /* update requested sites */
         for (site = 0; site < site_count; site++)
