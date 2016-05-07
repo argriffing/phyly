@@ -69,6 +69,7 @@
 #include "util.h"
 #include "evaluate_site_lhood.h"
 #include "equilibrium.h"
+#include "arb_mat_extras.h"
 #include "cross_site_ws.h"
 
 #include "parsemodel.h"
@@ -80,77 +81,28 @@
 /* This object changes in the course of the iteration over sites. */
 typedef struct
 {
-    slong node_count;
-    arb_mat_struct *base_node_column_vectors;
-    arb_mat_struct *lhood_node_column_vectors;
+    arb_mat_struct *base_node_vectors;
+    arb_mat_struct *lhood_node_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
 static void
-likelihood_ws_pre_init(likelihood_ws_t w)
+likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 {
-    w->node_count = 0;
-    w->base_node_column_vectors = NULL;
-    w->lhood_node_column_vectors = NULL;
+    slong node_count = model_and_data_node_count(m);
+    slong state_count = model_and_data_state_count(m);
+
+    w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
 }
 
 static void
-likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
+likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 {
-    slong i, node_count, state_count;
-    arb_mat_struct * nmat;
+    slong node_count = model_and_data_node_count(m);
 
-    node_count = model_and_data_node_count(m);
-    state_count = model_and_data_state_count(m);
-    w->node_count = node_count;
-
-    /*
-     * Allocate an arbitrary precision column vector for each node.
-     * These are for base likelihoods involving data or the prior.
-     */
-    w->base_node_column_vectors = flint_malloc(
-            node_count * sizeof(arb_mat_struct));
-    for (i = 0; i < node_count; i++)
-    {
-        nmat = w->base_node_column_vectors + i;
-        arb_mat_init(nmat, state_count, 1);
-    }
-
-    /*
-     * Allocate an arbitrary precision column vector for each node.
-     * This will be used to accumulate conditional likelihoods.
-     */
-    w->lhood_node_column_vectors = flint_malloc(
-            node_count * sizeof(arb_mat_struct));
-    for (i = 0; i < node_count; i++)
-    {
-        nmat = w->lhood_node_column_vectors + i;
-        arb_mat_init(nmat, state_count, 1);
-    }
-}
-
-static void
-likelihood_ws_clear(likelihood_ws_t w)
-{
-    slong i;
-
-    if (w->base_node_column_vectors)
-    {
-        for (i = 0; i < w->node_count; i++)
-        {
-            arb_mat_clear(w->base_node_column_vectors + i);
-        }
-        flint_free(w->base_node_column_vectors);
-    }
-
-    if (w->lhood_node_column_vectors)
-    {
-        for (i = 0; i < w->node_count; i++)
-        {
-            arb_mat_clear(w->lhood_node_column_vectors + i);
-        }
-        flint_free(w->lhood_node_column_vectors);
-    }
+    _arb_mat_vec_clear(w->base_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
 }
 
 
@@ -224,7 +176,7 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
     arb_init(prior_prob);
 
     cross_site_ws_pre_init(csw);
-    likelihood_ws_pre_init(w);
+    likelihood_ws_init(w, m);
 
     site_count = model_and_data_site_count(m);
     ncats = model_and_data_rate_category_count(m);
@@ -244,8 +196,6 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
     {
         failed = 0;
         cross_site_ws_reinit(csw, m, prec);
-        likelihood_ws_clear(w);
-        likelihood_ws_init(w, m);
 
         /* if any likelihood is exactly zero then return an error */
         for (site = 0; site < site_count; site++)
@@ -262,7 +212,7 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
                 continue;
 
             pmat_update_base_node_vectors(
-                    w->base_node_column_vectors, m->p, site,
+                    w->base_node_vectors, m->p, site,
                     m->root_prior, csw->equilibrium,
                     m->preorder[0], prec);
 
@@ -274,9 +224,9 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
                 tmat_base = tmat_collection_entry(
                         csw->transition_matrices, cat, 0);
                 evaluate_site_lhood(cat_lhood,
-                        w->lhood_node_column_vectors,
+                        w->lhood_node_vectors,
                         NULL,
-                        w->base_node_column_vectors,
+                        w->base_node_vectors,
                         tmat_base,
                         m->g, m->preorder, csw->node_count, prec);
                 rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
@@ -355,7 +305,7 @@ finish:
     {
         _arb_vec_clear(site_log_likelihoods, site_count);
     }
-    likelihood_ws_clear(w);
+    likelihood_ws_clear(w, m);
     cross_site_ws_clear(csw);
     return j_out;
 }
