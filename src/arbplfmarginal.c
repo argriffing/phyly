@@ -76,10 +76,7 @@ likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
     slong edge_count = model_and_data_edge_count(m);
     slong state_count = model_and_data_state_count(m);
 
-    /* initialize per-edge state vectors */
     w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
-
-    /* initialize per-node state vectors */
     w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
@@ -92,10 +89,7 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
     slong node_count = model_and_data_node_count(m);
     slong edge_count = model_and_data_edge_count(m);
 
-    /* clear per-edge column vectors */
     _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
-
-    /* clear per-node column vectors */
     _arb_mat_vec_clear(w->base_node_vectors, node_count);
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
     _arb_mat_vec_clear(w->marginal_node_vectors, node_count);
@@ -109,11 +103,12 @@ _nd_accum_update(nd_accum_t arr,
 {
     int site, i, j;
     arb_t cat_lhood, prior_prob, post_lhood, post_lhood_sum;
-    arb_mat_struct *nvec;
     nd_axis_struct *site_axis, *node_axis, *state_axis;
-    int site_count;
     int *coords;
-    slong cat, ncats;
+    slong cat;
+
+    slong ncats = model_and_data_rate_category_count(m);
+    slong site_count = model_and_data_site_count(m);
 
     arb_init(cat_lhood);
     arb_init(prior_prob);
@@ -121,9 +116,6 @@ _nd_accum_update(nd_accum_t arr,
     arb_init(post_lhood_sum);
 
     coords = malloc(arr->ndim * sizeof(int));
-
-    ncats = model_and_data_rate_category_count(m);
-    site_count = model_and_data_site_count(m);
 
     site_axis = arr->axes + 0;
     node_axis = arr->axes + 1;
@@ -172,7 +164,6 @@ _nd_accum_update(nd_accum_t arr,
 
             /*
              * Update per-node and per-edge likelihood vectors.
-             * Actually the likelihood vectors on edges are not used.
              * This is a backward pass from the leaves to the root.
              */
             evaluate_site_lhood(cat_lhood,
@@ -233,6 +224,8 @@ _nd_accum_update(nd_accum_t arr,
         /* Update the nd accumulator. */
         for (i = 0; i < csw->node_count; i++)
         {
+            arb_mat_struct *nvec;
+
             /* skip nodes that are not requested */
             if (!node_axis->request_update[i]) continue;
             coords[1] = i;
@@ -268,23 +261,17 @@ _query(model_and_data_t m,
 {
     json_t * j_out = NULL;
     slong prec;
-    int ndim, result;
     int axis_idx;
-    int site_count, node_count, state_count;
     nd_axis_struct axes[3];
     nd_accum_t arr;
     cross_site_ws_t csw;
     likelihood_ws_t w;
+    int ndim = 3;
+    int result = 0;
 
-    result = 0;
-
-    /* sites, nodes, states */
-    ndim = 3;
-
-    /* initialize counts */
-    site_count = pmat_nsites(m->p);
-    node_count = pmat_nrows(m->p);
-    state_count = pmat_ncols(m->p);
+    slong site_count = model_and_data_site_count(m);
+    slong node_count = model_and_data_node_count(m);
+    slong state_count = model_and_data_state_count(m);
 
     /* initialize likelihood workspace */
     cross_site_ws_pre_init(csw);
@@ -332,7 +319,7 @@ finish:
     likelihood_ws_clear(w, m);
 
     /* clear axes */
-    for (axis_idx = 0; axis_idx < 3; axis_idx++)
+    for (axis_idx = 0; axis_idx < ndim; axis_idx++)
     {
         nd_axis_clear(axes + axis_idx);
     }
