@@ -52,6 +52,7 @@
 #include "equilibrium.h"
 #include "arb_mat_extras.h"
 #include "cross_site_ws.h"
+#include "ndaccum.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -90,44 +91,6 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
     _arb_mat_vec_clear(w->base_node_vectors, node_count);
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
     _arb_mat_vec_clear(w->deriv_node_vectors, node_count);
-}
-
-
-/* Helper function to update likelihood-related vectors at a site. */
-static int
-_update_lhood_vectors(arb_t lhood,
-        model_and_data_t m, cross_site_ws_t csw, likelihood_ws_t w,
-        slong site, slong prec)
-{
-    arb_mat_struct *tmat_base;
-    slong cat;
-    slong node_count = model_and_data_node_count(m);
-
-    /* todo: allow more than one category */
-    cat = 0;
-
-    tmat_base = tmat_collection_entry(csw->transition_matrices, cat, 0);
-
-    pmat_update_base_node_vectors(
-            w->base_node_vectors, m->p, site,
-            m->root_prior, csw->equilibrium,
-            m->preorder[0], prec);
-
-    evaluate_site_lhood(lhood,
-            w->lhood_node_vectors,
-            w->lhood_edge_vectors,
-            w->base_node_vectors,
-            tmat_base,
-            m->g, m->preorder, node_count, prec);
-
-    /* todo: allow individual likelihoods in the mixture to be zero */
-    if (arb_is_zero(lhood))
-    {
-        fprintf(stderr, "error: infeasible\n");
-        return -1;
-    }
-
-    return 0;
 }
 
 
@@ -183,8 +146,8 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
     int curr_idx;
     for (deriv_idx = 0; deriv_idx < edge_count; deriv_idx++)
     {
-        if (!edge_is_requested[deriv_idx])
-            continue;
+        /* skip nodes that are not requested */
+        if (!edge_is_requested[deriv_idx]) continue;
 
         curr_idx = deriv_idx;
         while (curr_idx != -1)
@@ -255,822 +218,32 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
 }
 
 
-
-
-
-
-static json_t *
-_agg_site_edge_yy(
-        model_and_data_t m,
-        int *idx_to_a, int *b_to_idx,
-        column_reduction_t r_site, column_reduction_t r_edge,
-        int *site_selection_count, int *edge_selection_count,
-        int *result_out)
-{
-    json_t * j_out = NULL;
-    cross_site_ws_t csw;
-    likelihood_ws_t w;
-    int result = 0;
-    int site;
-    slong prec;
-    int failed;
-
-    int site_count = pmat_nsites(m->p);
-    int edge_count = m->g->nnz;
-
-    arb_t site_likelihood;
-    arb_t deriv_lhood_edge_accum;
-    arb_t deriv_ll_site_accum;
-    arb_struct * derivatives;
-
-    arb_init(site_likelihood);
-    arb_init(deriv_lhood_edge_accum);
-    arb_init(deriv_ll_site_accum);
-    derivatives = _arb_vec_init(edge_count);
-
-    arb_struct * edge_weights;
-    arb_t edge_weight_divisor;
-
-    arb_init(edge_weight_divisor);
-    edge_weights = _arb_vec_init(edge_count);
-
-    arb_struct * site_weights;
-    arb_t site_weight_divisor;
-
-    arb_init(site_weight_divisor);
-    site_weights = _arb_vec_init(site_count);
-
-    cross_site_ws_pre_init(csw);
-    likelihood_ws_init(w, m);
-
-    /*
-     * The recipe is:
-     * 1) repeat with increasing precision until arb gives the green light:
-     *    2) for each site:
-     *       2a) aggregate derivatives of likelihood across edges
-     *       2b) divide the aggregate by the likelihood, thereby
-     *           converting from derivative of likelihood to derivative
-     *           of log likelihood
-     *    3) aggregate those aggregates across sites
-     *
-     * Note that this uses the linearity of the aggregate functions
-     * in a nontrivial way in step (2b).
-     */
-
-    /* repeat with increasing precision until there is no precision failure */
-    for (failed=1, prec=4; failed; prec<<=1)
-    {
-        /* define edge aggregation weights with respect to csr indices */
-        result = get_edge_agg_weights(
-                edge_weight_divisor, edge_weights,
-                edge_count, m->edge_map->order, r_edge, prec);
-        if (result) goto finish;
-
-        /* define site aggregation weights */
-        result = get_site_agg_weights(
-                site_weight_divisor, site_weights, site_count, r_site, prec);
-        if (result) goto finish;
-
-        cross_site_ws_reinit(csw, m, prec);
-
-        /* clear the accumulation across sites */
-        arb_zero(deriv_ll_site_accum);
-
-        for (site = 0; site < site_count; site++)
-        {
-            if (!site_selection_count[site])
-                continue;
-
-            result = _update_lhood_vectors(
-                    site_likelihood, m, csw, w, site, prec);
-            if (result) goto finish;
-
-            /*
-             * Evaluate derivatives of site likelihood
-             * with respect to each selected edge.
-             * Note that these derivatives are with respect to the likelihood
-             * rather than with respect to the log likelihood.
-             */
-            evaluate_site_derivatives(
-                    derivatives,
-                    edge_selection_count,
-                    m, csw, w,
-                    idx_to_a, b_to_idx, site, prec);
-
-            /*
-             * Aggregate the site derivatives.
-             * Divide the aggregate by the site likelihood.
-             * The accumulation across edges does not need to be cleared,
-             * because it is set directly by computing a dot product.
-             */
-            _arb_vec_dot(deriv_lhood_edge_accum,
-                    derivatives, edge_weights, edge_count, prec);
-
-            arb_div(deriv_lhood_edge_accum,
-                    deriv_lhood_edge_accum, edge_weight_divisor, prec);
-
-            arb_div(deriv_lhood_edge_accum,
-                    deriv_lhood_edge_accum, site_likelihood, prec);
-
-            /* Add to the across-site aggregate. */
-            arb_addmul(deriv_ll_site_accum,
-                    deriv_lhood_edge_accum, site_weights+site, prec);
-        }
-
-        /*
-         * Finish aggregating across sites.
-         * Check the bounds of the solution.
-         */
-        arb_div(deriv_ll_site_accum,
-                deriv_ll_site_accum, site_weight_divisor, prec);
-
-        failed = !_can_round(deriv_ll_site_accum);
-    }
-
-    if (failed)
-    {
-        fprintf(stderr, "internal error: insufficient precision\n");
-        result = -1;
-        goto finish;
-    }
-
-    j_out = json_pack("{s:[s], s:[f]}",
-            "columns", "value", "data",
-            arf_get_d(arb_midref(deriv_ll_site_accum), ARF_RND_NEAR));
-
-finish:
-
-    likelihood_ws_clear(w, m);
-    arb_clear(site_likelihood);
-    arb_clear(deriv_lhood_edge_accum);
-    arb_clear(deriv_ll_site_accum);
-    _arb_vec_clear(derivatives, edge_count);
-
-    arb_clear(site_weight_divisor);
-    _arb_vec_clear(site_weights, site_count);
-
-    arb_clear(edge_weight_divisor);
-    _arb_vec_clear(edge_weights, edge_count);
-
-    *result_out = result;
-    return j_out;
-}
-
-
-static json_t *
-_agg_site_edge_yn(
-        model_and_data_t m,
-        int *idx_to_a, int *b_to_idx,
-        column_reduction_t r_site, column_reduction_t r_edge,
-        int *site_selection_count, int *edge_selection_count,
-        int *result_out)
-{
-    json_t * j_out = NULL;
-    cross_site_ws_t csw;
-    likelihood_ws_t w;
-    int result = 0;
-    int i, idx, site, edge;
-    slong prec;
-    int failed;
-
-    int *edge_is_requested = NULL;
-
-    int site_count = pmat_nsites(m->p);
-    int edge_count = m->g->nnz;
-
-    arb_t x;
-    arb_t site_likelihood;
-    arb_struct * final;
-    arb_struct * derivatives;
-    arb_struct * deriv_ll_accum;
-
-    arb_init(x);
-    arb_init(site_likelihood);
-    derivatives = _arb_vec_init(edge_count);
-    deriv_ll_accum = _arb_vec_init(edge_count);
-    final = _arb_vec_init(edge_count);
-
-    arb_struct * site_weights;
-    arb_t site_weight_divisor;
-
-    arb_init(site_weight_divisor);
-    site_weights = _arb_vec_init(site_count);
-
-    cross_site_ws_pre_init(csw);
-    likelihood_ws_init(w, m);
-
-    /*
-     * Initially we want edge derivatives that have been selected.
-     * Later we may stop requesting derivatives for edges
-     * for which the derivative (aggregated across sites) has been
-     * determined to have sufficient accuracy.
-     */
-    edge_is_requested = malloc(edge_count * sizeof(int));
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        edge_is_requested[idx] = edge_selection_count[idx] != 0;
-    }
-
-    /* repeat with increasing precision until there is no precision failure */
-    for (failed=1, prec=4; failed; prec<<=1)
-    {
-        /* define site aggregation weights */
-        result = get_site_agg_weights(
-                site_weight_divisor, site_weights, site_count, r_site, prec);
-        if (result) goto finish;
-
-        cross_site_ws_reinit(csw, m, prec);
-
-        /* clear the accumulation across sites */
-        _arb_vec_zero(deriv_ll_accum, edge_count);
-
-        for (site = 0; site < site_count; site++)
-        {
-            if (!site_selection_count[site])
-                continue;
-
-            result = _update_lhood_vectors(
-                    site_likelihood, m, csw, w, site, prec);
-            if (result) goto finish;
-
-            /*
-             * Evaluate derivatives of site likelihood
-             * with respect to each selected edge.
-             * Note that these derivatives are with respect to the likelihood
-             * rather than with respect to the log likelihood.
-             */
-            evaluate_site_derivatives(
-                    derivatives,
-                    edge_is_requested,
-                    m, csw, w,
-                    idx_to_a, b_to_idx, site, prec);
-
-            /* define a site-specific coefficient */
-            arb_div(x, site_weights+site, site_weight_divisor, prec);
-            arb_div(x, x, site_likelihood, prec);
-
-            /* accumulate */
-            for (idx = 0; idx < edge_count; idx++)
-            {
-                if (edge_is_requested[idx])
-                {
-                    /*
-                    flint_printf("debug edge deriv info:\n");
-                    arb_printd(x, 15); flint_printf("\n");
-                    arb_printd(derivatives + idx, 15); flint_printf("\n");
-                    flint_printf("\n");
-                    */
-                    arb_addmul(deriv_ll_accum + idx, derivatives + idx, x, prec);
-                }
-            }
-        }
-
-        /* check bounds */
-        failed = 0;
-        for (idx = 0; idx < edge_count; idx++)
-        {
-            if (edge_is_requested[idx])
-            {
-                if (_can_round(deriv_ll_accum + idx))
-                {
-                    /*
-                    printf("debug: can round idx=%d prec=%d\n",
-                            idx, (int) prec);
-                    */
-                    edge_is_requested[idx] = 0;
-                    arb_set(final + idx, deriv_ll_accum + idx);
-                }
-                else
-                {
-                    /*
-                    printf("debug: cannot round idx=%d prec=%d\n",
-                            idx, (int) prec);
-                    arb_printd(deriv_ll_accum + idx, 15); flint_printf("\n");
-                    */
-                    failed = 1;
-                }
-            }
-        }
-    }
-
-    if (failed)
-    {
-        fprintf(stderr, "internal error: insufficient precision\n");
-        result = -1;
-        goto finish;
-    }
-
-    /* build the json output */
-    {
-        double d;
-        json_t *j_data, *x;
-        j_data = json_array();
-        for (i = 0; i < r_edge->selection_len; i++)
-        {
-            edge = r_edge->selection[i];
-            idx = m->edge_map->order[edge];
-            d = arf_get_d(arb_midref(final + idx), ARF_RND_NEAR);
-            x = json_pack("[i, f]", edge, d);
-            json_array_append_new(j_data, x);
-        }
-        j_out = json_pack("{s:[s, s], s:o}",
-                "columns", "edge", "value",
-                "data", j_data);
-    }
-
-finish:
-
-    free(edge_is_requested);
-    likelihood_ws_clear(w, m);
-
-    arb_clear(x);
-    arb_clear(site_likelihood);
-    _arb_vec_clear(derivatives, edge_count);
-    _arb_vec_clear(deriv_ll_accum, edge_count);
-    _arb_vec_clear(final, edge_count);
-
-    arb_clear(site_weight_divisor);
-    _arb_vec_clear(site_weights, site_count);
-
-    *result_out = result;
-    return j_out;
-}
-
-
-static json_t *
-_agg_site_edge_ny(
-        model_and_data_t m,
-        int *idx_to_a, int *b_to_idx,
-        column_reduction_t r_site, column_reduction_t r_edge,
-        int *site_selection_count, int *edge_selection_count,
-        int *result_out)
-{
-    json_t * j_out = NULL;
-    cross_site_ws_t csw;
-    likelihood_ws_t w;
-    int result = 0;
-    int i, site;
-    slong prec;
-    int failed;
-
-    int *site_is_requested = NULL;
-
-    int site_count = pmat_nsites(m->p);
-    int edge_count = m->g->nnz;
-
-    arb_struct * p;
-    arb_t site_likelihood;
-    arb_struct * final;
-    arb_struct * derivatives;
-
-    arb_init(site_likelihood);
-    derivatives = _arb_vec_init(edge_count);
-    final = _arb_vec_init(site_count);
-
-    arb_struct * edge_weights;
-    arb_t edge_weight_divisor;
-
-    arb_init(edge_weight_divisor);
-    edge_weights = _arb_vec_init(edge_count);
-
-    cross_site_ws_pre_init(csw);
-    likelihood_ws_init(w, m);
-
-    /*
-     * Initially we want edge derivatives that have been selected.
-     * Later we may stop requesting derivatives for edges
-     * for which the derivative (aggregated across sites) has been
-     * determined to have sufficient accuracy.
-     */
-    site_is_requested = malloc(site_count * sizeof(int));
-    for (site = 0; site < site_count; site++)
-    {
-        site_is_requested[site] = site_selection_count[site] != 0;
-    }
-
-    /* repeat with increasing precision until there is no precision failure */
-    for (failed=1, prec=4; failed; prec<<=1)
-    {
-        /* define edge aggregation weights with respect to csr indices */
-        result = get_edge_agg_weights(
-                edge_weight_divisor, edge_weights,
-                edge_count, m->edge_map->order, r_edge, prec);
-        if (result) goto finish;
-
-        cross_site_ws_reinit(csw, m, prec);
-
-        /* update edge derivative accumulations at requested sites */
-        for (site = 0; site < site_count; site++)
-        {
-            if (!site_is_requested[site])
-                continue;
-
-            result = _update_lhood_vectors(
-                    site_likelihood, m, csw, w, site, prec);
-            if (result) goto finish;
-
-            evaluate_site_derivatives(
-                    derivatives,
-                    edge_selection_count,
-                    m, csw, w,
-                    idx_to_a, b_to_idx, site, prec);
-            p = final + site;
-            _arb_vec_dot(p, derivatives, edge_weights, edge_count, prec);
-            arb_div(p, p, edge_weight_divisor, prec);
-            arb_div(p, p, site_likelihood, prec);
-        }
-
-        /* check bounds */
-        failed = 0;
-        for (site = 0; site < site_count; site++)
-        {
-            if (site_is_requested[site])
-            {
-                if (_can_round(final + site))
-                {
-                    site_is_requested[site] = 0;
-                }
-                else
-                {
-                    failed = 1;
-                }
-            }
-        }
-    }
-
-    if (failed)
-    {
-        fprintf(stderr, "internal error: insufficient precision\n");
-        result = -1;
-        goto finish;
-    }
-
-    /* build the json output */
-    {
-        double d;
-        json_t *j_data, *x;
-        j_data = json_array();
-        for (i = 0; i < r_site->selection_len; i++)
-        {
-            site = r_site->selection[i];
-            d = arf_get_d(arb_midref(final + site), ARF_RND_NEAR);
-            x = json_pack("[i, f]", site, d);
-            json_array_append_new(j_data, x);
-        }
-        j_out = json_pack("{s:[s, s], s:o}",
-                "columns", "site", "value",
-                "data", j_data);
-    }
-
-finish:
-
-    free(site_is_requested);
-    likelihood_ws_clear(w, m);
-
-    arb_clear(site_likelihood);
-    _arb_vec_clear(derivatives, edge_count);
-    _arb_vec_clear(final, site_count);
-
-    arb_clear(edge_weight_divisor);
-    _arb_vec_clear(edge_weights, edge_count);
-
-    *result_out = result;
-    return j_out;
-}
-
-
-static json_t *
-_agg_site_edge_nn(
-        model_and_data_t m,
-        int *idx_to_a, int *b_to_idx,
-        column_reduction_t r_site, column_reduction_t r_edge,
-        int *site_selection_count, int *edge_selection_count,
-        int *result_out)
-{
-    json_t * j_out = NULL;
-    cross_site_ws_t csw;
-    likelihood_ws_t w;
-    int result = 0;
-    int i, idx, edge, site;
-    slong prec;
-    int failed;
-
-    int *site_is_requested = NULL;
-    int *edge_is_requested = NULL;
-
-    int site_count = pmat_nsites(m->p);
-    int edge_count = m->g->nnz;
-
-    arb_struct * p;
-    arb_t site_likelihood;
-    arb_mat_t final;
-    arb_struct * derivatives;
-
-    arb_init(site_likelihood);
-    derivatives = _arb_vec_init(edge_count);
-    arb_mat_init(final, site_count, edge_count);
-
-    cross_site_ws_pre_init(csw);
-    likelihood_ws_init(w, m);
-
-    /* These will be updated each time the precision is bumped. */
-    site_is_requested = malloc(site_count * sizeof(int));
-    for (site = 0; site < site_count; site++)
-    {
-        site_is_requested[site] = site_selection_count[site] != 0;
-    }
-    edge_is_requested = malloc(edge_count * sizeof(int));
-    for (idx = 0; idx < edge_count; idx++)
-    {
-        edge_is_requested[idx] = edge_selection_count[idx] != 0;
-    }
-
-    /* repeat with increasing precision until there is no precision failure */
-    for (failed=1, prec=4; failed; prec<<=1)
-    {
-        cross_site_ws_reinit(csw, m, prec);
-
-        /* update requested sites */
-        for (site = 0; site < site_count; site++)
-        {
-            if (!site_is_requested[site])
-                continue;
-
-            result = _update_lhood_vectors(
-                    site_likelihood, m, csw, w, site, prec);
-            if (result) goto finish;
-
-            evaluate_site_derivatives(
-                    derivatives,
-                    edge_is_requested,
-                    m, csw, w,
-                    idx_to_a, b_to_idx, site, prec);
-            for (idx = 0; idx < edge_count; idx++)
-            {
-                if (edge_is_requested[idx])
-                {
-                    arb_div(arb_mat_entry(final, site, idx),
-                            derivatives + idx, site_likelihood, prec);
-                }
-            }
-        }
-
-        /* check bounds */
-        {
-            failed = 0;
-            int req_site;
-            int req_edge;
-            for (site = 0; site < site_count; site++) {
-                if (site_is_requested[site]) {
-                    req_site = 0;
-                    for (idx = 0; idx < edge_count; idx++) {
-                        if (edge_is_requested[idx]) {
-                            p = arb_mat_entry(final, site, idx);
-                            if (!_can_round(p)) {
-                                req_site = 1;
-                                failed = 1;
-                            }
-                        }
-                    }
-                    site_is_requested[site] = req_site;
-                }
-            }
-            for (idx = 0; idx < edge_count; idx++) {
-                if (edge_is_requested[idx]) {
-                    req_edge = 0;
-                    for (site = 0; site < site_count; site++) {
-                        if (site_is_requested[site]) {
-                            p = arb_mat_entry(final, site, idx);
-                            if (!_can_round(p)) {
-                                req_edge = 1;
-                                failed = 1;
-                            }
-                        }
-                    }
-                    edge_is_requested[idx] = req_edge;
-                }
-            }
-        }
-    }
-
-    if (failed)
-    {
-        fprintf(stderr, "internal error: insufficient precision\n");
-        result = -1;
-        goto finish;
-    }
-
-    /* build the json output */
-    {
-        int j;
-        double d;
-        json_t *j_data, *x;
-        j_data = json_array();
-        for (i = 0; i < r_site->selection_len; i++)
-        {
-            site = r_site->selection[i];
-            for (j = 0; j < r_edge->selection_len; j++)
-            {
-                edge = r_edge->selection[j];
-                idx = m->edge_map->order[edge];
-                p = arb_mat_entry(final, site, idx);
-                d = arf_get_d(arb_midref(p), ARF_RND_NEAR);
-                x = json_pack("[i, i, f]", site, edge, d);
-                json_array_append_new(j_data, x);
-            }
-        }
-        j_out = json_pack("{s:[s, s, s], s:o}",
-                "columns", "site", "edge", "value",
-                "data", j_data);
-    }
-
-finish:
-
-    free(site_is_requested);
-    likelihood_ws_clear(w, m);
-
-    arb_clear(site_likelihood);
-    _arb_vec_clear(derivatives, edge_count);
-    arb_mat_clear(final);
-
-    *result_out = result;
-    return j_out;
-}
-
-
-json_t *old_arbplf_deriv_run(void *userdata, json_t *root, int *retcode)
-{
-    json_t *j_out = NULL;
-    json_t *model_and_data = NULL;
-    json_t *site_reduction = NULL;
-    json_t *edge_reduction = NULL;
-    int node_count = 0;
-    int edge_count = 0;
-    int site_count = 0;
-    int result = 0;
-    model_and_data_t m;
-    csr_graph_struct * g = NULL;
-    column_reduction_t r_site;
-    column_reduction_t r_edge;
-    int *idx_to_a = NULL;
-    int *b_to_idx = NULL;
-    int i, idx;
-    int site, edge;
-    int *edge_selection_count = NULL;
-    int *site_selection_count = NULL;
-
-    model_and_data_init(m);
-
-    column_reduction_init(r_site);
-    column_reduction_init(r_edge);
-
-    if (userdata)
-    {
-        fprintf(stderr, "error: unexpected userdata\n");
-        result = -1;
-        goto finish;
-    }
-
-    /* parse the json input */
-    {
-        json_error_t err;
-        size_t flags;
-        
-        flags = JSON_STRICT;
-        result = json_unpack_ex(root, &err, flags,
-                "{s:o, s?o, s?o}",
-                "model_and_data", &model_and_data,
-                "site_reduction", &site_reduction,
-                "edge_reduction", &edge_reduction
-                );
-        if (result)
-        {
-            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-            goto finish;
-        }
-    }
-
-    /* validate the model and data section of the json input */
-    result = validate_model_and_data(m, model_and_data);
-    if (result) goto finish;
-
-    /* unpack the tree graph and some counts from the model and data */
-    g = m->g;
-    site_count = pmat_nsites(m->p);
-    edge_count = g->nnz;
-    node_count = g->n;
-
-    /* validate the (optional) site reduction section of the json input */
-    result = validate_column_reduction(
-            r_site, site_count, "site", site_reduction);
-    if (result) goto finish;
-
-    /* validate the (optional) edge reduction section of the json input */
-    result = validate_column_reduction(
-            r_edge, edge_count, "edge", edge_reduction);
-    if (result) goto finish;
-
-    /* Indicate which site indices are included in the selection. */
-    site_selection_count = calloc(site_count, sizeof(int));
-    for (i = 0; i < r_site->selection_len; i++)
-    {
-        site = r_site->selection[i];
-        site_selection_count[site]++;
-    }
-
-    /*
-     * Indicate which edge indices are included in the selection.
-     * Note that the edge_selection_count array uses csr edge indices
-     * rather than the user-visible edge ordering.
-     */
-    edge_selection_count = calloc(edge_count, sizeof(int));
-    for (i = 0; i < r_edge->selection_len; i++)
-    {
-        edge = r_edge->selection[i];
-        idx = m->edge_map->order[edge];
-        edge_selection_count[idx]++;
-    }
-
-    /* Get maps for navigating towards the root of the tree. */
-    idx_to_a = malloc(edge_count * sizeof(int));
-    b_to_idx = malloc(node_count * sizeof(int));
-    _csr_graph_get_backward_maps(idx_to_a, b_to_idx, m->g);
-
-    /*
-     * Dispatch to a helper function according to whether or not
-     * the user has specified an aggregation of sites or of edges.
-     * This is a bit of a hack.
-     */
-    int agg_site = r_site->agg_mode != AGG_NONE;
-    int agg_edge = r_edge->agg_mode != AGG_NONE;
-    if (agg_site && agg_edge)
-    {
-        j_out = _agg_site_edge_yy(
-                m, idx_to_a, b_to_idx, r_site, r_edge,
-                site_selection_count, edge_selection_count,
-                &result);
-        if (result) goto finish;
-    }
-    else if (agg_site && !agg_edge)
-    {
-        j_out = _agg_site_edge_yn(
-                m, idx_to_a, b_to_idx, r_site, r_edge,
-                site_selection_count, edge_selection_count,
-                &result);
-        if (result) goto finish;
-    }
-    else if (!agg_site && agg_edge)
-    {
-        j_out = _agg_site_edge_ny(
-                m, idx_to_a, b_to_idx, r_site, r_edge,
-                site_selection_count, edge_selection_count,
-                &result);
-        if (result) goto finish;
-    }
-    else if (!agg_site && !agg_edge)
-    {
-        j_out = _agg_site_edge_nn(
-                m, idx_to_a, b_to_idx, r_site, r_edge,
-                site_selection_count, edge_selection_count,
-                &result);
-        if (result) goto finish;
-    }
-    else
-    {
-        fprintf(stderr, "internal error: oops missed a case\n");
-        abort();
-    }
-
-finish:
-
-    *retcode = result;
-
-    free(site_selection_count);
-    free(edge_selection_count);
-    column_reduction_clear(r_site);
-    column_reduction_clear(r_edge);
-    model_and_data_clear(m);
-
-    free(idx_to_a);
-    free(b_to_idx);
-
-    flint_cleanup();
-    return j_out;
-}
-
-
 static void
 _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
-    int site, i, j;
+    int site, idx;
     arb_t cat_lhood, prior_prob, post_lhood, post_lhood_sum;
     nd_axis_struct *site_axis, *edge_axis;
     int *coords;
     slong cat;
+    arb_struct *derivatives; /* single category derivatives */
+    arb_struct *cc_derivatives; /* cross category derivatives */
+    int *idx_to_a = NULL;
+    int *b_to_idx = NULL;
 
     slong ncats = model_and_data_rate_category_count(m);
     slong site_count = model_and_data_site_count(m);
+    slong node_count = model_and_data_node_count(m);
+    slong edge_count = model_and_data_edge_count(m);
+
+    /* maps for navigating towards the root of the tree */
+    idx_to_a = malloc(edge_count * sizeof(int));
+    b_to_idx = malloc(node_count * sizeof(int));
+    _csr_graph_get_backward_maps(idx_to_a, b_to_idx, m->g);
+
+    derivatives = _arb_vec_init(edge_count);
+    cc_derivatives = _arb_vec_init(edge_count);
 
     arb_init(cat_lhood);
     arb_init(prior_prob);
@@ -1107,14 +280,11 @@ _nd_accum_update(nd_accum_t arr,
          * Set all cross-category marginal vectors to zero,
          * preparing to accumulate across categories.
          */
-        for (i = 0; i < csw->node_count; i++)
-        {
-            arb_mat_zero(w->cc_marginal_node_vectors + i);
-        }
+        _arb_vec_zero(cc_derivatives, edge_count);
 
         /*
          * For each category, compute a likelihood for the current site,
-         * and compute marginal distributions at all requested nodes.
+         * and compute likelihood derivatives at all requested edges.
          */
         arb_zero(post_lhood_sum);
         for (cat = 0; cat < ncats; cat++)
@@ -1127,108 +297,55 @@ _nd_accum_update(nd_accum_t arr,
                     m->root_prior, csw->equilibrium,
                     m->preorder[0], prec);
 
-            evaluate_site_lhood(lhood,
-                    w->lhood_node_vectors,
-                    w->lhood_edge_vectors,
-                    w->base_node_vectors,
-                    tmat_base,
-                    m->g, m->preorder, csw->node_count, prec);
-
-            evaluate_site_derivatives(
-                    derivatives,
-                    edge_is_requested,
-                    m, csw, w,
-                    idx_to_a, b_to_idx, site, prec);
-            for (idx = 0; idx < edge_count; idx++)
-            {
-                if (edge_is_requested[idx])
-                {
-                    arb_div(arb_mat_entry(final, site, idx),
-                            derivatives + idx, site_likelihood, prec);
-                }
-            }
-
-            /*
-             * Update per-node and per-edge likelihood vectors.
-             * This is a backward pass from the leaves to the root.
-             */
             evaluate_site_lhood(cat_lhood,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
                     w->base_node_vectors,
                     tmat_base,
-                    m->g, m->preorder, csw->node_count, prec);
+                    m->g, m->preorder, node_count, prec);
 
             /* Compute the likelihood for the site and category. */
             rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
             arb_mul(post_lhood, prior_prob, cat_lhood, prec);
-
-            /*
-             * If the posterior probability is zero,
-             * then ignore marginal probabilities for this category.
-             */
-            if (arb_is_zero(post_lhood))
-                continue;
-
             arb_add(post_lhood_sum, post_lhood_sum, post_lhood, prec);
 
-            /*
-             * Update marginal distribution vectors at nodes.
-             * This is a forward pass from the root to the leaves.
-             */
-            evaluate_site_marginal(
-                    w->marginal_node_vectors,
-                    w->lhood_node_vectors,
-                    w->lhood_edge_vectors,
-                    tmat_base,
-                    m->g, m->preorder, csw->node_count, csw->state_count, prec);
+            evaluate_site_derivatives(
+                    derivatives,
+                    edge_axis->request_update,
+                    m, csw, w,
+                    idx_to_a, b_to_idx, site, prec);
 
-            /*
-             * Accumulate the marginal probabilities for this category.
-             */
-            for (i = 0; i < csw->node_count; i++)
+            /* Accumulate derivatives for this category. */
+            for (idx = 0; idx < edge_count; idx++)
             {
-                arb_mat_struct *a = w->marginal_node_vectors + i;
-                arb_mat_struct *b = w->cc_marginal_node_vectors + i;
-                for (j = 0; j < csw->state_count; j++)
-                {
-                    arb_addmul(arb_mat_entry(b, j, 0),
-                               arb_mat_entry(a, j, 0), post_lhood, prec);
-                }
+                if (!edge_axis->request_update[idx]) continue;
+
+                arb_addmul(cc_derivatives + idx,
+                        derivatives + idx, prior_prob, prec);
             }
         }
 
-        /* Divide by the likelihood. */
-        for (i = 0; i < csw->node_count; i++)
-        {
-            arb_mat_scalar_div_arb(
-                    w->cc_marginal_node_vectors + i,
-                    w->cc_marginal_node_vectors + i,
-                    post_lhood_sum, prec);
-        }
+        /*
+         * Divide accumulated edge derivatives by the site likelihood.
+         * d/dx log(a*f(x) + b*g(x)) = (a*f'(x) + b*g'(x)) / (a*f(x) + b*g(x))
+         */
+        _arb_vec_scalar_div(cc_derivatives,
+                cc_derivatives, edge_count, post_lhood_sum, prec);
 
         /* Update the nd accumulator. */
-        for (i = 0; i < csw->node_count; i++)
+        for (idx = 0; idx < edge_count; idx++)
         {
-            arb_mat_struct *nvec;
+            /* skip edges that are not requested */
+            if (!edge_axis->request_update[idx]) continue;
+            coords[1] = idx;
 
-            /* skip nodes that are not requested */
-            if (!node_axis->request_update[i]) continue;
-            coords[1] = i;
-
-            nvec = w->cc_marginal_node_vectors + i;
-            for (j = 0; j < csw->state_count; j++)
-            {
-                /* skip states that are not requested */
-                if (!state_axis->request_update[j]) continue;
-                coords[2] = j;
-
-                /* accumulate */
-                nd_accum_accumulate(arr,
-                        coords, arb_mat_entry(nvec, j, 0), prec);
-            }
+            /* accumulate */
+            nd_accum_accumulate(arr, coords, cc_derivatives + idx, prec);
         }
     }
+
+    _arb_vec_clear(derivatives, edge_count);
+    _arb_vec_clear(cc_derivatives, edge_count);
 
     arb_clear(cat_lhood);
     arb_clear(prior_prob);
@@ -1236,6 +353,8 @@ _nd_accum_update(nd_accum_t arr,
     arb_clear(post_lhood_sum);
 
     free(coords);
+    free(idx_to_a);
+    free(b_to_idx);
 }
 
 
