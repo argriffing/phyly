@@ -112,7 +112,7 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 static void
 evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
         model_and_data_t m, cross_site_ws_t csw, likelihood_ws_t w,
-        int *idx_to_a, int *b_to_idx, int site, slong prec)
+        int *idx_to_a, int *b_to_idx, int site, int rate_category, slong prec)
 {
     int a, b, idx;
     int start, stop;
@@ -125,14 +125,12 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
     arb_mat_struct * rmat;
     csr_graph_struct *g;
     arb_mat_struct *tmat_base;
-    slong cat;
 
     slong state_count = model_and_data_state_count(m);
     slong edge_count = model_and_data_edge_count(m);
 
-    /* todo: allow more than one rate category */
-    cat = 0;
-    tmat_base = tmat_collection_entry(csw->transition_matrices, cat, 0);
+    tmat_base = tmat_collection_entry(csw->transition_matrices,
+            rate_category, 0);
 
     g = m->g;
     _arb_vec_zero(derivatives, edge_count);
@@ -223,7 +221,7 @@ _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
     slong site, idx, edge;
-    arb_t cat_lhood, prior_prob, post_lhood, post_lhood_sum;
+    arb_t cat_rate, cat_lhood, prior_prob, post_lhood, post_lhood_sum;
     nd_axis_struct *site_axis, *edge_axis;
     int *coords;
     slong cat;
@@ -262,18 +260,12 @@ _nd_accum_update(nd_accum_t arr,
     {
         idx = m->edge_map->order[edge];
         edge_idx_is_requested[idx] = edge_axis->request_update[edge];
-        /*
-        if (edge_idx_is_requested[idx])
-        {
-            flint_printf("req edge %wd idx %wd prec %wd\n",
-                    edge, idx, prec);
-        }
-        */
     }
 
     derivatives = _arb_vec_init(edge_count);
     cc_derivatives = _arb_vec_init(edge_count);
 
+    arb_init(cat_rate);
     arb_init(cat_lhood);
     arb_init(prior_prob);
     arb_init(post_lhood);
@@ -339,13 +331,21 @@ _nd_accum_update(nd_accum_t arr,
                     derivatives,
                     edge_idx_is_requested,
                     m, csw, w,
-                    idx_to_a, b_to_idx, site, prec);
+                    idx_to_a, b_to_idx, site, cat, prec);
+
+            rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+
+            /* Multiply derivatives by the category rate. */
+            for (idx = 0; idx < edge_count; idx++)
+            {
+                if (!edge_idx_is_requested[idx]) continue;
+                arb_mul(derivatives + idx, derivatives + idx, cat_rate, prec);
+            }
 
             /* Accumulate derivatives for this category. */
             for (idx = 0; idx < edge_count; idx++)
             {
                 if (!edge_idx_is_requested[idx]) continue;
-
                 arb_addmul(cc_derivatives + idx,
                         derivatives + idx, prior_prob, prec);
             }
@@ -376,6 +376,7 @@ _nd_accum_update(nd_accum_t arr,
     _arb_vec_clear(derivatives, edge_count);
     _arb_vec_clear(cc_derivatives, edge_count);
 
+    arb_clear(cat_rate);
     arb_clear(cat_lhood);
     arb_clear(prior_prob);
     arb_clear(post_lhood);
