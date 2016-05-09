@@ -345,3 +345,33 @@ class TestDerivEdgeOrder(TestCase):
         g = myderiv(x).set_index('edge').value
         #
         _assert_allclose_series(fperm, g)
+
+    def test_selection_with_arbitrary_edge_permutation(self):
+        # Check that select(permute(f(x))) = select(f(permute(x)))
+        # where the permutation is over edges.
+        edge_count = len(default_in['model_and_data']['edges'])
+        perm = [2, 3, 4, 0, 1, 5, 6]
+        selection = [1, 1, 2, 6, 5]
+        #
+        y = copy.deepcopy(default_in)
+        y['site_reduction'] = {'aggregation' : 'sum'}
+        f = myderiv(y).set_index('edge').value
+        fperm = copy.deepcopy(f)
+        for u, v in enumerate(perm):
+            fperm[u] = f[v]
+        fsel = fperm[selection]
+        #
+        x = copy.deepcopy(default_in)
+        x['site_reduction'] = {'aggregation' : 'sum'}
+        x['edge_reduction'] = {'selection' : selection}
+        #
+        xm = x['model_and_data']
+        ym = y['model_and_data']
+        for u, v in enumerate(perm):
+            xm['edges'][u] = copy.deepcopy(
+                    ym['edges'][v])
+            xm['edge_rate_coefficients'][u] = copy.deepcopy(
+                    ym['edge_rate_coefficients'][v])
+        g = myderiv(x).set_index('edge').value
+        #
+        _assert_allclose_series(fsel, g)

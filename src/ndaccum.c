@@ -172,6 +172,11 @@ nd_accum_can_round(nd_accum_t a)
     {
         if (!_can_round(a->data + i))
         {
+            /*
+            flint_printf("debug: failed to round element %d of %d:\n",
+                    i, a->size);
+            arb_printd(a->data + i, 15); flint_printf("\n");
+            */
             return 0;
         }
     }

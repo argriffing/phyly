@@ -146,7 +146,7 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
     int curr_idx;
     for (deriv_idx = 0; deriv_idx < edge_count; deriv_idx++)
     {
-        /* skip nodes that are not requested */
+        /* skip edges that are not requested */
         if (!edge_is_requested[deriv_idx]) continue;
 
         curr_idx = deriv_idx;
@@ -222,7 +222,7 @@ static void
 _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
-    int site, idx;
+    slong site, idx, edge;
     arb_t cat_lhood, prior_prob, post_lhood, post_lhood_sum;
     nd_axis_struct *site_axis, *edge_axis;
     int *coords;
@@ -231,16 +231,45 @@ _nd_accum_update(nd_accum_t arr,
     arb_struct *cc_derivatives; /* cross category derivatives */
     int *idx_to_a = NULL;
     int *b_to_idx = NULL;
+    int *idx_to_user_edge = NULL;
+    int *edge_idx_is_requested = NULL;
 
     slong ncats = model_and_data_rate_category_count(m);
     slong site_count = model_and_data_site_count(m);
     slong node_count = model_and_data_node_count(m);
     slong edge_count = model_and_data_edge_count(m);
 
+    site_axis = arr->axes + 0;
+    edge_axis = arr->axes + 1;
+
     /* maps for navigating towards the root of the tree */
     idx_to_a = malloc(edge_count * sizeof(int));
     b_to_idx = malloc(node_count * sizeof(int));
     _csr_graph_get_backward_maps(idx_to_a, b_to_idx, m->g);
+
+    /* map between user visible edge order vs. csr graph edge index */
+    idx_to_user_edge = malloc(edge_count * sizeof(int));
+    for (edge = 0; edge < edge_count; edge++)
+    {
+        idx = m->edge_map->order[edge];
+        idx_to_user_edge[idx] = edge;
+    }
+
+    /* which edges are requested */
+    /* todo: this should depend on the site */
+    edge_idx_is_requested = calloc(edge_count, sizeof(int));
+    for (edge = 0; edge < edge_count; edge++)
+    {
+        idx = m->edge_map->order[edge];
+        edge_idx_is_requested[idx] = edge_axis->request_update[edge];
+        /*
+        if (edge_idx_is_requested[idx])
+        {
+            flint_printf("req edge %wd idx %wd prec %wd\n",
+                    edge, idx, prec);
+        }
+        */
+    }
 
     derivatives = _arb_vec_init(edge_count);
     cc_derivatives = _arb_vec_init(edge_count);
@@ -251,9 +280,6 @@ _nd_accum_update(nd_accum_t arr,
     arb_init(post_lhood_sum);
 
     coords = malloc(arr->ndim * sizeof(int));
-
-    site_axis = arr->axes + 0;
-    edge_axis = arr->axes + 1;
 
     /* zero all requested cells of the array */
     nd_accum_zero_requested_cells(arr);
@@ -311,14 +337,14 @@ _nd_accum_update(nd_accum_t arr,
 
             evaluate_site_derivatives(
                     derivatives,
-                    edge_axis->request_update,
+                    edge_idx_is_requested,
                     m, csw, w,
                     idx_to_a, b_to_idx, site, prec);
 
             /* Accumulate derivatives for this category. */
             for (idx = 0; idx < edge_count; idx++)
             {
-                if (!edge_axis->request_update[idx]) continue;
+                if (!edge_idx_is_requested[idx]) continue;
 
                 arb_addmul(cc_derivatives + idx,
                         derivatives + idx, prior_prob, prec);
@@ -336,8 +362,11 @@ _nd_accum_update(nd_accum_t arr,
         for (idx = 0; idx < edge_count; idx++)
         {
             /* skip edges that are not requested */
-            if (!edge_axis->request_update[idx]) continue;
-            coords[1] = idx;
+            if (!edge_idx_is_requested[idx]) continue;
+
+            /* define the coordinate */
+            edge = idx_to_user_edge[idx];
+            coords[1] = edge;
 
             /* accumulate */
             nd_accum_accumulate(arr, coords, cc_derivatives + idx, prec);
@@ -355,6 +384,8 @@ _nd_accum_update(nd_accum_t arr,
     free(coords);
     free(idx_to_a);
     free(b_to_idx);
+    free(idx_to_user_edge);
+    free(edge_idx_is_requested);
 }
 
 
