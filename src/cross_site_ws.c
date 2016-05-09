@@ -23,6 +23,7 @@
 #include "model.h"
 #include "equilibrium.h"
 #include "util.h"
+#include "arb_mat_extras.h"
 #include "cross_site_ws.h"
 
 
@@ -38,38 +39,17 @@ void
 tmat_collection_init(tmat_collection_t x,
         slong rate_category_count, slong edge_count, slong state_count)
 {
-    slong i, n;
-    /*
-    if (rate_category_count != 1)
-    {
-        flint_fprintf(stderr, "debug: expected one rate category\n");
-        abort();
-    }
-    */
-    n = rate_category_count * edge_count;
+    slong n = rate_category_count * edge_count;
     x->rate_category_count = rate_category_count;
     x->edge_count = edge_count;
-    x->matrices = flint_malloc(n * sizeof(arb_mat_struct));
-    for (i = 0; i < n; i++)
-    {
-        arb_mat_struct *p = x->matrices + i;
-        arb_mat_init(p, state_count, state_count);
-    }
+    x->matrices = _arb_mat_vec_init(state_count, state_count, n);
 }
 
 void
 tmat_collection_clear(tmat_collection_t x)
 {
-    slong i, n;
-    n = x->rate_category_count * x->edge_count;
-    if (x->matrices)
-    {
-        for (i = 0; i < n; i++)
-        {
-            arb_mat_clear(x->matrices + i);
-        }
-        flint_free(x->matrices);
-    }
+    slong n = x->rate_category_count * x->edge_count;
+    _arb_mat_vec_clear(x->matrices, n);
 }
 
 arb_mat_struct *
