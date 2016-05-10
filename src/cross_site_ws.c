@@ -69,7 +69,7 @@ cross_site_ws_trans_frechet_matrix(cross_site_ws_t w,
 }
 
 static void
-_cross_site_ws_init_edge_rates(cross_site_ws_t w, model_and_data_t m)
+_cross_site_ws_init_edge_rates(cross_site_ws_t w, const model_and_data_t m)
 {
     slong i, idx;
     double tmpd;
@@ -104,9 +104,10 @@ _cross_site_ws_init_edge_rates(cross_site_ws_t w, model_and_data_t m)
 }
 
 void
-cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
+cross_site_ws_init(cross_site_ws_t w, const model_and_data_t m)
 {
-    w->prec = prec;
+    cross_site_ws_pre_init(w);
+
     w->rate_category_count = model_and_data_rate_category_count(m);
     w->node_count = model_and_data_node_count(m);
     w->edge_count = model_and_data_edge_count(m);
@@ -115,52 +116,67 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
     /* initialize edge rates */
     _cross_site_ws_init_edge_rates(w, m);
 
-    /* initialize the equilibrium if necessary, ignoring diagonal entries */
+    /* alloc equilibrium if necessary */
     if (model_and_data_uses_equilibrium(m))
     {
         w->equilibrium = _arb_vec_init(w->state_count);
-        _arb_vec_rate_matrix_equilibrium(
-                w->equilibrium, m->mat, w->prec);
     }
 
-    /* initialize the unscaled rate matrix, and zero the diagonal */
+    /* alloc the rate matrix */
+    w->rate_matrix = flint_malloc(sizeof(arb_mat_struct));
+    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
+
+    /* alloc the rate divisor */
+    w->rate_divisor = flint_malloc(sizeof(arb_struct));
+    arb_init(w->rate_divisor);
+
+    /* allocate transition matrices */
     {
-        w->rate_matrix = flint_malloc(sizeof(arb_mat_struct));
-        arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
+        slong n = w->rate_category_count * w->edge_count;
+        slong k = w->state_count;
+        w->transition_matrices = _arb_mat_vec_init(k, k, n);
+    }
+}
+
+void
+cross_site_ws_update(cross_site_ws_t w, model_and_data_t m, slong prec)
+{
+    w->prec = prec;
+
+    /* update the equilibrium if necessary, ignoring diagonal entries */
+    if (model_and_data_uses_equilibrium(m))
+    {
+        _arb_vec_rate_matrix_equilibrium(
+                w->equilibrium, m->mat, prec);
+    }
+
+    /* update the unscaled rate matrix, and zero the diagonal */
+    {
         arb_mat_set(w->rate_matrix, m->mat);
         _arb_mat_zero_diagonal(w->rate_matrix);
     }
 
     /*
-     * Initialize the rate divisor, optionally using the equilibrium.
+     * Update the rate divisor, optionally using the equilibrium.
      * If the equilibrium is used, then the 'outer layer' rate divisor
      * will be ignored, and the 'middle layer' rate divisor will
      * be a function of the rate matrix and of the rate mixture expectation.
      */
     {
-        w->rate_divisor = flint_malloc(sizeof(arb_struct));
-        arb_init(w->rate_divisor);
         if (m->use_equilibrium_rate_divisor)
         {
             arb_struct *row_sums;
             row_sums = _arb_vec_init(w->state_count);
             _arb_mat_row_sums(row_sums, w->rate_matrix, prec);
             _arb_vec_dot(w->rate_divisor,
-                    row_sums, w->equilibrium, w->state_count, w->prec);
+                    row_sums, w->equilibrium, w->state_count, prec);
             _arb_vec_clear(row_sums, w->state_count);
             if (m->rate_mixture->mode != RATE_MIXTURE_NONE)
             {
                 arb_t tmp;
                 arb_init(tmp);
-                rate_mixture_expectation(tmp, m->rate_mixture, w->prec);
-                /*
-                if (!arb_is_one(tmp))
-                {
-                    flint_fprintf(stderr, "debug: expectation is not 1\n");
-                    arb_fprintd(stderr, tmp, 15);
-                }
-                */
-                arb_mul(w->rate_divisor, w->rate_divisor, tmp, w->prec);
+                rate_mixture_expectation(tmp, m->rate_mixture, prec);
+                arb_mul(w->rate_divisor, w->rate_divisor, tmp, prec);
                 arb_clear(tmp);
             }
         }
@@ -170,10 +186,6 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
         }
     }
 
-    /* fixme: remove */
-    /* for backward compatibility, update m->rate_divisor */
-    /* arb_set(m->rate_divisor, w->rate_divisor); */
-
     /*
      * Scale the rate matrix according to the rate divisor.
      * Each rate matrix associated with a specific rate category
@@ -181,20 +193,13 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
      */
     {
         arb_mat_scalar_div_arb(w->rate_matrix,
-                w->rate_matrix, w->rate_divisor, w->prec);
+                w->rate_matrix, w->rate_divisor, prec);
     }
 
     /* Update the diagonal of the rate matrix. */
-    _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
+    _arb_update_rate_matrix_diagonal(w->rate_matrix, prec);
 
-    /* allocate transition matrices */
-    {
-        slong n = w->rate_category_count * w->edge_count;
-        slong k = w->state_count;
-        w->transition_matrices = _arb_mat_vec_init(k, k, n);
-    }
-
-    /* define transition probability matrices */
+    /* Update the transition probability matrices. */
     {
         slong i, j;
         arb_t s;
@@ -206,9 +211,9 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
                 arb_mat_struct *tmat;
                 tmat = cross_site_ws_transition_matrix(w, i, j);
                 rate_mixture_get_rate(s, m->rate_mixture, i);
-                arb_mul(s, s, w->edge_rates + j, w->prec);
-                arb_mat_scalar_mul_arb(tmat, w->rate_matrix, s, w->prec);
-                arb_mat_exp(tmat, tmat, w->prec);
+                arb_mul(s, s, w->edge_rates + j, prec);
+                arb_mat_scalar_mul_arb(tmat, w->rate_matrix, s, prec);
+                arb_mat_exp(tmat, tmat, prec);
             }
         }
         arb_clear(s);
@@ -263,11 +268,4 @@ cross_site_ws_clear(cross_site_ws_t w)
         _arb_mat_vec_clear(w->dwell_frechet_matrices, n);
         _arb_mat_vec_clear(w->trans_frechet_matrices, n);
     }
-}
-
-void
-cross_site_ws_reinit(cross_site_ws_t w, model_and_data_t m, slong prec)
-{
-    cross_site_ws_clear(w);
-    cross_site_ws_init(w, m, prec);
 }

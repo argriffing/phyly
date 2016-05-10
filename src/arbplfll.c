@@ -197,7 +197,7 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
     slong site_count = model_and_data_site_count(m);
 
     /* initialize likelihood workspace */
-    cross_site_ws_pre_init(csw);
+    cross_site_ws_init(csw, m);
     likelihood_ws_init(w, m);
 
     /* initialize axes at zero precision */
@@ -211,7 +211,7 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
     int success = 0;
     for (prec=4; !success; prec <<= 1)
     {
-        cross_site_ws_reinit(csw, m, prec);
+        cross_site_ws_update(csw, m, prec);
 
         /* recompute axis reduction weights with increased precision */
         nd_axis_update_precision(axes+0, r_site, prec);

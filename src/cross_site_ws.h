@@ -30,11 +30,11 @@ typedef struct
 typedef cross_site_ws_struct cross_site_ws_t[1];
 
 void cross_site_ws_pre_init(cross_site_ws_t w);
-void cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec);
+void cross_site_ws_init(cross_site_ws_t w, const model_and_data_t m);
 void cross_site_ws_init_dwell(cross_site_ws_t w);
 void cross_site_ws_init_trans(cross_site_ws_t w);
+void cross_site_ws_update(cross_site_ws_t w, model_and_data_t m, slong prec);
 void cross_site_ws_clear(cross_site_ws_t w);
-void cross_site_ws_reinit(cross_site_ws_t w, model_and_data_t m, slong prec);
 
 arb_mat_struct * cross_site_ws_transition_matrix(cross_site_ws_t w,
         slong rate_category_idx, slong edge_idx);
