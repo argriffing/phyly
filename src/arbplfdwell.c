@@ -303,7 +303,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
                 if (!edge_axis->request_update[edge]) continue;
                 idx = m->edge_map->order[edge];
                 arb_addmul(w->cc_edge_expectations + idx,
-                           w->edge_expectations, cat_lhood, prec);
+                           w->edge_expectations + idx, cat_lhood, prec);
             }
         }
 
@@ -487,7 +487,7 @@ _nd_accum_update(nd_accum_t arr,
                     if (!edge_axis->request_update[edge]) continue;
                     idx = m->edge_map->order[edge];
                     arb_addmul(w->cc_edge_expectations + idx,
-                               w->edge_expectations, cat_lhood, prec);
+                               w->edge_expectations + idx, cat_lhood, prec);
                 }
             }
 

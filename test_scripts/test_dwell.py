@@ -134,7 +134,7 @@ class TestDwellEdgeOrder(TestCase):
         #
         _assert_allclose_series(fsel, g)
 
-    def test_rate_mixture(self):
+    def test_rate_mixture_state_aggregation(self):
         rates = [2, 3]
         prior = [0.25, 0.75]
         weights = [0.1, 0.2, 0.8, 2.0]
@@ -179,3 +179,46 @@ class TestDwellEdgeOrder(TestCase):
         actual = mydwell(x).set_index('site').value
         # check that the two calculations are equivalent
         _assert_allclose_series(actual, desired)
+
+    def test_rate_mixture_no_state_aggregation(self):
+        # FIXME .values may expect a particular ordering of the indices
+        rates = [2, 3]
+        prior = [0.25, 0.75]
+        state_weights = [0.1, 0.2, 0.8, 2.0]
+        rate_mixture = dict(rates=rates, prior=prior)
+        # first likelihood and dwell
+        r = rates[0]
+        p = prior[0]
+        x = copy.deepcopy(default_in)
+        xm = x['model_and_data']
+        xm['edge_rate_coefficients'] = [
+                u*r for u in xm['edge_rate_coefficients']]
+        ll = myll(x).set_index('site').value.values
+        x['edge_reduction'] = {'aggregation' : 'sum'}
+        first_dwell = mydwell(x).pivot('state', 'site', 'value').values
+        first_lhood = p * np.exp(ll)
+        # second lhood and dwell
+        r = rates[1]
+        p = prior[1]
+        x = copy.deepcopy(default_in)
+        xm = x['model_and_data']
+        xm['edge_rate_coefficients'] = [
+                u*r for u in xm['edge_rate_coefficients']]
+        ll = myll(x).set_index('site').value.values
+        x['edge_reduction'] = {'aggregation' : 'sum'}
+        second_dwell = mydwell(x).pivot('state', 'site', 'value').values
+        second_lhood = p * np.exp(ll)
+        # combine the separately calculated values
+        a = first_lhood * first_dwell
+        b = second_lhood * second_dwell
+        c = first_lhood + second_lhood
+        desired = np.dot(state_weights, (a + b) / c)
+        # compute the dwell expectations of the mixture in a single call
+        x = copy.deepcopy(default_in)
+        xm = x['model_and_data']
+        xm['rate_mixture'] = rate_mixture
+        x['state_reduction'] = {'aggregation' : state_weights}
+        x['edge_reduction'] = {'aggregation' : 'sum'}
+        actual = mydwell(x).set_index('site').value.values
+        # check that the two calculations are equivalent
+        assert_allclose(actual, desired)
