@@ -28,43 +28,6 @@
 
 
 void
-tmat_collection_pre_init(tmat_collection_t x)
-{
-    x->rate_category_count = 0;
-    x->edge_count = 0;
-    x->matrices = NULL;
-}
-
-void
-tmat_collection_init(tmat_collection_t x,
-        slong rate_category_count, slong edge_count, slong state_count)
-{
-    slong n = rate_category_count * edge_count;
-    x->rate_category_count = rate_category_count;
-    x->edge_count = edge_count;
-    x->matrices = _arb_mat_vec_init(state_count, state_count, n);
-}
-
-void
-tmat_collection_clear(tmat_collection_t x)
-{
-    slong n = x->rate_category_count * x->edge_count;
-    _arb_mat_vec_clear(x->matrices, n);
-}
-
-arb_mat_struct *
-tmat_collection_entry(tmat_collection_t x,
-        slong rate_category_idx, slong edge_idx)
-{
-    slong offset;
-    offset = rate_category_idx * x->edge_count + edge_idx;
-    return x->matrices + offset;
-}
-
-
-
-
-void
 cross_site_ws_pre_init(cross_site_ws_t w)
 {
     w->prec = 0;
@@ -76,7 +39,33 @@ cross_site_ws_pre_init(cross_site_ws_t w)
     w->equilibrium = NULL;
     w->rate_divisor = NULL;
     w->rate_matrix = NULL;
-    tmat_collection_pre_init(w->transition_matrices);
+    w->transition_matrices = NULL;
+    w->dwell_frechet_matrices = NULL;
+    w->trans_frechet_matrices = NULL;
+}
+
+arb_mat_struct *
+cross_site_ws_transition_matrix(cross_site_ws_t w,
+        slong rate_category_idx, slong edge_idx)
+{
+    slong offset = rate_category_idx * w->edge_count + edge_idx;
+    return w->transition_matrices + offset;
+}
+
+arb_mat_struct *
+cross_site_ws_dwell_frechet_matrix(cross_site_ws_t w,
+        slong rate_category_idx, slong edge_idx)
+{
+    slong offset = rate_category_idx * w->edge_count + edge_idx;
+    return w->dwell_frechet_matrices + offset;
+}
+
+arb_mat_struct *
+cross_site_ws_trans_frechet_matrix(cross_site_ws_t w,
+        slong rate_category_idx, slong edge_idx)
+{
+    slong offset = rate_category_idx * w->edge_count + edge_idx;
+    return w->trans_frechet_matrices + offset;
 }
 
 static void
@@ -199,8 +188,11 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
     _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
 
     /* allocate transition matrices */
-    tmat_collection_init(w->transition_matrices,
-        w->rate_category_count, w->edge_count, w->state_count);
+    {
+        slong n = w->rate_category_count * w->edge_count;
+        slong k = w->state_count;
+        w->transition_matrices = _arb_mat_vec_init(k, k, n);
+    }
 
     /* define transition probability matrices */
     {
@@ -212,7 +204,7 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
             for (j = 0; j < w->edge_count; j++)
             {
                 arb_mat_struct *tmat;
-                tmat = tmat_collection_entry(w->transition_matrices, i, j);
+                tmat = cross_site_ws_transition_matrix(w, i, j);
                 rate_mixture_get_rate(s, m->rate_mixture, i);
                 arb_mul(s, s, w->edge_rates + j, w->prec);
                 arb_mat_scalar_mul_arb(tmat, w->rate_matrix, s, w->prec);
@@ -221,6 +213,22 @@ cross_site_ws_init(cross_site_ws_t w, model_and_data_t m, slong prec)
         }
         arb_clear(s);
     }
+}
+
+void
+cross_site_ws_init_dwell(cross_site_ws_t w)
+{
+    slong n = w->rate_category_count * w->edge_count;
+    slong k = w->state_count;
+    w->dwell_frechet_matrices = _arb_mat_vec_init(k, k, n);
+}
+
+void
+cross_site_ws_init_trans(cross_site_ws_t w)
+{
+    slong n = w->rate_category_count * w->edge_count;
+    slong k = w->state_count;
+    w->trans_frechet_matrices = _arb_mat_vec_init(k, k, n);
 }
 
 void
@@ -244,12 +252,22 @@ cross_site_ws_clear(cross_site_ws_t w)
         arb_mat_clear(w->rate_matrix);
         flint_free(w->rate_matrix);
     }
-    tmat_collection_clear(w->transition_matrices);
+
+    /*
+     * Clear arrays of matrices.
+     * The arrays are allowed to be NULL.
+     */
+    {
+        slong n = w->rate_category_count * w->edge_count;
+        _arb_mat_vec_clear(w->transition_matrices, n);
+        _arb_mat_vec_clear(w->dwell_frechet_matrices, n);
+        _arb_mat_vec_clear(w->trans_frechet_matrices, n);
+    }
 }
 
 void
 cross_site_ws_reinit(cross_site_ws_t w, model_and_data_t m, slong prec)
 {
     cross_site_ws_clear(w);
-    cross_site_ws_init(w, m ,prec);
+    cross_site_ws_init(w, m, prec);
 }

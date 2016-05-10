@@ -129,8 +129,7 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
     slong state_count = model_and_data_state_count(m);
     slong edge_count = model_and_data_edge_count(m);
 
-    tmat_base = tmat_collection_entry(csw->transition_matrices,
-            rate_category, 0);
+    tmat_base = cross_site_ws_transition_matrix(csw, rate_category, 0);
 
     g = m->g;
     _arb_vec_zero(derivatives, edge_count);
@@ -308,7 +307,7 @@ _nd_accum_update(nd_accum_t arr,
         for (cat = 0; cat < ncats; cat++)
         {
             const arb_mat_struct * tmat_base;
-            tmat_base = tmat_collection_entry(csw->transition_matrices, cat, 0);
+            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
 
             pmat_update_base_node_vectors(
                     w->base_node_vectors, m->p, site,

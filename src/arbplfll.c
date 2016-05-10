@@ -154,7 +154,7 @@ _nd_accum_update(nd_accum_t arr,
         for (cat = 0; cat < ncats; cat++)
         {
             const arb_mat_struct * tmat_base;
-            tmat_base = tmat_collection_entry(csw->transition_matrices, cat, 0);
+            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
 
             evaluate_site_lhood(cat_lhood,
                     w->lhood_node_vectors,
