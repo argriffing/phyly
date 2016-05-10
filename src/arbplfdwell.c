@@ -550,8 +550,7 @@ _parse(model_and_data_t m,
     json_t *site_reduction = NULL;
     json_t *edge_reduction = NULL;
     json_t *state_reduction = NULL;
-    int state_count, site_count, edge_count;
-    int node_count;
+    slong state_count, site_count, edge_count;
     int result;
 
     result = 0;
@@ -580,10 +579,9 @@ _parse(model_and_data_t m,
     if (result) return result;
 
     /* initialize counts */
-    site_count = pmat_nsites(m->p);
-    node_count = pmat_nrows(m->p);
-    state_count = pmat_ncols(m->p);
-    edge_count = node_count - 1;
+    state_count = model_and_data_state_count(m);
+    site_count = model_and_data_site_count(m);
+    edge_count = model_and_data_edge_count(m);
 
     /* validate the site reduction section of the json input */
     result = validate_column_reduction(
