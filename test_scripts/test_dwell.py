@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from numpy.testing import assert_, assert_equal, assert_allclose, TestCase
 
-from arbplf import arbplf_dwell
+from arbplf import arbplf_ll, arbplf_dwell
 
 
 # 7 edges
@@ -65,6 +65,13 @@ def mydwell(d):
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     return df
 
+def myll(d):
+    """
+    Provides a dict -> pandas.DataFrame wrapper of the pure JSON arbplf_ll.
+    """
+    s = arbplf_ll(json.dumps(d))
+    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
+    return df
 
 class TestDwellEdgeOrder(TestCase):
 
@@ -126,3 +133,49 @@ class TestDwellEdgeOrder(TestCase):
         g = mydwell(x).set_index('edge').value
         #
         _assert_allclose_series(fsel, g)
+
+    def test_rate_mixture(self):
+        rates = [2, 3]
+        prior = [0.25, 0.75]
+        weights = [0.1, 0.2, 0.8, 2.0]
+        rate_mixture = dict(rates=rates, prior=prior)
+        # first likelihood and dwell
+        r = rates[0]
+        p = prior[0]
+        x = copy.deepcopy(default_in)
+        xm = x['model_and_data']
+        xm['edge_rate_coefficients'] = [
+                u*r for u in xm['edge_rate_coefficients']]
+        ll = myll(x).set_index('site').value
+        x['edge_reduction'] = {'aggregation' : 'sum'}
+        x['state_reduction'] = {'aggregation' : weights}
+        dwell = mydwell(x).set_index('site').value
+        first_lhood = p * np.exp(ll)
+        first_dwell = dwell
+        # second lhood and dwell
+        r = rates[1]
+        p = prior[1]
+        x = copy.deepcopy(default_in)
+        xm = x['model_and_data']
+        xm['edge_rate_coefficients'] = [
+                u*r for u in xm['edge_rate_coefficients']]
+        ll = myll(x).set_index('site').value
+        x['edge_reduction'] = {'aggregation' : 'sum'}
+        x['state_reduction'] = {'aggregation' : weights}
+        dwell = mydwell(x).set_index('site').value
+        second_lhood = p * np.exp(ll)
+        second_dwell = dwell
+        # combine the separately calculated values
+        a = first_lhood * first_dwell
+        b = second_lhood * second_dwell
+        c = first_lhood + second_lhood
+        desired = (a + b) / c
+        # compute the dwell expectations of the mixture in a single call
+        x = copy.deepcopy(default_in)
+        xm = x['model_and_data']
+        xm['rate_mixture'] = rate_mixture
+        x['edge_reduction'] = {'aggregation' : 'sum'}
+        x['state_reduction'] = {'aggregation' : weights}
+        actual = mydwell(x).set_index('site').value
+        # check that the two calculations are equivalent
+        _assert_allclose_series(actual, desired)
