@@ -65,6 +65,7 @@
 typedef struct
 {
     arb_struct *edge_expectations;
+    arb_struct *cc_edge_expectations;
     arb_mat_struct *base_node_vectors;
     arb_mat_struct *lhood_node_vectors;
     arb_mat_struct *lhood_edge_vectors;
@@ -80,6 +81,7 @@ likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
     slong state_count = model_and_data_state_count(m);
 
     w->edge_expectations = _arb_vec_init(edge_count);
+    w->cc_edge_expectations = _arb_vec_init(edge_count);
     w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
     w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
@@ -93,6 +95,7 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
     slong edge_count = model_and_data_edge_count(m);
 
     _arb_vec_clear(w->edge_expectations, edge_count);
+    _arb_vec_clear(w->cc_edge_expectations, edge_count);
     _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
     _arb_mat_vec_clear(w->base_node_vectors, node_count);
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
@@ -102,6 +105,7 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 static void
 evaluate_edge_expectations(
         arb_struct *edge_expectations,
+        arb_struct *cc_edge_expectations,
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
@@ -165,22 +169,28 @@ static void
 _nd_accum_update_state_agg(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
-    int state, site, edge, idx;
-    arb_t lhood;
+    int state, site, edge, idx, cat;
+    arb_t site_lhood, cat_lhood, prior_prob, cat_rate, rate, lhood;
     int *coords;
 
     slong site_count = model_and_data_site_count(m);
     slong state_count = model_and_data_state_count(m);
     slong edge_count = model_and_data_edge_count(m);
     slong node_count = model_and_data_node_count(m);
+    slong rate_category_count = model_and_data_rate_category_count(m);
 
     nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
     nd_axis_struct *edge_axis = arr->axes + EDGE_AXIS;
     nd_axis_struct *state_axis = arr->axes + STATE_AXIS;
 
-    coords = malloc(arr->ndim * sizeof(int));
-
+    arb_init(site_lhood);
+    arb_init(cat_lhood);
+    arb_init(prior_prob);
+    arb_init(cat_rate);
+    arb_init(rate);
     arb_init(lhood);
+
+    coords = malloc(arr->ndim * sizeof(int));
 
     /* zero all requested cells of the array */
     nd_accum_zero_requested_cells(arr);
@@ -205,16 +215,17 @@ _nd_accum_update_state_agg(nd_accum_t arr,
                     state_axis->agg_weights + state,
                     state_axis->agg_weight_divisor, prec);
         }
-        for (idx = 0; idx < edge_count; idx++)
+        for (cat = 0; cat < rate_category_count; cat++)
         {
-            /* todo: allow more rate categories */
-            slong cat = 0;
-
-            arb_mat_struct *fmat;
-            fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
-            arb_mat_scalar_mul_arb(Q,
-                    csw->rate_matrix, csw->edge_rates + idx, prec);
-            _arb_mat_exp_frechet(P, fmat, Q, L, prec);
+            rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+            for (idx = 0; idx < edge_count; idx++)
+            {
+                arb_mat_struct *fmat;
+                fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
+                arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
+                arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
+                _arb_mat_exp_frechet(P, fmat, Q, L, prec);
+            }
         }
         arb_mat_clear(P);
         arb_mat_clear(L);
@@ -229,12 +240,6 @@ _nd_accum_update_state_agg(nd_accum_t arr,
      */
     for (site = 0; site < site_count; site++)
     {
-        /* todo: allow more than one rate category */
-        slong cat = 0;
-        arb_mat_struct *tmat_base, *fmat_base;
-        tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
-        fmat_base = cross_site_ws_dwell_frechet_matrix(csw, cat, 0);
-
         /* skip sites that are not requested */
         if (!site_axis->request_update[site]) continue;
         coords[SITE_AXIS] = site;
@@ -245,37 +250,74 @@ _nd_accum_update_state_agg(nd_accum_t arr,
                 m->root_prior, csw->equilibrium,
                 m->preorder[0], prec);
 
-        /*
-         * Update per-node and per-edge likelihood vectors.
-         * Actually the likelihood vectors on edges are not used.
-         * This is a backward pass from the leaves to the root.
-         */
-        evaluate_site_lhood(lhood,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                w->base_node_vectors,
-                tmat_base,
-                m->g, m->preorder, node_count, prec);
+        /* clear cross-category expectations and site lhood */
+        _arb_vec_zero(w->cc_edge_expectations, edge_count);
+        arb_zero(site_lhood);
 
-        /*
-         * Update marginal distribution vectors at nodes.
-         * This is a forward pass from the root to the leaves.
-         */
-        evaluate_site_marginal(
-                w->marginal_node_vectors,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                tmat_base,
-                m->g, m->preorder, node_count, state_count, prec);
+        /* accumulate across categories */
+        for (cat = 0; cat < rate_category_count; cat++)
+        {
+            arb_mat_struct *tmat_base, *fmat_base;
+            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
+            fmat_base = cross_site_ws_dwell_frechet_matrix(csw, cat, 0);
 
-        /* Update expectations at edges. */
-        evaluate_edge_expectations(
-                w->edge_expectations,
-                w->marginal_node_vectors,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                fmat_base,
-                m->g, m->preorder, node_count, state_count, prec);
+            /*
+             * Update per-node and per-edge likelihood vectors.
+             * Actually the likelihood vectors on edges are not used.
+             * This is a backward pass from the leaves to the root.
+             */
+            evaluate_site_lhood(lhood,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    w->base_node_vectors,
+                    tmat_base,
+                    m->g, m->preorder, node_count, prec);
+
+            /* compute category likelihood */
+            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
+            arb_mul(cat_lhood, lhood, prior_prob, prec);
+            arb_add(site_lhood, site_lhood, cat_lhood, prec);
+
+            /*
+             * Update marginal distribution vectors at nodes.
+             * This is a forward pass from the root to the leaves.
+             */
+            evaluate_site_marginal(
+                    w->marginal_node_vectors,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    tmat_base,
+                    m->g, m->preorder, node_count, state_count, prec);
+
+            /* Update expectations at edges. */
+            evaluate_edge_expectations(
+                    w->edge_expectations,
+                    w->cc_edge_expectations,
+                    w->marginal_node_vectors,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    fmat_base,
+                    m->g, m->preorder, node_count, state_count, prec);
+
+            /* Accumulate cross-category expectations. */
+            for (edge = 0; edge < edge_count; edge++)
+            {
+                if (!edge_axis->request_update[edge]) continue;
+                idx = m->edge_map->order[edge];
+                arb_addmul(w->cc_edge_expectations + idx,
+                           w->edge_expectations, cat_lhood, prec);
+            }
+        }
+
+        /* Divide cross-category expectations by site lhood */
+        for (edge = 0; edge < edge_count; edge++)
+        {
+            if (!edge_axis->request_update[edge]) continue;
+            idx = m->edge_map->order[edge];
+            arb_div(w->cc_edge_expectations + idx,
+                    w->cc_edge_expectations + idx,
+                    site_lhood, prec);
+        }
 
         /* Update the nd accumulator. */
         for (edge = 0; edge < edge_count; edge++)
@@ -292,12 +334,18 @@ _nd_accum_update_state_agg(nd_accum_t arr,
              * tree graph preorder edge indices.
              */
             idx = m->edge_map->order[edge];
-            nd_accum_accumulate(arr,
-                    coords, w->edge_expectations + idx, prec);
+            nd_accum_accumulate(
+                    arr, coords, w->cc_edge_expectations + idx, prec);
         }
     }
 
+    arb_clear(site_lhood);
+    arb_clear(cat_lhood);
+    arb_clear(prior_prob);
+    arb_clear(cat_rate);
+    arb_clear(rate);
     arb_clear(lhood);
+
     free(coords);
 }
 
@@ -411,6 +459,7 @@ _nd_accum_update(nd_accum_t arr,
             /* Update expectations at edges. */
             evaluate_edge_expectations(
                     w->edge_expectations,
+                    w->cc_edge_expectations,
                     w->marginal_node_vectors,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
