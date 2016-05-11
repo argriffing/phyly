@@ -103,6 +103,95 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
     _arb_mat_vec_clear(w->marginal_node_vectors, node_count);
 }
 
+/*
+ * Update the frechet matrix for each rate category and edge.
+ * At this point the rate matrix has been normalized
+ * to have zero row sums, but it has not been scaled
+ * by the edge rate coefficients.
+ * The frechet matrices must already have been initialized.
+ */
+static void
+_update_single_state_frechet_matrices(
+        cross_site_ws_t csw, model_and_data_t m,
+        slong state, slong prec)
+{
+    slong cat, idx;
+    arb_mat_t P, L, Q;
+    arb_t cat_rate, rate;
+    arb_init(cat_rate);
+    arb_init(rate);
+
+    slong state_count = model_and_data_state_count(m);
+    slong edge_count = model_and_data_edge_count(m);
+    slong rate_category_count = model_and_data_rate_category_count(m);
+
+    arb_mat_init(P, state_count, state_count);
+    arb_mat_init(L, state_count, state_count);
+    arb_mat_init(Q, state_count, state_count);
+    arb_mat_zero(L);
+    arb_one(arb_mat_entry(L, state, state));
+    for (cat = 0; cat < rate_category_count; cat++)
+    {
+        rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+        for (idx = 0; idx < edge_count; idx++)
+        {
+            arb_mat_struct *fmat;
+            fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
+            arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
+            arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
+            _arb_mat_exp_frechet(P, fmat, Q, L, prec);
+        }
+    }
+    arb_clear(cat_rate);
+    arb_clear(rate);
+    arb_mat_clear(P);
+    arb_mat_clear(L);
+    arb_mat_clear(Q);
+}
+
+static void
+_update_aggregated_state_frechet_matrices(
+        cross_site_ws_t csw, model_and_data_t m,
+        nd_axis_struct *state_axis, slong prec)
+{
+    slong state, cat, idx;
+    arb_mat_t P, L, Q;
+    arb_t cat_rate, rate;
+
+    slong state_count = model_and_data_state_count(m);
+    slong edge_count = model_and_data_edge_count(m);
+    slong rate_category_count = model_and_data_rate_category_count(m);
+
+    arb_init(cat_rate);
+    arb_init(rate);
+    arb_mat_init(P, state_count, state_count);
+    arb_mat_init(L, state_count, state_count);
+    arb_mat_init(Q, state_count, state_count);
+    for (state = 0; state < state_count; state++)
+    {
+        arb_div(arb_mat_entry(L, state, state),
+                state_axis->agg_weights + state,
+                state_axis->agg_weight_divisor, prec);
+    }
+    for (cat = 0; cat < rate_category_count; cat++)
+    {
+        rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+        for (idx = 0; idx < edge_count; idx++)
+        {
+            arb_mat_struct *fmat;
+            fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
+            arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
+            arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
+            _arb_mat_exp_frechet(P, fmat, Q, L, prec);
+        }
+    }
+    arb_clear(cat_rate);
+    arb_clear(rate);
+    arb_mat_clear(P);
+    arb_mat_clear(L);
+    arb_mat_clear(Q);
+}
+
 static void
 _update_site(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
@@ -227,13 +316,10 @@ static void
 _nd_accum_update_state_agg(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
-    int state, site, cat, idx;
+    slong site;
     int *coords;
 
     slong site_count = model_and_data_site_count(m);
-    slong state_count = model_and_data_state_count(m);
-    slong edge_count = model_and_data_edge_count(m);
-    slong rate_category_count = model_and_data_rate_category_count(m);
 
     nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
     nd_axis_struct *state_axis = arr->axes + STATE_AXIS;
@@ -251,39 +337,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
      * to have zero row sums, but it has not been scaled
      * by the edge rate coefficients.
      */
-    {
-        arb_mat_t P, L, Q;
-        arb_t cat_rate, rate;
-        arb_init(cat_rate);
-        arb_init(rate);
-        arb_mat_init(P, state_count, state_count);
-        arb_mat_init(L, state_count, state_count);
-        arb_mat_init(Q, state_count, state_count);
-        arb_mat_zero(L);
-        for (state = 0; state < state_count; state++)
-        {
-            arb_div(arb_mat_entry(L, state, state),
-                    state_axis->agg_weights + state,
-                    state_axis->agg_weight_divisor, prec);
-        }
-        for (cat = 0; cat < rate_category_count; cat++)
-        {
-            rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
-            for (idx = 0; idx < edge_count; idx++)
-            {
-                arb_mat_struct *fmat;
-                fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
-                arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
-                arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
-                _arb_mat_exp_frechet(P, fmat, Q, L, prec);
-            }
-        }
-        arb_clear(cat_rate);
-        arb_clear(rate);
-        arb_mat_clear(P);
-        arb_mat_clear(L);
-        arb_mat_clear(Q);
-    }
+    _update_aggregated_state_frechet_matrices(csw, m, state_axis, prec);
 
     /*
      * Update the output array at the given precision.
@@ -308,14 +362,12 @@ static void
 _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
-    int state, site, idx, cat;
+    int state, site;
     nd_axis_struct *state_axis, *site_axis;
     int *coords;
 
-    slong edge_count = model_and_data_edge_count(m);
     slong state_count = model_and_data_state_count(m);
     slong site_count = model_and_data_site_count(m);
-    slong rate_category_count = model_and_data_rate_category_count(m);
 
     coords = malloc(arr->ndim * sizeof(int));
 
@@ -342,34 +394,7 @@ _nd_accum_update(nd_accum_t arr,
          * to have zero row sums, but it has not been scaled
          * by the edge rate coefficients.
          */
-        {
-            arb_mat_t P, L, Q;
-            arb_t cat_rate, rate;
-            arb_init(cat_rate);
-            arb_init(rate);
-            arb_mat_init(P, state_count, state_count);
-            arb_mat_init(L, state_count, state_count);
-            arb_mat_init(Q, state_count, state_count);
-            arb_mat_zero(L);
-            arb_one(arb_mat_entry(L, state, state));
-            for (cat = 0; cat < rate_category_count; cat++)
-            {
-                rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
-                for (idx = 0; idx < edge_count; idx++)
-                {
-                    arb_mat_struct *fmat;
-                    fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
-                    arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
-                    arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
-                    _arb_mat_exp_frechet(P, fmat, Q, L, prec);
-                }
-            }
-            arb_clear(cat_rate);
-            arb_clear(rate);
-            arb_mat_clear(P);
-            arb_mat_clear(L);
-            arb_mat_clear(Q);
-        }
+        _update_single_state_frechet_matrices(csw, m, state, prec);
 
         for (site = 0; site < site_count; site++)
         {
