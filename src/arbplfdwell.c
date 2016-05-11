@@ -434,8 +434,6 @@ _query(model_and_data_t m,
     nd_axis_struct *edge_axis = axes + EDGE_AXIS;
     nd_axis_struct *state_axis = axes + STATE_AXIS;
 
-    result = 0;
-
     /* initialize likelihood workspace */
     cross_site_ws_init(csw, m);
     cross_site_ws_init_dwell(csw);
