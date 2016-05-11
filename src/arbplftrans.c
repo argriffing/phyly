@@ -329,24 +329,18 @@ _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
         const int *first_idx, const int *second_idx, slong prec)
 {
-    int site, edge, idx;
+    int site, idx;
     int trans_idx, first_state, second_state;
-    arb_t lhood, tmp;
     int *coords;
 
     slong site_count = model_and_data_site_count(m);
     slong state_count = model_and_data_state_count(m);
-    slong node_count = model_and_data_node_count(m);
     slong edge_count = model_and_data_edge_count(m);
 
     nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
-    nd_axis_struct *edge_axis = arr->axes + EDGE_AXIS;
     nd_axis_struct *trans_axis = arr->axes + TRANS_AXIS;
 
     coords = malloc(arr->ndim * sizeof(int));
-
-    arb_init(lhood);
-    arb_init(tmp);
 
     /* zero all requested cells of the array */
     nd_accum_zero_requested_cells(arr);
@@ -398,70 +392,10 @@ _nd_accum_update(nd_accum_t arr,
             if (!site_axis->request_update[site]) continue;
             coords[SITE_AXIS] = site;
 
-            /* update base node vectors */
-            pmat_update_base_node_vectors(
-                    w->base_node_vectors, m->p, site,
-                    m->root_prior, csw->equilibrium,
-                    m->preorder[0], prec);
-
-            /*
-             * Update per-node and per-edge likelihood vectors.
-             * Actually the likelihood vectors on edges are not used.
-             * This is a backward pass from the leaves to the root.
-             */
-            evaluate_site_lhood(lhood,
-                    w->lhood_node_vectors,
-                    w->lhood_edge_vectors,
-                    w->base_node_vectors,
-                    csw->transition_matrices,
-                    m->g, m->preorder, node_count, prec);
-
-            /*
-             * Update marginal distribution vectors at nodes.
-             * This is a forward pass from the root to the leaves.
-             */
-            evaluate_site_marginal(
-                    w->marginal_node_vectors,
-                    w->lhood_node_vectors,
-                    w->lhood_edge_vectors,
-                    csw->transition_matrices,
-                    m->g, m->preorder, node_count, state_count, prec);
-
-            /* Update expectations at edges. */
-            evaluate_site_frechet(
-                    w->edge_expectations,
-                    w->marginal_node_vectors,
-                    w->lhood_node_vectors,
-                    w->lhood_edge_vectors,
-                    csw->trans_frechet_matrices,
-                    m->g, m->preorder, node_count, state_count, prec);
-
-            /* Update the nd accumulator. */
-            for (edge = 0; edge < edge_count; edge++)
-            {
-                /* skip edges that are not requested */
-                if (!edge_axis->request_update[edge]) continue;
-                coords[EDGE_AXIS] = edge;
-
-                /*
-                 * Accumulate.
-                 * Note that the axes, accumulator, and json interface
-                 * work with "user" edge indices,
-                 * whereas the workspace arrays work with
-                 * tree graph preorder edge indices.
-                 *
-                 * Note that edge expectations are multiplied by edge rates.
-                 */
-                idx = m->edge_map->order[edge];
-                arb_mul(tmp, w->edge_expectations + idx,
-                        csw->edge_rates + idx, prec);
-                nd_accum_accumulate(arr, coords, tmp, prec);
-            }
+            _update_site(arr, w, csw, m, coords, site, prec);
         }
     }
 
-    arb_clear(lhood);
-    arb_clear(tmp);
     free(coords);
 }
 
