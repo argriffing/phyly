@@ -29,6 +29,7 @@ myext = Extension(
             'ndaccum.c',
             'evaluate_site_lhood.c',
             'evaluate_site_marginal.c',
+            'evaluate_site_frechet.c',
             'parsemodel.c',
             'reduction.c',
             'parsereduction.c',
