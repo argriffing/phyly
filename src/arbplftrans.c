@@ -418,6 +418,7 @@ _query(model_and_data_t m,
     likelihood_ws_t w;
     cross_site_ws_t csw;
     int result = 0;
+    int success;
 
     slong site_count = model_and_data_site_count(m);
     slong edge_count = model_and_data_edge_count(m);
@@ -456,8 +457,7 @@ _query(model_and_data_t m,
     nd_accum_init(arr, axes, ndim);
 
     /* repeat with increasing precision until there is no precision failure */
-    int success = 0;
-    for (prec=4; !success; prec <<= 1)
+    for (success=0, prec=4; !success; prec <<= 1)
     {
         cross_site_ws_update(csw, m, prec);
 
@@ -519,11 +519,8 @@ _parse(model_and_data_t m,
     json_t *site_reduction = NULL;
     json_t *edge_reduction = NULL;
     json_t *trans_reduction = NULL;
-    int site_count, edge_count, state_count;
-    int node_count;
-    int result;
-
-    result = 0;
+    slong site_count, edge_count, state_count;
+    int result = 0;
 
     /* unpack the top level of json input */
     {
@@ -550,10 +547,9 @@ _parse(model_and_data_t m,
     if (result) return result;
 
     /* initialize counts */
-    site_count = pmat_nsites(m->p);
-    node_count = pmat_nrows(m->p);
-    state_count = pmat_ncols(m->p);
-    edge_count = node_count - 1;
+    site_count = model_and_data_site_count(m);
+    edge_count = model_and_data_edge_count(m);
+    state_count = model_and_data_state_count(m);
 
     /* validate the site reduction section of the json input */
     result = validate_column_reduction(
