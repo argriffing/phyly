@@ -136,7 +136,7 @@ _update_state_pair_frechet_matrices(
         for (idx = 0; idx < edge_count; idx++)
         {
             arb_mat_struct *fmat;
-            fmat = csw->trans_frechet_matrices + idx;
+            fmat = cross_site_ws_trans_frechet_matrix(csw, cat, idx);
             arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
             arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
             _arb_mat_exp_frechet(P, fmat, Q, L, prec);
@@ -192,7 +192,7 @@ _update_aggregated_state_frechet_matrices(
         for (idx = 0; idx < edge_count; idx++)
         {
             arb_mat_struct *fmat;
-            fmat = csw->trans_frechet_matrices + idx;
+            fmat = cross_site_ws_trans_frechet_matrix(csw, cat, idx);
             arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
             arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
             _arb_mat_exp_frechet(P, fmat, Q, L, prec);
