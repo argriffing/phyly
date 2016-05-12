@@ -118,17 +118,16 @@ _update_single_state_frechet_matrices(
     slong cat, idx;
     arb_mat_t P, L, Q;
     arb_t cat_rate, rate;
-    arb_init(cat_rate);
-    arb_init(rate);
 
     slong state_count = model_and_data_state_count(m);
     slong edge_count = model_and_data_edge_count(m);
     slong rate_category_count = model_and_data_rate_category_count(m);
 
+    arb_init(cat_rate);
+    arb_init(rate);
     arb_mat_init(P, state_count, state_count);
     arb_mat_init(L, state_count, state_count);
     arb_mat_init(Q, state_count, state_count);
-    arb_mat_zero(L);
     arb_one(arb_mat_entry(L, state, state));
     for (cat = 0; cat < rate_category_count; cat++)
     {
