@@ -150,6 +150,62 @@ _update_state_pair_frechet_matrices(
     arb_mat_clear(Q);
 }
 
+static void
+_update_aggregated_state_frechet_matrices(
+        cross_site_ws_t csw, model_and_data_t m, nd_axis_struct *trans_axis,
+        const int *first_idx, const int *second_idx, slong prec)
+{
+    arb_mat_t P, L, Q;
+    arb_t cat_rate, rate;
+    slong first_state, second_state;
+    slong cat, idx, trans_idx;
+
+    slong state_count = model_and_data_state_count(m);
+    slong edge_count = model_and_data_edge_count(m);
+    slong rate_category_count = model_and_data_rate_category_count(m);
+
+    arb_init(cat_rate);
+    arb_init(rate);
+    arb_mat_init(P, state_count, state_count);
+    arb_mat_init(L, state_count, state_count);
+    arb_mat_init(Q, state_count, state_count);
+
+    /* set entries of L to the requested transition weights */
+    for (trans_idx = 0; trans_idx < trans_axis->n; trans_idx++)
+    {
+        first_state = first_idx[trans_idx];
+        second_state = second_idx[trans_idx];
+        arb_add(arb_mat_entry(L, first_state, second_state),
+                arb_mat_entry(L, first_state, second_state),
+                trans_axis->agg_weights + trans_idx, prec);
+    }
+
+    /* multiply entries of L by the rate matrix entries */
+    arb_mat_mul_entrywise(L, L, csw->rate_matrix, prec);
+
+    /* divide L by the global weight divisor */
+    arb_mat_scalar_div_arb(L, L, trans_axis->agg_weight_divisor, prec);
+
+    for (cat = 0; cat < rate_category_count; cat++)
+    {
+        rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+        for (idx = 0; idx < edge_count; idx++)
+        {
+            arb_mat_struct *fmat;
+            fmat = csw->trans_frechet_matrices + idx;
+            arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
+            arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
+            _arb_mat_exp_frechet(P, fmat, Q, L, prec);
+        }
+    }
+
+    arb_clear(cat_rate);
+    arb_clear(rate);
+    arb_mat_clear(P);
+    arb_mat_clear(L);
+    arb_mat_clear(Q);
+}
+
 /*
  * Note that the expectations are multiplied by the rates.
  * This is a difference from the analogous function in arbplfdwell.c.
@@ -293,13 +349,10 @@ _nd_accum_update_state_agg(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
         const int *first_idx, const int *second_idx, slong prec)
 {
-    int site, idx;
-    int trans_idx, first_state, second_state;
+    slong site;
     int *coords;
 
     slong site_count = model_and_data_site_count(m);
-    slong edge_count = model_and_data_edge_count(m);
-    slong state_count = model_and_data_state_count(m);
 
     nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
     nd_axis_struct *trans_axis = arr->axes + TRANS_AXIS;
@@ -317,41 +370,8 @@ _nd_accum_update_state_agg(nd_accum_t arr,
      * to have zero row sums, but it has not been scaled
      * by the edge rate coefficients.
      */
-    {
-        arb_mat_t P, L, Q;
-        arb_mat_init(P, state_count, state_count);
-        arb_mat_init(L, state_count, state_count);
-        arb_mat_init(Q, state_count, state_count);
-
-        /* set entries of L to the requested transition weights */
-        arb_mat_zero(L);
-        for (trans_idx = 0; trans_idx < trans_axis->n; trans_idx++)
-        {
-            first_state = first_idx[trans_idx];
-            second_state = second_idx[trans_idx];
-            arb_add(arb_mat_entry(L, first_state, second_state),
-                    arb_mat_entry(L, first_state, second_state),
-                    trans_axis->agg_weights + trans_idx, prec);
-        }
-
-        /* multiply entries of L by the rate matrix entries */
-        arb_mat_mul_entrywise(L, L, csw->rate_matrix, prec);
-
-        /* divide L by the global weight divisor */
-        arb_mat_scalar_div_arb(L, L, trans_axis->agg_weight_divisor, prec);
-
-        for (idx = 0; idx < edge_count; idx++)
-        {
-            arb_mat_struct *fmat;
-            fmat = csw->trans_frechet_matrices + idx;
-            arb_mat_scalar_mul_arb(Q,
-                    csw->rate_matrix, csw->edge_rates + idx, prec);
-            _arb_mat_exp_frechet(P, fmat, Q, L, prec);
-        }
-        arb_mat_clear(P);
-        arb_mat_clear(L);
-        arb_mat_clear(Q);
-    }
+    _update_aggregated_state_frechet_matrices(
+            csw, m, trans_axis, first_idx, second_idx, prec);
 
     /*
      * Update the output array at the given precision.
