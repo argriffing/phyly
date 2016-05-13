@@ -335,41 +335,44 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                     tmat_base,
                     m->g, m->preorder, node_count, prec);
 
-            /*
-             * Update marginal distribution vectors at nodes.
-             * This is a forward pass from the root to the leaves.
-             */
-            evaluate_site_marginal(
-                    w->marginal_node_vectors,
-                    w->lhood_node_vectors,
-                    w->lhood_edge_vectors,
-                    tmat_base,
-                    m->g, m->preorder, node_count, state_count, prec);
-
-            /* Update dwell and trans expectations on edges. */
-            _evaluate_edge_expectations(
-                    dwell_cat,
-                    trans_cat,
-                    w->marginal_node_vectors,
-                    w->lhood_node_vectors,
-                    w->lhood_edge_vectors,
-                    dwell_base,
-                    trans_base,
-                    m->g, m->preorder, node_count, state_count,
-                    edge_is_requested, prec);
-
             /* Compute the likelihood for the rate category. */
             rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
             arb_mul(cat_lhood, lhood, prior_prob, prec);
             arb_add(site_lhood, site_lhood, cat_lhood, prec);
 
-            /* Accumulate the category-specific expectations. */
-            for (idx = 0; idx < edge_count; idx++)
+            if (!arb_is_zero(cat_lhood))
             {
-                /* todo: category-specific rates may be needed here */
-                if (!edge_is_requested[idx]) continue;
-                arb_addmul(dwell_site + idx, dwell_cat + idx, cat_lhood, prec);
-                arb_addmul(trans_site + idx, trans_cat + idx, cat_lhood, prec);
+                /*
+                 * Update marginal distribution vectors at nodes.
+                 * This is a forward pass from the root to the leaves.
+                 */
+                evaluate_site_marginal(
+                        w->marginal_node_vectors,
+                        w->lhood_node_vectors,
+                        w->lhood_edge_vectors,
+                        tmat_base,
+                        m->g, m->preorder, node_count, state_count, prec);
+
+                /* Update dwell and trans expectations on edges. */
+                _evaluate_edge_expectations(
+                        dwell_cat,
+                        trans_cat,
+                        w->marginal_node_vectors,
+                        w->lhood_node_vectors,
+                        w->lhood_edge_vectors,
+                        dwell_base,
+                        trans_base,
+                        m->g, m->preorder, node_count, state_count,
+                        edge_is_requested, prec);
+
+                /* Accumulate the category-specific expectations. */
+                for (idx = 0; idx < edge_count; idx++)
+                {
+                    /* todo: category-specific rates may be needed here */
+                    if (!edge_is_requested[idx]) continue;
+                    arb_addmul(dwell_site + idx, dwell_cat + idx, cat_lhood, prec);
+                    arb_addmul(trans_site + idx, trans_cat + idx, cat_lhood, prec);
+                }
             }
         }
 

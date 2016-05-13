@@ -130,6 +130,8 @@ default_in = {
      }
 
 def test_degenerate_rate_mixtures():
+    # Note that for this example,
+    # a category with rate equal to zero has zero conditional probability.
     x = copy.deepcopy(default_in)
     x['site_reduction'] = dict(aggregation='sum')
     v = _df(arbplf_em_update, x).set_index('edge').value
@@ -138,9 +140,9 @@ def test_degenerate_rate_mixtures():
             dict(rates=[1, 1, 1, 1], prior='uniform_distribution'),
             dict(rates=[1, 2], prior=[1, 0]),
             dict(rates=[3, 1], prior=[0, 1]),
-            #dict(rates=[0, 1], prior=[0.4, 0.6]),
-            #dict(rates=[0, 1], prior='uniform_distribution'),
-            #dict(rates=[0, 1, 2], prior=[0.2, 0.8, 0.0]),
+            dict(rates=[0, 1], prior=[0.4, 0.6]),
+            dict(rates=[0, 1], prior='uniform_distribution'),
+            dict(rates=[0, 1, 2], prior=[0.2, 0.8, 0.0]),
             )
     x = copy.deepcopy(default_in)
     x['site_reduction'] = dict(aggregation='sum')

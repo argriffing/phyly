@@ -160,6 +160,8 @@ def test_via_likelihood():
     _assert_allclose_series(distn_via_marginal, distn_via_likelihood)
 
 def test_degenerate_rate_mixtures():
+    # Note that for this example,
+    # a category with rate equal to zero has zero conditional probability.
     v = mymarginal(default_in)
     degenerate_rate_mixtures = (
             dict(rates=[1, 1, 1, 1], prior=[0.1, 0.2, 0.3, 0.4]),
