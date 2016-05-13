@@ -159,39 +159,23 @@ def test_via_likelihood():
 
     _assert_allclose_series(distn_via_marginal, distn_via_likelihood)
 
-def test_rates_across_sites_invariant_a():
+def test_degenerate_rate_mixtures():
     v = mymarginal(default_in)
-    # because all the rates are 1, the output should not be affected
-    rates = [1, 1, 1, 1]
-    for prior in [0.1, 0.2, 0.3, 0.4], 'uniform_distribution':
-        x = copy.deepcopy(default_in)
-        x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
-        u = mymarginal(x)
-        assert_allclose(u.values, v.values)
-
-def test_rates_across_sites_invariant_b():
-    v = mymarginal(default_in)
-    # none of the original sites are invariant,
-    # so the output should not be affected
-    rates = [0, 1]
-    for prior in [0.4, 0.6], 'uniform_distribution':
-        x = copy.deepcopy(default_in)
-        x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
-        u = mymarginal(x)
-        assert_allclose(u.values, v.values)
-
-def test_rates_across_sites_invariant_c():
-    v = mymarginal(default_in)
-    # the only rate category with a nonzero rate*probability
-    # has a rate of 1, so the output should not be affected
-    rates = [0, 1, 2]
-    prior = [0.2, 0.8, 0.0]
+    degenerate_rate_mixtures = (
+            dict(rates=[1, 1, 1, 1], prior=[0.1, 0.2, 0.3, 0.4]),
+            dict(rates=[1, 1, 1, 1], prior='uniform_distribution'),
+            dict(rates=[1, 2], prior=[1, 0]),
+            dict(rates=[3, 1], prior=[0, 1]),
+            dict(rates=[0, 1], prior=[0.4, 0.6]),
+            dict(rates=[0, 1], prior='uniform_distribution'),
+            dict(rates=[0, 1, 2], prior=[0.2, 0.8, 0.0]))
     x = copy.deepcopy(default_in)
-    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
-    u = mymarginal(x)
-    assert_allclose(u.values, v.values)
+    for rate_mixture in degenerate_rate_mixtures:
+        x['model_and_data']['rate_mixture'] = rate_mixture
+        u = mymarginal(x)
+        assert_allclose(u.values, v.values)
 
-def test_rates_across_sites_invariant_d():
+def test_rates_across_sites_invariant():
     # Same as invariant_c except with reductions.
     # Pick an arbitrary site and an arbitrary node.
     node = 6

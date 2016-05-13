@@ -10,9 +10,16 @@ import copy
 
 import numpy as np
 import pandas as pd
-from numpy.testing import assert_, assert_equal, assert_array_less
+from numpy.testing import assert_allclose, assert_array_less
 
 from arbplf import arbplf_ll, arbplf_em_update
+
+def _assert_allclose_series(a, b):
+    # Align the layouts of the two pandas Series objects,
+    # preparing to compare their values.
+    # The align member function returns two new pandas Series objects.
+    u, v = a.align(b)
+    assert_allclose(u.values, v.values)
 
 def _df(f, d):
     s = f(json.dumps(d))
@@ -87,5 +94,57 @@ def check_em_monotonicity():
 
 def test_em_monotonicity():
     np.random.seed(1234)
-    for i in range(20):
+    for i in range(10):
         check_em_monotonicity()
+
+# 7 edges
+# 2 sites
+default_in = {
+ "model_and_data" : {
+     "edges" : [[5, 0], [5, 1], [5, 6], [6, 2], [6, 7], [7, 3], [7, 4]],
+     "edge_rate_coefficients" : [0.01, 0.2, 0.15, 0.3, 0.05, 0.3, 0.02],
+     "rate_matrix" : [
+         [0, .3, .4, .5],
+         [.3, 0, .3, .3],
+         [.3, .6, 0, .3],
+         [.3, .3, .3, 0]],
+     "probability_array" : [
+         [
+         [1, 0, 0, 0],
+         [0, 1, 0, 0],
+         [0, 1, 0, 0],
+         [0, 1, 0, 0],
+         [0, 0, 1, 0],
+         [0.25, 0.25, 0.25, 0.25],
+         [1, 1, 1, 1],
+         [1, 1, 1, 1]],
+         [
+         [1, 0, 0, 0],
+         [0, 1, 0, 0],
+         [0, 0, 0, 1],
+         [0, 1, 0, 0],
+         [0, 0, 1, 0],
+         [0.25, 0.25, 0.25, 0.25],
+         [1, 1, 1, 1],
+         [1, 1, 1, 1]]]},
+     }
+
+def test_degenerate_rate_mixtures():
+    x = copy.deepcopy(default_in)
+    x['site_reduction'] = dict(aggregation='sum')
+    v = _df(arbplf_em_update, x).set_index('edge').value
+    degenerate_rate_mixtures = (
+            dict(rates=[1, 1, 1, 1], prior=[0.1, 0.2, 0.3, 0.4]),
+            dict(rates=[1, 1, 1, 1], prior='uniform_distribution'),
+            dict(rates=[1, 2], prior=[1, 0]),
+            dict(rates=[3, 1], prior=[0, 1]),
+            #dict(rates=[0, 1], prior=[0.4, 0.6]),
+            #dict(rates=[0, 1], prior='uniform_distribution'),
+            #dict(rates=[0, 1, 2], prior=[0.2, 0.8, 0.0]),
+            )
+    x = copy.deepcopy(default_in)
+    x['site_reduction'] = dict(aggregation='sum')
+    for rate_mixture in degenerate_rate_mixtures:
+        x['model_and_data']['rate_mixture'] = rate_mixture
+        u = _df(arbplf_em_update, x).set_index('edge').value
+        assert_allclose(u.values, v.values)
