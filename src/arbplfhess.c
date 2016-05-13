@@ -293,6 +293,7 @@ typedef struct
     plane_t lhood_plane;
     plane_t deriv_plane;
     plane_t hess_plane;
+
     indirect_plane_t indirect_plane;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
@@ -341,20 +342,22 @@ likelihood_ws_clear(likelihood_ws_t w)
 static void
 evaluate_site_derivatives(arb_t derivative,
         csr_graph_struct *g, int *preorder,
-        cross_site_ws_t csw, likelihood_ws_t w, int *idx_to_a, int *b_to_idx,
+        const arb_mat_struct *rate_matrix,
+        const arb_mat_struct *transition_matrices,
+        likelihood_ws_t w, int *idx_to_a, int *b_to_idx,
         int deriv_idx, plane_t plane, int update_indirect, slong prec)
 {
     int a, b, idx, curr_idx;
     int start, stop;
     arb_mat_struct * nmat;
     arb_mat_struct * nmatb;
-    arb_mat_struct * tmat;
     arb_mat_struct * emat;
     arb_mat_struct * emati;
-    arb_mat_struct * rmat;
+    const arb_mat_struct * rmat;
+    const arb_mat_struct * tmat;
     indirect_plane_struct * indirect;
 
-    rmat = csw->rate_matrix;
+    rmat = rate_matrix;
     indirect = w->indirect_plane;
 
     curr_idx = deriv_idx;
@@ -385,8 +388,7 @@ evaluate_site_derivatives(arb_t derivative,
             else if (idx == curr_idx)
             {
                 b = g->indices[idx];
-                /* fixme: use rate categories */
-                tmat = csw->transition_matrices + idx;
+                tmat = transition_matrices + idx;
                 nmatb = plane->node_vectors + b;
                 emat = plane->edge_vectors + idx;
                 arb_mat_mul(emat, tmat, nmatb, prec);
@@ -482,18 +484,42 @@ _recompute_second_order(so_t so,
     slong node_count = model_and_data_node_count(m);
     slong rate_category_count = model_and_data_rate_category_count(m);
 
-    arb_t lhood;
-    arb_struct * lhood_gradient;
-    arb_mat_t lhood_hessian;
-    arb_mat_t ll_hessian;
+    arb_t cat_rate, cat_rate_squared, rate;
+    arb_t prior_prob;
 
-    arb_init(lhood);
-    lhood_gradient = _arb_vec_init(edge_count);
-    arb_mat_init(lhood_hessian, edge_count, edge_count);
-    arb_mat_init(ll_hessian, edge_count, edge_count);
+    arb_t tmp;
+    arb_mat_t ll_hessian;
 
     arb_struct * site_weights;
     arb_t site_weight_divisor;
+
+    arb_init(cat_rate);
+    arb_init(cat_rate_squared);
+    arb_init(rate);
+    arb_init(prior_prob);
+
+    /* category-specific lhood-related values */
+    arb_t cat_lhood;
+    arb_struct * cat_lhood_gradient;
+    arb_mat_t cat_lhood_hessian;
+
+    /* site-specific lhood-related values, accumulated across categories */
+    arb_t site_lhood;
+    arb_struct * site_lhood_gradient;
+    arb_mat_t site_lhood_hessian;
+
+    /* init category-specific lhood-related values */
+    arb_init(cat_lhood);
+    cat_lhood_gradient = _arb_vec_init(edge_count);
+    arb_mat_init(cat_lhood_hessian, edge_count, edge_count);
+
+    /* init site-specific lhood-related values */
+    arb_init(site_lhood);
+    site_lhood_gradient = _arb_vec_init(edge_count);
+    arb_mat_init(site_lhood_hessian, edge_count, edge_count);
+
+    arb_init(tmp);
+    arb_mat_init(ll_hessian, edge_count, edge_count);
 
     /* Initialize the outputs to zero, before accumulating across sites. */
     so_zero(so);
@@ -529,14 +555,9 @@ _recompute_second_order(so_t so,
     for (site = 0; site < site_count; site++)
     {
         slong cat;
-        const arb_mat_struct *tmat_base;
 
         /* skip sites that are not selected */
         if (!site_selection_count[site]) continue;
-
-        /* todo: allow multiple rate categories */
-        cat = 0;
-        tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
 
         /*
          * Initialize base plane nodes for this site
@@ -548,97 +569,135 @@ _recompute_second_order(so_t so,
                 m->root_prior, csw->equilibrium,
                 m->preorder[0], prec);
 
-        /*
+        /* zero cross-category lhood accumulators */
+        arb_zero(site_lhood);
+        _arb_vec_zero(site_lhood_gradient, edge_count);
+        arb_mat_zero(site_lhood_hessian);
+
         for (cat = 0; cat < rate_category_count; cat++)
         {
-        */
+            arb_mat_struct *tmat_base;
+            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
 
-        /* Reset pointers in the virtual plane. */
-        for (a = 0; a < node_count; a++)
-        {
-            w->indirect_plane->node_pvectors[a] = NULL;
-        }
-        for (idx = 0; idx < edge_count; idx++)
-        {
-            w->indirect_plane->edge_pvectors[idx] = NULL;
-        }
-
-        evaluate_site_lhood(lhood,
-                w->lhood_plane->node_vectors,
-                w->lhood_plane->edge_vectors,
-                w->base_plane->node_vectors,
-                tmat_base,
-                m->g, m->preorder, node_count, prec);
-
-        /*
-         * If any site likelihood is exactly zero
-         * then we do not need to continue.
-         */
-        if (arb_is_zero(lhood))
-        {
-            fprintf(stderr, "error: infeasible\n");
-            result = -1;
-            goto finish;
-        }
-
-        /*
-         * If the site likelihood interval includes zero
-         * then this could be handled at this point,
-         * for example by immediately requesting higher precision.
-         */
-        if (arb_contains_zero(lhood))
-        {
-            so_indeterminate(so);
-            goto finish;
-        }
-
-        /*
-         * Evaluate first and second derivatives of site likelihood
-         * with respect to each edge rate coefficient.
-         * Note that these derivatives are with respect to the likelihood
-         * rather than with respect to the log likelihood.
-         */
-        if (req_g || req_h)
-        {
-            for (i = 0; i < edge_count; i++)
+            /* Reset pointers in the virtual plane. */
+            for (a = 0; a < node_count; a++)
             {
-                int update_indirect;
-                int idx_i;
+                w->indirect_plane->node_pvectors[a] = NULL;
+            }
+            for (idx = 0; idx < edge_count; idx++)
+            {
+                w->indirect_plane->edge_pvectors[idx] = NULL;
+            }
 
-                idx_i = pre_to_idx[i];
+            evaluate_site_lhood(cat_lhood,
+                    w->lhood_plane->node_vectors,
+                    w->lhood_plane->edge_vectors,
+                    w->base_plane->node_vectors,
+                    tmat_base,
+                    m->g, m->preorder, node_count, prec);
 
-                /* Point to site likelihood vectors. */
-                for (a = 0; a < node_count; a++)
+            /* compute category likelihood */
+            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
+            arb_mul(cat_lhood, cat_lhood, prior_prob, prec);
+
+            /* todo: allow some rate categories to be infeasible */
+            if (arb_is_zero(cat_lhood))
+            {
+                fprintf(stderr, "error: infeasible\n");
+                result = -1;
+                goto finish;
+            }
+
+            /* todo: allow some rate categories to be infeasible */
+            if (arb_contains_zero(cat_lhood))
+            {
+                so_indeterminate(so);
+                goto finish;
+            }
+
+            /*
+             * Evaluate first and second derivatives of site likelihood
+             * with respect to each edge rate coefficient.
+             * Note that these derivatives are with respect to the likelihood
+             * rather than with respect to the log likelihood.
+             */
+            if (req_g || req_h)
+            {
+                for (i = 0; i < edge_count; i++)
                 {
-                    w->indirect_plane->node_pvectors[a] = (
-                            w->lhood_plane->node_vectors + a);
-                }
-                for (idx = 0; idx < edge_count; idx++)
-                {
-                    w->indirect_plane->edge_pvectors[idx] = (
-                            w->lhood_plane->edge_vectors + idx);
-                }
+                    int update_indirect;
+                    int idx_i;
 
-                update_indirect = 1;
-                evaluate_site_derivatives(lhood_gradient + idx_i,
-                        m->g, m->preorder, csw, w, idx_to_a, b_to_idx,
-                        idx_i, w->deriv_plane, update_indirect, prec);
+                    idx_i = pre_to_idx[i];
 
-                if (req_h)
-                {
-                    for (j = 0; j <= i; j++)
+                    /* Point to site likelihood vectors. */
+                    for (a = 0; a < node_count; a++)
                     {
-                        int idx_j;
-                        idx_j = pre_to_idx[j];
-                        update_indirect = 0;
-                        evaluate_site_derivatives(
-                                arb_mat_entry(lhood_hessian, idx_i, idx_j),
-                                m->g, m->preorder, csw, w, idx_to_a, b_to_idx,
-                                idx_j, w->hess_plane, update_indirect, prec);
+                        w->indirect_plane->node_pvectors[a] = (
+                                w->lhood_plane->node_vectors + a);
+                    }
+                    for (idx = 0; idx < edge_count; idx++)
+                    {
+                        w->indirect_plane->edge_pvectors[idx] = (
+                                w->lhood_plane->edge_vectors + idx);
+                    }
+
+                    update_indirect = 1;
+                    evaluate_site_derivatives(cat_lhood_gradient + idx_i,
+                            m->g, m->preorder,
+                            csw->rate_matrix, tmat_base,
+                            w, idx_to_a, b_to_idx,
+                            idx_i, w->deriv_plane, update_indirect, prec);
+
+                    if (req_h)
+                    {
+                        for (j = 0; j <= i; j++)
+                        {
+                            int idx_j;
+                            idx_j = pre_to_idx[j];
+                            update_indirect = 0;
+                            evaluate_site_derivatives(
+                                    arb_mat_entry(
+                                        cat_lhood_hessian, idx_i, idx_j),
+                                    m->g, m->preorder,
+                                    csw->rate_matrix, tmat_base,
+                                    w, idx_to_a, b_to_idx,
+                                    idx_j, w->hess_plane, update_indirect, prec);
+                        }
                     }
                 }
             }
+
+            /* Accumulate the lhood data. */
+            arb_add(site_lhood, site_lhood, cat_lhood, prec);
+            rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+            arb_mul(cat_rate_squared, cat_rate, cat_rate, prec);
+            for (i = 0; i < edge_count; i++)
+            {
+                int a = pre_to_idx[i];
+                arb_struct *dsite = site_lhood_gradient + a;
+                arb_struct *dcat = cat_lhood_gradient + a;
+
+                /* accumulate gradient */
+                arb_mul(tmp, cat_rate, prior_prob, prec);
+                arb_addmul(dsite, dcat, tmp, prec);
+
+                /* accumulate hessian */
+                arb_mul(tmp, tmp, cat_rate, prec);
+                for (j = 0; j <= i; j++)
+                {
+                    int b = pre_to_idx[j];
+                    arb_struct *hsite = arb_mat_entry(site_lhood_hessian, a, b);
+                    arb_struct *hcat = arb_mat_entry(cat_lhood_hessian, a, b);
+                    arb_addmul(hsite, hcat, tmp, prec);
+                }
+            }
         }
+
+        /*
+         * Now that site likelihood data has been computed across categories,
+         * accumulate the data across sites in log space.
+         */
 
         /*
          * Compute the hessian of log likelihood for this site, given:
@@ -651,7 +710,8 @@ _recompute_second_order(so_t so,
         if (req_h)
         {
             _lhood_hess_to_ll_hess(ll_hessian,
-                    lhood, lhood_gradient, lhood_hessian, pre_to_idx, prec);
+                    site_lhood, site_lhood_gradient, site_lhood_hessian,
+                    pre_to_idx, prec);
             arb_mat_scalar_mul_arb(ll_hessian,
                     ll_hessian, site_weights+site, prec);
             arb_mat_scalar_div_arb(ll_hessian,
@@ -660,28 +720,22 @@ _recompute_second_order(so_t so,
         }
 
         /* accumulate log likelihood */
-        /* if (req_y) */
         {
-            arb_t tmp;
-            arb_init(tmp);
-            arb_log(tmp, lhood, prec);
+            arb_log(tmp, site_lhood, prec);
             arb_div(tmp, tmp, site_weight_divisor, prec);
             arb_addmul(so->ll, site_weights + site, tmp, prec);
-            arb_clear(tmp);
         }
 
         /* accumulate gradient of log likelihood */
         if (req_g)
         {
-            arb_t tmp;
-            arb_init(tmp);
-            arb_div(tmp, site_weights + site, lhood, prec);
+            arb_div(tmp, site_weights + site, site_lhood, prec);
             arb_div(tmp, tmp, site_weight_divisor, prec);
             for (i = 0; i < edge_count; i++)
             {
-                arb_addmul(so->ll_gradient + i, lhood_gradient + i, tmp, prec);
+                arb_addmul(so->ll_gradient + i,
+                        site_lhood_gradient + i, tmp, prec);
             }
-            arb_clear(tmp);
         }
     }
 
@@ -708,9 +762,22 @@ finish:
     arb_clear(site_weight_divisor);
     _arb_vec_clear(site_weights, site_count);
 
-    arb_clear(lhood);
-    _arb_vec_clear(lhood_gradient, edge_count);
-    arb_mat_clear(lhood_hessian);
+    arb_clear(cat_rate);
+    arb_clear(cat_rate_squared);
+    arb_clear(rate);
+    arb_clear(prior_prob);
+
+    /* clear category-specific lhood-related values */
+    arb_clear(cat_lhood);
+    _arb_vec_clear(cat_lhood_gradient, edge_count);
+    arb_mat_clear(cat_lhood_hessian);
+
+    /* clear site-specific lhood-related values */
+    arb_clear(site_lhood);
+    _arb_vec_clear(site_lhood_gradient, edge_count);
+    arb_mat_clear(site_lhood_hessian);
+
+    arb_clear(tmp);
     arb_mat_clear(ll_hessian);
 
     free(idx_to_a);
@@ -720,6 +787,7 @@ finish:
 
     return result;
 }
+
 
 /*
  * Second order log likelihood computations aggregated over sites.
