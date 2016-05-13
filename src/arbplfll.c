@@ -69,6 +69,9 @@
 #include "util.h"
 #include "evaluate_site_lhood.h"
 #include "equilibrium.h"
+#include "arb_mat_extras.h"
+#include "cross_site_ws.h"
+#include "ndaccum.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -76,254 +79,190 @@
 #include "arbplfll.h"
 
 
-/*
- * Likelihood workspace.
- * The object lifetime is limited to only one level of precision,
- * but it extends across site evaluations.
- */
+/* This object changes in the course of the iteration over sites. */
 typedef struct
 {
-    slong prec;
-    int node_count;
-    int edge_count;
-    int state_count;
-    arb_struct *edge_rates;
-    arb_struct *equilibrium;
-    arb_mat_t rate_matrix;
-    arb_mat_struct *transition_matrices;
-    arb_mat_struct *base_node_column_vectors;
-    arb_mat_struct *lhood_node_column_vectors;
+    arb_mat_struct *base_node_vectors;
+    arb_mat_struct *lhood_node_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
 static void
-likelihood_ws_init(likelihood_ws_t w, model_and_data_t m, slong prec)
+likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 {
-    csr_graph_struct *g;
-    int i, j, k;
-    arb_mat_struct * tmat;
-    arb_mat_struct * nmat;
-    double tmpd;
+    slong node_count = model_and_data_node_count(m);
+    slong state_count = model_and_data_state_count(m);
 
-    if (!m)
-    {
-        arb_mat_init(w->rate_matrix, 0, 0);
-        w->transition_matrices = NULL;
-        w->base_node_column_vectors = NULL;
-        w->lhood_node_column_vectors = NULL;
-        w->edge_rates = NULL;
-        w->equilibrium = NULL;
-        w->node_count = 0;
-        w->edge_count = 0;
-        w->state_count = 0;
-        w->prec = 0;
-        return;
-    }
-
-    g = m->g;
-
-    w->prec = prec;
-    w->node_count = g->n;
-    w->edge_count = g->nnz;
-    w->state_count = arb_mat_nrows(m->mat);
-
-    w->edge_rates = _arb_vec_init(w->edge_count);
-    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
-    w->transition_matrices = flint_malloc(
-            w->edge_count * sizeof(arb_mat_struct));
-    w->base_node_column_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->lhood_node_column_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->equilibrium = NULL;
-    if (model_and_data_uses_equilibrium(m))
-    {
-        w->equilibrium = _arb_vec_init(w->state_count);
-    }
-
-    /*
-     * This is the csr graph index of edge (a, b).
-     * Given this index, node b is directly available
-     * from the csr data structure.
-     * The rate coefficient associated with the edge will also be available.
-     * On the other hand, the index of node 'a' will be available through
-     * the iteration order rather than directly from the index.
-     */
-    int idx;
-
-    /*
-     * Define the map from csr edge index to edge rate.
-     * The edge rate is represented in arbitrary precision.
-     */
-    if (!m->edge_map)
-    {
-        fprintf(stderr, "internal error: edge map is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_map->order)
-    {
-        fprintf(stderr, "internal error: edge map order is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_rate_coefficients)
-    {
-        fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
-        abort();
-    }
-    for (i = 0; i < w->edge_count; i++)
-    {
-        idx = m->edge_map->order[i];
-        tmpd = m->edge_rate_coefficients[i];
-        arb_set_d(w->edge_rates + idx, tmpd);
-    }
-
-    _update_rate_matrix_and_equilibrium(
-            w->rate_matrix,
-            w->equilibrium,
-            m->rate_divisor,
-            m->use_equilibrium_rate_divisor,
-            m->root_prior,
-            m->mat,
-            prec);
-
-    /*
-     * Modify the diagonals of the unscaled rate matrix
-     * so that the sum of each row is zero.
-     */
-    _arb_update_rate_matrix_diagonal(w->rate_matrix, w->prec);
-
-    /*
-     * Initialize the array of arbitrary precision transition matrices.
-     * They will initially contain appropriately scaled rate matrices.
-     * Although the unscaled rates have zero arb radius and the
-     * scaling coefficients have zero arb radius, the entries of the
-     * scaled rate matrices will in general have positive arb radius.
-     */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_init(tmat, w->state_count, w->state_count);
-    }
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        for (j = 0; j < w->state_count; j++)
-        {
-            for (k = 0; k < w->state_count; k++)
-            {
-                arb_mul(arb_mat_entry(tmat, j, k),
-                        arb_mat_entry(w->rate_matrix, j, k),
-                        w->edge_rates + idx, w->prec);
-            }
-        }
-    }
-
-    /*
-     * Compute the matrix exponentials of the scaled transition rate matrices.
-     * Note that the arb matrix exponential function allows aliasing,
-     * so we do not need to allocate a temporary array (although a temporary
-     * array will be created by the arb function).
-     */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_exp(tmat, tmat, w->prec);
-    }
-
-    /*
-     * Allocate an arbitrary precision column vector for each node.
-     * These are for base likelihoods involving data or the prior.
-     */
-    for (i = 0; i < w->node_count; i++)
-    {
-        nmat = w->base_node_column_vectors + i;
-        arb_mat_init(nmat, w->state_count, 1);
-    }
-
-    /*
-     * Allocate an arbitrary precision column vector for each node.
-     * This will be used to accumulate conditional likelihoods.
-     */
-    for (i = 0; i < w->node_count; i++)
-    {
-        nmat = w->lhood_node_column_vectors + i;
-        arb_mat_init(nmat, w->state_count, 1);
-    }
+    w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
 }
 
 static void
-likelihood_ws_clear(likelihood_ws_t w)
+likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 {
-    int i, idx;
+    slong node_count = model_and_data_node_count(m);
 
-    if (w->edge_rates)
+    _arb_mat_vec_clear(w->base_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
+}
+
+/* this function uses arbplfmarginal as a template */
+static void
+_nd_accum_update(nd_accum_t arr,
+        likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
+{
+    slong site, cat;
+    arb_t cat_lhood, prior_prob, ll, post_lhood_sum;
+    nd_axis_struct *site_axis;
+    int *coords;
+
+    slong ncats = model_and_data_rate_category_count(m);
+    slong site_count = model_and_data_site_count(m);
+
+    arb_init(cat_lhood);
+    arb_init(prior_prob);
+    arb_init(ll);
+    arb_init(post_lhood_sum);
+
+    coords = malloc(arr->ndim * sizeof(int));
+
+    site_axis = arr->axes + 0;
+
+    /* zero all requested cells of the array */
+    nd_accum_zero_requested_cells(arr);
+
+    /*
+     * Update the output array at the given precision.
+     * Axes have already been updated for this precision.
+     * The nd array links to axis selection and aggregation information,
+     * and the model and data are provided separately.
+     */
+    for (site = 0; site < site_count; site++)
     {
-        _arb_vec_clear(w->edge_rates, w->edge_count);
+        /* skip sites that are not requested */
+        if (!site_axis->request_update[site]) continue;
+        coords[0] = site;
+
+        /* update base node vectors */
+        pmat_update_base_node_vectors(
+                w->base_node_vectors, m->p, site,
+                m->root_prior, csw->equilibrium,
+                m->preorder[0], prec);
+
+        /* sum over rate categories */
+        arb_zero(post_lhood_sum);
+        for (cat = 0; cat < ncats; cat++)
+        {
+            const arb_mat_struct * tmat_base;
+            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
+
+            evaluate_site_lhood(cat_lhood,
+                    w->lhood_node_vectors,
+                    NULL,
+                    w->base_node_vectors,
+                    tmat_base,
+                    m->g, m->preorder, csw->node_count, prec);
+
+            /* Compute the likelihood for the site and category. */
+            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
+            arb_addmul(post_lhood_sum, prior_prob, cat_lhood, prec);
+        }
+
+        arb_log(ll, post_lhood_sum, prec);
+        nd_accum_accumulate(arr, coords, ll, prec);
     }
 
-    if (w->equilibrium)
+    arb_clear(cat_lhood);
+    arb_clear(prior_prob);
+    arb_clear(post_lhood_sum);
+    arb_clear(ll);
+
+    free(coords);
+}
+
+/* this function uses arbplfmarginal as a template */
+static json_t *
+_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
+{
+    json_t * j_out = NULL;
+    slong prec;
+    int axis_idx;
+    nd_axis_struct axes[1];
+    nd_accum_t arr;
+    cross_site_ws_t csw;
+    likelihood_ws_t w;
+    int ndim = 1;
+    int result = 0;
+
+    slong site_count = model_and_data_site_count(m);
+
+    /* initialize likelihood workspace */
+    cross_site_ws_init(csw, m);
+    likelihood_ws_init(w, m);
+
+    /* initialize axes at zero precision */
+    nd_axis_init(axes+0, "site", site_count, r_site, 0, NULL, 0);
+
+    /* initialize nd accumulation array */
+    nd_accum_pre_init(arr);
+    nd_accum_init(arr, axes, ndim);
+
+    /* repeat with increasing precision until there is no precision failure */
+    int success = 0;
+    for (prec=4; !success; prec <<= 1)
     {
-        _arb_vec_clear(w->equilibrium, w->state_count);
+        cross_site_ws_update(csw, m, prec);
+
+        /* recompute axis reduction weights with increased precision */
+        nd_axis_update_precision(axes+0, r_site, prec);
+
+        /*
+         * Recompute the output array with increased working precision.
+         * This also updates the workspace conditional and marginal
+         * per-node and per-edge likelihood column state vectors.
+         */
+        _nd_accum_update(arr, w, csw, m, prec);
+
+        /* check whether entries are accurate to full relative precision  */
+        success = nd_accum_can_round(arr);
     }
 
-    arb_mat_clear(w->rate_matrix);
+    /* build the json output using the nd array */
+    j_out = nd_accum_get_json(arr, &result);
+    if (result) goto finish;
 
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        arb_mat_clear(w->transition_matrices + idx);
-    }
-    flint_free(w->transition_matrices);
-    
-    for (i = 0; i < w->node_count; i++)
-    {
-        arb_mat_clear(w->base_node_column_vectors + i);
-    }
-    flint_free(w->base_node_column_vectors);
+finish:
 
-    for (i = 0; i < w->node_count; i++)
+    /* clear likelihood workspace */
+    cross_site_ws_clear(csw);
+    likelihood_ws_clear(w, m);
+
+    /* clear axes */
+    for (axis_idx = 0; axis_idx < ndim; axis_idx++)
     {
-        arb_mat_clear(w->lhood_node_column_vectors + i);
+        nd_axis_clear(axes + axis_idx);
     }
-    flint_free(w->lhood_node_column_vectors);
+
+    /* clear nd accumulation array */
+    nd_accum_clear(arr);
+
+    *result_out = result;
+    return j_out;
 }
 
 
-json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
+static int
+_parse(model_and_data_t m, column_reduction_t r_site, json_t *root)
 {
-    json_t *j_out = NULL;
     json_t *model_and_data = NULL;
     json_t *site_reduction = NULL;
+    slong site_count;
     int result = 0;
-    int site_count = 0;
-    model_and_data_t m;
-    column_reduction_t r;
-    int *site_is_selected = NULL;
-    arb_struct * site_likelihoods = NULL;
-    arb_struct * site_log_likelihoods = NULL;
-    arb_t aggregate, tmp, weight;
-    likelihood_ws_t w;
-    int iter = 0;
 
-    arb_init(tmp);
-    arb_init(weight);
-    arb_init(aggregate);
-
-    likelihood_ws_init(w, NULL, 0);
-    model_and_data_init(m);
-    column_reduction_init(r);
-
-    if (userdata)
+    /* unpack the top level of json input */
     {
-        fprintf(stderr, "error: unexpected userdata\n");
-        result = -1;
-        goto finish;
-    }
-
-    /* parse the json input */
-    {
-        json_error_t err;
         size_t flags;
-        
+        json_error_t err;
         flags = JSON_STRICT;
         result = json_unpack_ex(root, &err, flags,
                 "{s:o, s?o}",
@@ -333,151 +272,56 @@ json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
         if (result)
         {
             fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-            goto finish;
+            return result;
         }
     }
 
     /* validate the model and data section of the json input */
     result = validate_model_and_data(m, model_and_data);
+    if (result) return result;
+
+    /* initialize counts */
+    site_count = model_and_data_site_count(m);
+
+    /* validate the site reduction section of the json input */
+    result = validate_column_reduction(
+            r_site, site_count, "site", site_reduction);
+    if (result) return result;
+
+    return result;
+}
+
+
+json_t *arbplf_ll_run(void *userdata, json_t *root, int *retcode)
+{
+    json_t *j_out = NULL;
+    model_and_data_t m;
+    column_reduction_t r_site;
+    int result = 0;
+
+    model_and_data_init(m);
+    column_reduction_init(r_site);
+
+    if (userdata)
+    {
+        fprintf(stderr, "internal error: unexpected userdata\n");
+        result = -1;
+        goto finish;
+    }
+
+    result = _parse(m, r_site, root);
     if (result) goto finish;
 
-    site_count = pmat_nsites(m->p);
-
-    /* validate the (optional) site reduction section of the json input */
-    result = validate_column_reduction(r, site_count, "site", site_reduction);
+    j_out = _query(m, r_site, &result);
     if (result) goto finish;
-
-    int i;
-    int site;
-    site_is_selected = calloc(site_count, sizeof(int));
-    for (i = 0; i < r->selection_len; i++)
-    {
-        site = r->selection[i];
-        site_is_selected[site] = 1;
-    }
-
-    site_likelihoods = _arb_vec_init(site_count);
-    site_log_likelihoods = _arb_vec_init(site_count);
-
-    /* repeat site evaluations with increasing precision */
-    slong prec = 4;
-    int failed = 1;
-    arb_ptr lhood, ll;
-    while (failed)
-    {
-        failed = 0;
-        likelihood_ws_clear(w);
-        likelihood_ws_init(w, m, prec);
-        /* if any likelihood is exactly zero then return an error */
-        for (site = 0; site < site_count; site++)
-        {
-            lhood = site_likelihoods + site;
-            ll = site_log_likelihoods + site;
-
-            /* if the site is not in the selection then skip it */
-            if (!site_is_selected[site])
-                continue;
-
-            /* if the log likelihood is fully evaluated then skip it */
-            if (iter && r->agg_mode == AGG_NONE && _can_round(ll))
-                continue;
-
-            pmat_update_base_node_vectors(
-                    w->base_node_column_vectors, m->p, site,
-                    m->root_prior, w->equilibrium,
-                    m->preorder[0], w->prec);
-
-            evaluate_site_lhood(lhood,
-                    w->lhood_node_column_vectors,
-                    NULL,
-                    w->base_node_column_vectors,
-                    w->transition_matrices,
-                    m->g, m->preorder, w->node_count, w->prec);
-
-            if (arb_is_zero(lhood))
-            {
-                fprintf(stderr, "error: infeasible\n");
-                result = -1;
-                goto finish;
-            }
-            arb_log(ll, lhood, prec);
-            /* if no aggregation and still bad bounds then fail */
-            if (r->agg_mode == AGG_NONE && !_can_round(ll))
-            {
-                failed = 1;
-            }
-        }
-        /* compute the aggregate if any */
-        if (r->agg_mode != AGG_NONE)
-        {
-            arb_zero(aggregate);
-            arb_one(weight);
-            for (i = 0; i < r->selection_len; i++)
-            {
-                site = r->selection[i];
-                if (r->agg_mode == AGG_WEIGHTED_SUM)
-                {
-                    arb_set_d(weight, r->weights[i]);
-                }
-                ll = site_log_likelihoods + site;
-                arb_addmul(aggregate, ll, weight, prec);
-            }
-            if (r->agg_mode == AGG_AVG)
-            {
-                arb_div_si(aggregate, aggregate, r->selection_len, prec);
-            }
-            /* if aggregate has bad bounds then fail */
-            if (!_can_round(aggregate))
-            {
-                failed = 1;
-            }
-        }
-        prec <<= 1;
-        iter++;
-    }
-
-    if (r->agg_mode == AGG_NONE)
-    {
-        double d;
-        json_t *j_data, *x;
-        j_data = json_array();
-        for (i = 0; i < r->selection_len; i++)
-        {
-            site = r->selection[i];
-            ll = site_log_likelihoods + site;
-            d = arf_get_d(arb_midref(ll), ARF_RND_NEAR);
-            x = json_pack("[i, f]", site, d);
-            json_array_append_new(j_data, x);
-        }
-        j_out = json_pack("{s:[s, s], s:o}",
-                "columns", "site", "value", "data", j_data);
-    }
-    else
-    {
-        j_out = json_pack("{s:[s], s:[f]}",
-                "columns", "value", "data",
-                arf_get_d(arb_midref(aggregate), ARF_RND_NEAR));
-    }
 
 finish:
 
     *retcode = result;
 
-    arb_clear(aggregate);
-    arb_clear(tmp);
-    arb_clear(weight);
-    free(site_is_selected);
-    if (site_likelihoods)
-    {
-        _arb_vec_clear(site_likelihoods, site_count);
-    }
-    if (site_log_likelihoods)
-    {
-        _arb_vec_clear(site_log_likelihoods, site_count);
-    }
-    column_reduction_clear(r);
     model_and_data_clear(m);
-    likelihood_ws_clear(w);
+    column_reduction_clear(r_site);
+
     flint_cleanup();
     return j_out;
 }

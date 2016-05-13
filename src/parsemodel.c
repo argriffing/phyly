@@ -11,6 +11,9 @@
 #include "model.h"
 #include "csr_graph.h"
 
+
+
+
 /*
  * Array size must already be known.
  * Memory must already have been allocated.
@@ -543,6 +546,99 @@ finish:
 }
 
 
+static int
+_validate_rate_mixture(model_and_data_t m, json_t *root)
+{
+    int n;
+    json_t *rates = NULL;
+    json_t *prior = NULL;
+    rate_mixture_struct *x;
+
+    x = m->rate_mixture;
+
+    int result;
+    json_error_t err;
+    size_t flags;
+
+    result = 0;
+
+    if (root && !json_is_null(root))
+    {
+        flags = JSON_STRICT;
+
+        result = json_unpack_ex(root, &err, flags,
+                "{s:o, s:o}",
+                "rates", &rates,
+                "prior", &prior);
+        if (result)
+        {
+            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+            return result;
+        }
+
+        /* read the 'rates' array */
+        {
+            if (!json_is_array(rates))
+            {
+                fprintf(stderr, "_validate_rate_mixture: "
+                        "'rates' is not an array\n");
+                return -1;
+            }
+
+            n = json_array_size(rates);
+
+            rate_mixture_init(x, n);
+
+            result = _validate_nonnegative_array(x->rates, n, rates);
+            if (result)
+            {
+                fprintf(stderr, "_validate_rate_mixture: "
+                        "invalid 'rates' array\n");
+                return -1;
+            }
+        }
+
+        /* read the 'prior' array (or the string "uniform_distribution") */
+        {
+            const char s_uniform[] = "uniform_distribution";
+            const char s_msg[] = (
+                    "_validate_rate_mixture: the 'prior'"
+                    "argument must be either a nonnegative array or the string "
+                    "\"uniform_distribution\"\n");
+            if (json_is_string(prior))
+            {
+                if (!strcmp(json_string_value(prior), s_uniform))
+                {
+                    x->mode = RATE_MIXTURE_UNIFORM;
+                }
+                else
+                {
+                    fprintf(stderr, s_msg);
+                    return -1;
+                }
+            }
+            else if (json_is_array(prior))
+            {
+                result = _validate_nonnegative_array(x->prior, n, prior);
+                if (result)
+                {
+                    fprintf(stderr, "_validate_rate_mixture: "
+                            "invalid 'prior' array\n");
+                    return -1;
+                }
+                x->mode = RATE_MIXTURE_CUSTOM;
+            }
+        }
+    }
+    else
+    {
+        x->mode = RATE_MIXTURE_NONE;
+    }
+
+    return result;
+}
+
+
 int
 validate_model_and_data(model_and_data_t m, json_t *root)
 {
@@ -552,6 +648,7 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     json_t *probability_array = NULL;
     json_t *rate_divisor = NULL;
     json_t *root_prior = NULL;
+    json_t *rate_mixture = NULL;
 
     int result;
     json_error_t err;
@@ -561,13 +658,14 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     flags = JSON_STRICT;
 
     result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o, s:o, s:o, s?o, s?o}",
+            "{s:o, s:o, s:o, s:o, s?o, s?o, s?o}",
             "edges", &edges,
             "edge_rate_coefficients", &edge_rate_coefficients,
             "rate_matrix", &rate_matrix,
             "probability_array", &probability_array,
             "rate_divisor", &rate_divisor,
-            "root_prior", &root_prior);
+            "root_prior", &root_prior,
+            "rate_mixture", &rate_mixture);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
@@ -590,6 +688,9 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     if (result) return result;
 
     result = _validate_root_prior(m, root_prior);
+    if (result) return result;
+
+    result = _validate_rate_mixture(m, rate_mixture);
     if (result) return result;
 
     return result;

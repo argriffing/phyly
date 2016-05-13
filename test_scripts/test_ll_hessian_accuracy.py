@@ -5,6 +5,7 @@ Test accuracy using finite differences.
 from __future__ import print_function, division
 
 from StringIO import StringIO
+from functools import partial
 import json
 import copy
 import sys
@@ -70,56 +71,65 @@ def myhess(d):
 def test_using_finite_differences():
     d_in = default_in
 
-    def my_objective(X):
+    def my_objective(rate_mixture, X):
         d = copy.deepcopy(d_in)
         d['model_and_data']['edge_rate_coefficients'] = X
         d['site_reduction'] = {'aggregation' : 'sum'}
+        if rate_mixture:
+            d['model_and_data']['rate_mixture'] = rate_mixture
         y = myll(d).value[0]
         return y
 
-    def my_gradient(X):
+    def my_gradient(rate_mixture, X):
         d = copy.deepcopy(d_in)
         d['model_and_data']['edge_rate_coefficients'] = X
         d['site_reduction'] = {'aggregation' : 'sum'}
+        if rate_mixture:
+            d['model_and_data']['rate_mixture'] = rate_mixture
         y = myderiv(d).set_index('edge').value.values
         return (y).tolist()
 
-    def my_hessian(X):
+    def my_hessian(rate_mixture, X):
         d = copy.deepcopy(d_in)
         d['model_and_data']['edge_rate_coefficients'] = X
         d['site_reduction'] = {'aggregation' : 'sum'}
+        if rate_mixture:
+            d['model_and_data']['rate_mixture'] = rate_mixture
         df = myhess(d).pivot('first_edge', 'second_edge', 'value')
         return df.as_matrix()
 
     x0 = d_in['model_and_data']['edge_rate_coefficients']
 
-    y0 = my_objective(x0)
-    g0 = my_gradient(x0)
-    h0 = my_hessian(x0)
+    rate_mixtures = (None, dict(prior=[0.3, 0.7], rates=[1, 2]))
+    for rate_mixture in rate_mixtures:
 
-    #print(y0)
-    #print(g0)
-    #print(h0)
+        objective = partial(my_objective, rate_mixture)
+        gradient = partial(my_gradient, rate_mixture)
+        hessian = partial(my_hessian, rate_mixture)
 
-    # check the gradient using numerical differences of 1e-8
-    numgrad = []
-    delta = 1e-8
-    for i in range(len(x0)):
-        u = x0[:]
-        u[i] += delta
-        y = my_objective(u)
-        numgrad.append((y - y0) / delta)
+        y0 = objective(x0)
+        g0 = gradient(x0)
+        h0 = hessian(x0)
 
-    # check the hessian using numerical differences of 1e-8
-    numhess = []
-    for i in range(len(x0)):
-        u = x0[:]
-        u[i] += delta
-        g = my_gradient(u)
-        r = (np.array(g) - np.array(g0)) / delta
-        numhess.append(r.tolist())
+        # check the gradient using numerical differences of 1e-8
+        numgrad = []
+        delta = 1e-8
+        for i in range(len(x0)):
+            u = x0[:]
+            u[i] += delta
+            y = objective(u)
+            numgrad.append((y - y0) / delta)
 
-    # Require that the finite differences gradient and hessian
-    # are in the ballpark of the internally computed analogues.
-    assert_allclose(numgrad, g0, rtol=1e-3)
-    assert_allclose(numhess, h0, rtol=1e-3)
+        # check the hessian using numerical differences of 1e-8
+        numhess = []
+        for i in range(len(x0)):
+            u = x0[:]
+            u[i] += delta
+            g = gradient(u)
+            r = (np.array(g) - np.array(g0)) / delta
+            numhess.append(r.tolist())
+
+        # Require that the finite differences gradient and hessian
+        # are in the ballpark of the internally computed analogues.
+        assert_allclose(numgrad, g0, rtol=1e-3)
+        assert_allclose(numhess, h0, rtol=1e-3)

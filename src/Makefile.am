@@ -27,6 +27,10 @@ CORE_SOURCES = \
 	evaluate_site_lhood.h \
 	evaluate_site_marginal.c \
 	evaluate_site_marginal.h \
+	evaluate_site_frechet.c \
+	evaluate_site_frechet.h \
+	arb_mat_extras.c \
+	arb_mat_extras.h \
 	arb_vec_extras.c \
 	arb_vec_extras.h \
 	arb_vec_calc.c \
@@ -37,6 +41,8 @@ CORE_SOURCES = \
 	rosenbrock.h \
 	equilibrium.c \
 	equilibrium.h \
+	cross_site_ws.c \
+	cross_site_ws.h \
 	finite_differences.c \
 	finite_differences.h \
 	parsemodel.c \

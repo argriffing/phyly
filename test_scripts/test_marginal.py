@@ -14,7 +14,6 @@ from numpy.testing import (
         assert_, assert_equal, assert_raises, assert_allclose, TestCase)
 
 from arbplf import arbplf_ll
-from arbplf import arbplf_deriv
 from arbplf import arbplf_marginal
 
 
@@ -65,14 +64,6 @@ def myll(d):
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     return df
 
-def myderiv(d):
-    """
-    Provides a dict -> pandas.DataFrame wrapper of the pure JSON arbplf_deriv.
-    """
-    s = arbplf_deriv(json.dumps(d))
-    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
-    return df
-
 def mymarginal(d):
     """
     Provides a dict -> pandas.DataFrame wrapper of the JSON arbplf_marginal.
@@ -95,7 +86,7 @@ def test_default_marginal_vs_empty_reductions():
     assert_allclose(u.values, v.values)
 
 
-def test_marginal_sum_over_sites():
+def test_sum_over_sites():
     # see comments in test_deriv_sum_over_sites for more detail
 
     full = mymarginal(default_in)
@@ -117,7 +108,7 @@ def test_marginal_sum_over_sites():
     _assert_allclose_series(pd_sum, phyly_sum)
 
 
-def test_marginal_weighted_sum_over_states():
+def test_weighted_sum_over_states():
     full = mymarginal(default_in)
     state_weights = [0.1, 0.2, 0.3, 0.4]
 
@@ -135,7 +126,7 @@ def test_marginal_weighted_sum_over_states():
     _assert_allclose_series(pd_sum, phyly_sum)
 
 
-def test_marginal_via_likelihood():
+def test_via_likelihood():
     # A marginal state distribution at a node can be computed
     # inefficiently using only a likelihood calculation.
     # Check that this inefficient likelihood-only method gives the same
@@ -167,3 +158,106 @@ def test_marginal_via_likelihood():
     distn_via_likelihood = lhoods / lhoods.sum()
 
     _assert_allclose_series(distn_via_marginal, distn_via_likelihood)
+
+def test_degenerate_rate_mixtures():
+    # Note that for this example,
+    # a category with rate equal to zero has zero conditional probability.
+    v = mymarginal(default_in)
+    degenerate_rate_mixtures = (
+            dict(rates=[1, 1, 1, 1], prior=[0.1, 0.2, 0.3, 0.4]),
+            dict(rates=[1, 1, 1, 1], prior='uniform_distribution'),
+            dict(rates=[1, 2], prior=[1, 0]),
+            dict(rates=[3, 1], prior=[0, 1]),
+            dict(rates=[0, 1], prior=[0.4, 0.6]),
+            dict(rates=[0, 1], prior='uniform_distribution'),
+            dict(rates=[0, 1, 2], prior=[0.2, 0.8, 0.0]))
+    x = copy.deepcopy(default_in)
+    for rate_mixture in degenerate_rate_mixtures:
+        x['model_and_data']['rate_mixture'] = rate_mixture
+        u = mymarginal(x)
+        assert_allclose(u.values, v.values)
+
+def test_rates_across_sites_invariant():
+    # Same as invariant_c except with reductions.
+    # Pick an arbitrary site and an arbitrary node.
+    node = 6
+    site = 1
+    #
+    x = copy.deepcopy(default_in)
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    v = mymarginal(x)
+    # the only rate category with a nonzero rate*probability
+    # has a rate of 1, so the output should not be affected
+    rates = [0, 1, 2]
+    prior = [0.2, 0.8, 0.0]
+    x = copy.deepcopy(default_in)
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    u = mymarginal(x)
+    assert_allclose(u.values, v.values)
+
+def test_rates_across_sites_uniform():
+    rates = [1, 2, 3]
+    #
+    prior = 'uniform_distribution'
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    u = mymarginal(x)
+    #
+    prior = [1/3, 1/3, 1/3]
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    v = mymarginal(x)
+    #
+    assert_allclose(u.values, v.values)
+
+def test_rates_across_sites_vs_block_diagonal():
+    # Compare rates across sites vs. a block diagonal workaround.
+    rates = [1, 2]
+    prior = [0.25, 0.75]
+    # Pick an arbitrary site and an arbitrary node.
+    node = 6
+    site = 1
+    #
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_matrix'] = [
+            [0., .3, .4, .5, 0., 0., 0., 0.],
+            [.3, 0., .3, .3, 0., 0., 0., 0.],
+            [.3, .6, 0., .3, 0., 0., 0., 0.],
+            [.3, .3, .3, 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., .6, .8, 1.],
+            [0., 0., 0., 0., .6, 0., .6, .6],
+            [0., 0., 0., 0., .6, 1.2, 0., .6],
+            [0., 0., 0., 0., .6, .6, .6, .0]]
+    x['model_and_data']['probability_array'] = [
+            [
+            [1, 0, 0, 0,   1, 0, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 0, 1, 0,   0, 0, 1, 0],
+            [0.0625, 0.0625, 0.0625, 0.0625, 0.1875, 0.1875, 0.1875, 0.1875],
+            [1, 1, 1, 1,   1, 1, 1, 1],
+            [1, 1, 1, 1,   1, 1, 1, 1]],
+            [
+            [1, 0, 0, 0,   1, 0, 0, 0],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 0, 0, 1,   0, 0, 0, 1],
+            [0, 1, 0, 0,   0, 1, 0, 0],
+            [0, 0, 1, 0,   0, 0, 1, 0],
+            [0.0625, 0.0625, 0.0625, 0.0625, 0.1875, 0.1875, 0.1875, 0.1875],
+            [1, 1, 1, 1,   1, 1, 1, 1],
+            [1, 1, 1, 1,   1, 1, 1, 1]]]
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    u = mymarginal(x).set_index('state').value.sort_index().values
+    #
+    x = copy.deepcopy(default_in)
+    x['model_and_data']['rate_mixture'] = dict(rates=rates, prior=prior)
+    x['node_reduction'] = {'selection' : [node], 'aggregation' : 'sum'}
+    x['site_reduction'] = {'selection' : [site], 'aggregation' : 'sum'}
+    v = mymarginal(x).set_index('state').value.sort_index().values
+    #
+    assert_allclose(u[:4] + u[4:], v)

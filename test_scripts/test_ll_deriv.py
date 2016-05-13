@@ -9,6 +9,7 @@ from __future__ import print_function, division
 from StringIO import StringIO
 import json
 import copy
+import random
 
 import numpy as np
 import pandas as pd
@@ -314,3 +315,63 @@ class TestDerivSelectionAggregation(CheckDeriv, TestCase):
         f = myderiv(self.x).set_index('site').value
         g = myderiv(self.y).set_index('site').value
         _assert_allclose_series(f, g)
+
+
+class TestDerivEdgeOrder(TestCase):
+
+    def test_arbitrary_edge_permutation(self):
+        # Check that permute(f(x)) = f(permute(x))
+        # where the permutation is over edges.
+        edge_count = len(default_in['model_and_data']['edges'])
+        perm = [2, 3, 4, 0, 1, 5, 6]
+        #
+        y = copy.deepcopy(default_in)
+        y['site_reduction'] = {'aggregation' : 'sum'}
+        f = myderiv(y).set_index('edge').value
+        fperm = copy.deepcopy(f)
+        for u, v in enumerate(perm):
+            fperm[u] = f[v]
+        #
+        x = copy.deepcopy(default_in)
+        x['site_reduction'] = {'aggregation' : 'sum'}
+        #
+        xm = x['model_and_data']
+        ym = y['model_and_data']
+        for u, v in enumerate(perm):
+            xm['edges'][u] = copy.deepcopy(
+                    ym['edges'][v])
+            xm['edge_rate_coefficients'][u] = copy.deepcopy(
+                    ym['edge_rate_coefficients'][v])
+        g = myderiv(x).set_index('edge').value
+        #
+        _assert_allclose_series(fperm, g)
+
+    def test_selection_with_arbitrary_edge_permutation(self):
+        # Check that select(permute(f(x))) = select(f(permute(x)))
+        # where the permutation is over edges.
+        edge_count = len(default_in['model_and_data']['edges'])
+        perm = [2, 3, 4, 0, 1, 5, 6]
+        selection = [1, 1, 2, 6, 5]
+        #
+        y = copy.deepcopy(default_in)
+        y['site_reduction'] = {'aggregation' : 'sum'}
+        f = myderiv(y).set_index('edge').value
+        fperm = copy.deepcopy(f)
+        for u, v in enumerate(perm):
+            fperm[u] = f[v]
+        fsel = fperm[selection]
+        #
+        x = copy.deepcopy(default_in)
+        x['site_reduction'] = {'aggregation' : 'sum'}
+        x['edge_reduction'] = {'selection' : selection}
+        #
+        xm = x['model_and_data']
+        ym = y['model_and_data']
+        for u, v in enumerate(perm):
+            xm['edges'][u] = copy.deepcopy(
+                    ym['edges'][v])
+            xm['edge_rate_coefficients'][u] = copy.deepcopy(
+                    ym['edge_rate_coefficients'][v])
+        g = myderiv(x).set_index('edge').value
+        #
+        _assert_allclose_series(fsel, g)

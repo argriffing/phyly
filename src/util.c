@@ -7,6 +7,17 @@
 
 #define FULL_RELATIVE_PRECISION 53
 
+void
+_arb_sum(arb_t dest, arb_struct *src, slong len, slong prec)
+{
+    slong i;
+    arb_zero(dest);
+    for (i = 0; i < len; i++)
+    {
+        arb_add(dest, dest, src + i, prec);
+    }
+}
+
 int _can_round(arb_t x)
 {
     /* This cannot deal with values like -1 +/- 1e-1000000000000 */
@@ -212,7 +223,8 @@ _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec)
 
 
 void
-_prune_update(arb_mat_t D, arb_mat_t C, arb_mat_t A, arb_mat_t B, slong prec)
+_prune_update(arb_mat_t D,
+        const arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec)
 {
     /*
      * D = C o (A * B)

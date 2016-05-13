@@ -49,6 +49,8 @@
 #include "evaluate_site_marginal.h"
 #include "ndaccum.h"
 #include "equilibrium.h"
+#include "arb_mat_extras.h"
+#include "cross_site_ws.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -59,197 +61,61 @@
 /* Likelihood workspace. */
 typedef struct
 {
-    int node_count;
-    int edge_count;
-    int state_count;
-    arb_struct *edge_rates;
-    arb_struct *equilibrium;
-    arb_mat_t rate_matrix;
-    arb_mat_struct *transition_matrices;
     arb_mat_struct *base_node_vectors;
     arb_mat_struct *lhood_node_vectors;
     arb_mat_struct *lhood_edge_vectors;
-    arb_mat_struct *marginal_node_vectors;
+    arb_mat_struct *marginal_node_vectors; /* one site, one category */
+    arb_mat_struct *cc_marginal_node_vectors; /* one site, across categories */
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
 static void
-likelihood_ws_init(likelihood_ws_t w, model_and_data_t m)
+likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 {
-    csr_graph_struct *g;
-    int i;
-    arb_mat_struct *tmat;
-    double tmpd;
+    slong node_count = model_and_data_node_count(m);
+    slong edge_count = model_and_data_edge_count(m);
+    slong state_count = model_and_data_state_count(m);
 
-    /*
-     * This is the csr graph index of edge (a, b).
-     * Given this index, node b is directly available
-     * from the csr data structure.
-     * The rate coefficient associated with the edge will also be available.
-     * On the other hand, the index of node 'a' will be available through
-     * the iteration order rather than directly from the index.
-     */
-    int idx;
-
-    g = m->g;
-
-    w->node_count = g->n;
-    w->edge_count = g->nnz;
-    w->state_count = arb_mat_nrows(m->mat);
-
-    w->edge_rates = _arb_vec_init(w->edge_count);
-    arb_mat_init(w->rate_matrix, w->state_count, w->state_count);
-    w->transition_matrices = flint_malloc(
-            w->edge_count * sizeof(arb_mat_struct));
-    w->equilibrium = NULL;
-    if (model_and_data_uses_equilibrium(m))
-    {
-        w->equilibrium = _arb_vec_init(w->state_count);
-    }
-
-    /* intialize transition probability matrices */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_init(tmat, w->state_count, w->state_count);
-    }
-
-    /*
-     * Define the map from csr edge index to edge rate.
-     * The edge rate is represented in arbitrary precision,
-     * but is assumed to take exactly the double precision input value.
-     */
-    if (!m->edge_map)
-    {
-        fprintf(stderr, "internal error: edge map is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_map->order)
-    {
-        fprintf(stderr, "internal error: edge map order is uninitialized\n");
-        abort();
-    }
-    if (!m->edge_rate_coefficients)
-    {
-        fprintf(stderr, "internal error: edge rate coeffs unavailable\n");
-        abort();
-    }
-    for (i = 0; i < w->edge_count; i++)
-    {
-        idx = m->edge_map->order[i];
-        tmpd = m->edge_rate_coefficients[i];
-        arb_set_d(w->edge_rates + idx, tmpd);
-    }
-
-    /* initialize per-node state vectors */
-    w->base_node_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->lhood_node_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    w->marginal_node_vectors = flint_malloc(
-            w->node_count * sizeof(arb_mat_struct));
-    for (i = 0; i < w->node_count; i++)
-    {
-        arb_mat_init(w->base_node_vectors+i, w->state_count, 1);
-        arb_mat_init(w->lhood_node_vectors+i, w->state_count, 1);
-        arb_mat_init(w->marginal_node_vectors+i, w->state_count, 1);
-    }
-
-    /* initialize per-edge state vectors */
-    w->lhood_edge_vectors = flint_malloc(
-            w->edge_count * sizeof(arb_mat_struct));
-    for (i = 0; i < w->edge_count; i++)
-    {
-        arb_mat_init(w->lhood_edge_vectors+i, w->state_count, 1);
-    }
+    w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
+    w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->cc_marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
 }
 
-
 static void
-likelihood_ws_clear(likelihood_ws_t w)
+likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 {
-    int i, idx;
+    slong node_count = model_and_data_node_count(m);
+    slong edge_count = model_and_data_edge_count(m);
 
-    /* clear edge rates */
-    _arb_vec_clear(w->edge_rates, w->edge_count);
-
-    if (w->equilibrium)
-    {
-        _arb_vec_clear(w->equilibrium, w->state_count);
-    }
-
-    /* clear unscaled rate matrix */
-    arb_mat_clear(w->rate_matrix);
-
-    /* clear per-edge matrices */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        arb_mat_clear(w->transition_matrices + idx);
-        arb_mat_clear(w->lhood_edge_vectors + idx);
-    }
-    flint_free(w->transition_matrices);
-    flint_free(w->lhood_edge_vectors);
-
-    /* clear per-node matrices */
-    for (i = 0; i < w->node_count; i++)
-    {
-        arb_mat_clear(w->base_node_vectors + i);
-        arb_mat_clear(w->lhood_node_vectors + i);
-        arb_mat_clear(w->marginal_node_vectors + i);
-    }
-    flint_free(w->base_node_vectors);
-    flint_free(w->lhood_node_vectors);
-    flint_free(w->marginal_node_vectors);
-}
-
-
-static void
-likelihood_ws_update(likelihood_ws_t w, model_and_data_t m, slong prec)
-{
-    /* arrays are already allocated and initialized */
-    int idx;
-    arb_mat_struct *rmat, *tmat;
-
-    rmat = w->rate_matrix;
-
-    _update_rate_matrix_and_equilibrium(
-            w->rate_matrix,
-            w->equilibrium,
-            m->rate_divisor,
-            m->use_equilibrium_rate_divisor,
-            m->root_prior,
-            m->mat,
-            prec);
-
-    /* modify rate matrix diagonals so that the sum of each row is zero */
-    _arb_update_rate_matrix_diagonal(rmat, prec);
-
-    /* exponentiate scaled rate matrices */
-    for (idx = 0; idx < w->edge_count; idx++)
-    {
-        tmat = w->transition_matrices + idx;
-        arb_mat_scalar_mul_arb(tmat, rmat, w->edge_rates + idx, prec);
-        arb_mat_exp(tmat, tmat, prec);
-    }
+    _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
+    _arb_mat_vec_clear(w->base_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
+    _arb_mat_vec_clear(w->marginal_node_vectors, node_count);
+    _arb_mat_vec_clear(w->cc_marginal_node_vectors, node_count);
 }
 
 
 static void
 _nd_accum_update(nd_accum_t arr,
-        likelihood_ws_t w, model_and_data_t m, slong prec)
+        likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
     int site, i, j;
-    arb_t lhood;
-    arb_mat_struct *nvec;
+    arb_t cat_lhood, prior_prob, post_lhood, post_lhood_sum;
     nd_axis_struct *site_axis, *node_axis, *state_axis;
-    int site_count;
     int *coords;
+    slong cat;
+
+    slong ncats = model_and_data_rate_category_count(m);
+    slong site_count = model_and_data_site_count(m);
+
+    arb_init(cat_lhood);
+    arb_init(prior_prob);
+    arb_init(post_lhood);
+    arb_init(post_lhood_sum);
 
     coords = malloc(arr->ndim * sizeof(int));
-
-    arb_init(lhood);
-
-    site_count = pmat_nsites(m->p);
 
     site_axis = arr->axes + 0;
     node_axis = arr->axes + 1;
@@ -273,41 +139,98 @@ _nd_accum_update(nd_accum_t arr,
         /* update base node vectors */
         pmat_update_base_node_vectors(
                 w->base_node_vectors, m->p, site,
-                m->root_prior, w->equilibrium,
+                m->root_prior, csw->equilibrium,
                 m->preorder[0], prec);
 
         /*
-         * Update per-node and per-edge likelihood vectors.
-         * Actually the likelihood vectors on edges are not used.
-         * This is a backward pass from the leaves to the root.
+         * Set all cross-category marginal vectors to zero,
+         * preparing to accumulate across categories.
          */
-        evaluate_site_lhood(lhood,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                w->base_node_vectors,
-                w->transition_matrices,
-                m->g, m->preorder, w->node_count, prec);
+        for (i = 0; i < csw->node_count; i++)
+        {
+            arb_mat_zero(w->cc_marginal_node_vectors + i);
+        }
 
         /*
-         * Update marginal distribution vectors at nodes.
-         * This is a forward pass from the root to the leaves.
+         * For each category, compute a likelihood for the current site,
+         * and compute marginal distributions at all requested nodes.
          */
-        evaluate_site_marginal(
-                w->marginal_node_vectors,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                w->transition_matrices,
-                m->g, m->preorder, w->node_count, w->state_count, prec);
-
-        /* update the nd accumulator */
-        for (i = 0; i < w->node_count; i++)
+        arb_zero(post_lhood_sum);
+        for (cat = 0; cat < ncats; cat++)
         {
+            const arb_mat_struct * tmat_base;
+            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
+
+            /*
+             * Update per-node and per-edge likelihood vectors.
+             * This is a backward pass from the leaves to the root.
+             */
+            evaluate_site_lhood(cat_lhood,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    w->base_node_vectors,
+                    tmat_base,
+                    m->g, m->preorder, csw->node_count, prec);
+
+            /* Compute the likelihood for the site and category. */
+            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
+            arb_mul(post_lhood, prior_prob, cat_lhood, prec);
+
+            /*
+             * If the posterior probability is zero,
+             * then ignore marginal probabilities for this category.
+             */
+            if (arb_is_zero(post_lhood))
+                continue;
+
+            arb_add(post_lhood_sum, post_lhood_sum, post_lhood, prec);
+
+            /*
+             * Update marginal distribution vectors at nodes.
+             * This is a forward pass from the root to the leaves.
+             */
+            evaluate_site_marginal(
+                    w->marginal_node_vectors,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    tmat_base,
+                    m->g, m->preorder, csw->node_count, csw->state_count, prec);
+
+            /*
+             * Accumulate the marginal probabilities for this category.
+             */
+            for (i = 0; i < csw->node_count; i++)
+            {
+                arb_mat_struct *a = w->marginal_node_vectors + i;
+                arb_mat_struct *b = w->cc_marginal_node_vectors + i;
+                for (j = 0; j < csw->state_count; j++)
+                {
+                    arb_addmul(arb_mat_entry(b, j, 0),
+                               arb_mat_entry(a, j, 0), post_lhood, prec);
+                }
+            }
+        }
+
+        /* Divide by the likelihood. */
+        for (i = 0; i < csw->node_count; i++)
+        {
+            arb_mat_scalar_div_arb(
+                    w->cc_marginal_node_vectors + i,
+                    w->cc_marginal_node_vectors + i,
+                    post_lhood_sum, prec);
+        }
+
+        /* Update the nd accumulator. */
+        for (i = 0; i < csw->node_count; i++)
+        {
+            arb_mat_struct *nvec;
+
             /* skip nodes that are not requested */
             if (!node_axis->request_update[i]) continue;
             coords[1] = i;
 
-            nvec = w->marginal_node_vectors + i;
-            for (j = 0; j < w->state_count; j++)
+            nvec = w->cc_marginal_node_vectors + i;
+            for (j = 0; j < csw->state_count; j++)
             {
                 /* skip states that are not requested */
                 if (!state_axis->request_update[j]) continue;
@@ -320,7 +243,11 @@ _nd_accum_update(nd_accum_t arr,
         }
     }
 
-    arb_clear(lhood);
+    arb_clear(cat_lhood);
+    arb_clear(prior_prob);
+    arb_clear(post_lhood);
+    arb_clear(post_lhood_sum);
+
     free(coords);
 }
 
@@ -333,24 +260,20 @@ _query(model_and_data_t m,
 {
     json_t * j_out = NULL;
     slong prec;
-    int ndim, result;
     int axis_idx;
-    int site_count, node_count, state_count;
     nd_axis_struct axes[3];
     nd_accum_t arr;
+    cross_site_ws_t csw;
     likelihood_ws_t w;
+    int ndim = 3;
+    int result = 0;
 
-    result = 0;
-
-    /* sites, nodes, states */
-    ndim = 3;
-
-    /* initialize counts */
-    site_count = pmat_nsites(m->p);
-    node_count = pmat_nrows(m->p);
-    state_count = pmat_ncols(m->p);
+    slong site_count = model_and_data_site_count(m);
+    slong node_count = model_and_data_node_count(m);
+    slong state_count = model_and_data_state_count(m);
 
     /* initialize likelihood workspace */
+    cross_site_ws_init(csw, m);
     likelihood_ws_init(w, m);
 
     /* initialize axes at zero precision */
@@ -366,12 +289,7 @@ _query(model_and_data_t m,
     int success = 0;
     for (prec=4; !success; prec <<= 1)
     {
-        /*
-         * Update likelihood workspace.
-         * This updates all members except the conditional and marginal
-         * per-node and per-edge likelihood column state vectors.
-         */
-        likelihood_ws_update(w, m, prec);
+        cross_site_ws_update(csw, m, prec);
 
         /* recompute axis reduction weights with increased precision */
         nd_axis_update_precision(axes+0, r_site, prec);
@@ -380,10 +298,10 @@ _query(model_and_data_t m,
 
         /*
          * Recompute the output array with increased working precision.
-         * This also updates the workspace conditional and merginal
+         * This also updates the workspace conditional and marginal
          * per-node and per-edge likelihood column state vectors.
          */
-        _nd_accum_update(arr, w, m, prec);
+        _nd_accum_update(arr, w, csw, m, prec);
 
         /* check whether entries are accurate to full relative precision  */
         success = nd_accum_can_round(arr);
@@ -396,10 +314,11 @@ _query(model_and_data_t m,
 finish:
 
     /* clear likelihood workspace */
-    likelihood_ws_clear(w);
+    cross_site_ws_clear(csw);
+    likelihood_ws_clear(w, m);
 
     /* clear axes */
-    for (axis_idx = 0; axis_idx < 3; axis_idx++)
+    for (axis_idx = 0; axis_idx < ndim; axis_idx++)
     {
         nd_axis_clear(axes + axis_idx);
     }
@@ -422,10 +341,8 @@ _parse(model_and_data_t m,
     json_t *site_reduction = NULL;
     json_t *node_reduction = NULL;
     json_t *state_reduction = NULL;
-    int site_count, node_count, state_count;
-    int result;
-
-    result = 0;
+    slong site_count, node_count, state_count;
+    int result = 0;
 
     /* unpack the top level of json input */
     {
@@ -451,9 +368,9 @@ _parse(model_and_data_t m,
     if (result) return result;
 
     /* initialize counts */
-    site_count = pmat_nsites(m->p);
-    node_count = pmat_nrows(m->p);
-    state_count = pmat_ncols(m->p);
+    site_count = model_and_data_site_count(m);
+    node_count = model_and_data_node_count(m);
+    state_count = model_and_data_state_count(m);
 
     /* validate the site reduction section of the json input */
     result = validate_column_reduction(
