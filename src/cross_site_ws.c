@@ -140,7 +140,8 @@ cross_site_ws_init(cross_site_ws_t w, const model_and_data_t m)
 
 /* rate matrix and edge rates have already been updated */
 static void
-_update_transition_matrices(cross_site_ws_t w, model_and_data_t m, slong prec)
+_update_transition_matrices(cross_site_ws_t w,
+        const model_and_data_t m, slong prec)
 {
     slong i, j;
     arb_t s;
@@ -162,7 +163,8 @@ _update_transition_matrices(cross_site_ws_t w, model_and_data_t m, slong prec)
 
 /* the rate matrix and equilibrium have already been updated */
 static void
-_update_rate_divisor(cross_site_ws_t w, model_and_data_t m, slong prec)
+_update_rate_divisor(cross_site_ws_t w,
+        const model_and_data_t m, slong prec)
 {
     if (m->use_equilibrium_rate_divisor)
     {
@@ -188,14 +190,14 @@ _update_rate_divisor(cross_site_ws_t w, model_and_data_t m, slong prec)
 }
 
 void
-cross_site_ws_update(cross_site_ws_t w, model_and_data_t m, slong prec)
+cross_site_ws_update(cross_site_ws_t w, const model_and_data_t m, slong prec)
 {
     cross_site_ws_update_with_edge_rates(w, m, NULL, prec);
 }
 
 void
 cross_site_ws_update_with_edge_rates(cross_site_ws_t w,
-        model_and_data_t m, arb_struct *edge_rates, slong prec)
+        const model_and_data_t m, const arb_struct *edge_rates, slong prec)
 {
     w->prec = prec;
 
