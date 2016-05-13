@@ -13,10 +13,7 @@ import scipy.stats
 from scipy import optimize
 from scipy.special import gamma, gammainc, expit, logit
 
-from arbplf import (
-        arbplf_ll, arbplf_newton_refine, arbplf_newton_update,
-        arbplf_em_update,
-        )
+from arbplf import arbplf_ll
 
 def T92(k, t=0.5):
     # try to use the Bio++ T92 parameterization
