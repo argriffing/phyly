@@ -57,8 +57,6 @@ typedef struct
 {
     arb_struct *dwell_accum;
     arb_struct *trans_accum;
-    arb_struct *cc_dwell_accum;
-    arb_struct *cc_trans_accum;
     arb_mat_struct *base_node_vectors;
     arb_mat_struct *lhood_node_vectors;
     arb_mat_struct *lhood_edge_vectors;
@@ -75,8 +73,6 @@ likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 
     w->dwell_accum = _arb_vec_init(edge_count);
     w->trans_accum = _arb_vec_init(edge_count);
-    w->cc_dwell_accum = _arb_vec_init(edge_count);
-    w->cc_trans_accum = _arb_vec_init(edge_count);
     w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
     w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
@@ -91,8 +87,6 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 
     _arb_vec_clear(w->dwell_accum, edge_count);
     _arb_vec_clear(w->trans_accum, edge_count);
-    _arb_vec_clear(w->cc_dwell_accum, edge_count);
-    _arb_vec_clear(w->cc_trans_accum, edge_count);
     _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
     _arb_mat_vec_clear(w->base_node_vectors, node_count);
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
@@ -159,7 +153,7 @@ _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
 }
 
 static void
-evaluate_edge_expectations(
+_evaluate_edge_expectations(
         arb_struct *dwell_accum,
         arb_struct *trans_accum,
         arb_mat_struct *marginal_node_vectors,
@@ -260,9 +254,10 @@ static int
 _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
         column_reduction_t r_site, const int *edge_is_requested, slong prec)
 {
-    int site, idx, i;
-    arb_t lhood;
+    slong cat, site, idx, i;
+    arb_t site_lhood, cat_lhood, prior_prob, lhood;
     arb_struct *dwell_site, *trans_site;
+    arb_struct *dwell_cat, *trans_cat;
     int result = 0;
 
     arb_t site_weight_divisor;
@@ -273,15 +268,25 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
     slong site_count = model_and_data_site_count(m);
     slong node_count = model_and_data_node_count(m);
     slong state_count = model_and_data_state_count(m);
+    slong rate_category_count = model_and_data_rate_category_count(m);
 
+    arb_init(site_lhood);
+    arb_init(cat_lhood);
+    arb_init(prior_prob);
     arb_init(lhood);
 
     dwell_site = _arb_vec_init(edge_count);
     trans_site = _arb_vec_init(edge_count);
+    dwell_cat = _arb_vec_init(edge_count);
+    trans_cat = _arb_vec_init(edge_count);
 
     arb_init(site_weight_divisor);
     site_weights = _arb_vec_init(site_count);
     site_selection_count = calloc(site_count, sizeof(int));
+
+    /* clear accumulators */
+    _arb_vec_zero(w->dwell_accum, edge_count);
+    _arb_vec_zero(w->trans_accum, edge_count);
 
     /* count how many times each site index is included in the selection */
     for (i = 0; i < r_site->selection_len; i++)
@@ -306,51 +311,77 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                 m->root_prior, csw->equilibrium,
                 m->preorder[0], prec);
 
-        /*
-         * Update per-node and per-edge likelihood vectors.
-         * Actually the likelihood vectors on edges are not used.
-         * This is a backward pass from the leaves to the root.
-         */
-        evaluate_site_lhood(lhood,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                w->base_node_vectors,
-                csw->transition_matrices,
-                m->g, m->preorder, node_count, prec);
+        /* clear cross-category expectations and site lhood */
+        _arb_vec_zero(dwell_site, edge_count);
+        _arb_vec_zero(trans_site, edge_count);
+        arb_zero(site_lhood);
 
-        /*
-         * Update marginal distribution vectors at nodes.
-         * This is a forward pass from the root to the leaves.
-         */
-        evaluate_site_marginal(
-                w->marginal_node_vectors,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                csw->transition_matrices,
-                m->g, m->preorder, node_count, state_count, prec);
+        for (cat = 0; cat < rate_category_count; cat++)
+        {
+            arb_mat_struct *tmat_base, *dwell_base, *trans_base;
+            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
+            dwell_base = cross_site_ws_dwell_frechet_matrix(csw, cat, 0);
+            trans_base = cross_site_ws_trans_frechet_matrix(csw, cat, 0);
 
-        /* Update dwell and trans expectations on edges. */
-        evaluate_edge_expectations(
-                dwell_site,
-                trans_site,
-                w->marginal_node_vectors,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                csw->dwell_frechet_matrices,
-                csw->trans_frechet_matrices,
-                m->g, m->preorder, node_count, state_count,
-                edge_is_requested, prec);
+            /*
+             * Update per-node and per-edge likelihood vectors.
+             * Actually the likelihood vectors on edges are not used.
+             * This is a backward pass from the leaves to the root.
+             */
+            evaluate_site_lhood(lhood,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    w->base_node_vectors,
+                    tmat_base,
+                    m->g, m->preorder, node_count, prec);
 
-        /* Accumulate, using the site weights and weight divisor. */
+            /*
+             * Update marginal distribution vectors at nodes.
+             * This is a forward pass from the root to the leaves.
+             */
+            evaluate_site_marginal(
+                    w->marginal_node_vectors,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    tmat_base,
+                    m->g, m->preorder, node_count, state_count, prec);
+
+            /* Update dwell and trans expectations on edges. */
+            _evaluate_edge_expectations(
+                    dwell_cat,
+                    trans_cat,
+                    w->marginal_node_vectors,
+                    w->lhood_node_vectors,
+                    w->lhood_edge_vectors,
+                    dwell_base,
+                    trans_base,
+                    m->g, m->preorder, node_count, state_count,
+                    edge_is_requested, prec);
+
+            /* Compute the likelihood for the rate category. */
+            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
+            arb_mul(cat_lhood, lhood, prior_prob, prec);
+            arb_add(site_lhood, site_lhood, cat_lhood, prec);
+
+            /* Accumulate the category-specific expectations. */
+            for (idx = 0; idx < edge_count; idx++)
+            {
+                /* todo: category-specific rates may be needed here */
+                if (!edge_is_requested[idx]) continue;
+                arb_addmul(dwell_site + idx, dwell_cat + idx, cat_lhood, prec);
+                arb_addmul(trans_site + idx, trans_cat + idx, cat_lhood, prec);
+            }
+        }
+
+        /* Accumulate expectations across sites. */
         {
             arb_t tmp;
             arb_init(tmp);
             arb_div(tmp, site_weights + site, site_weight_divisor, prec);
+            arb_div(tmp, tmp, site_lhood, prec);
             for (idx = 0; idx < edge_count; idx++)
             {
-                if (!edge_is_requested[idx])
-                    continue;
-
+                if (!edge_is_requested[idx]) continue;
                 arb_addmul(w->dwell_accum + idx, dwell_site + idx, tmp, prec);
                 arb_addmul(w->trans_accum + idx, trans_site + idx, tmp, prec);
             }
@@ -360,11 +391,17 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
 
 finish:
 
+    arb_clear(site_lhood);
+    arb_clear(cat_lhood);
+    arb_clear(prior_prob);
     arb_clear(lhood);
+
     arb_clear(site_weight_divisor);
     _arb_vec_clear(site_weights, site_count);
     _arb_vec_clear(dwell_site, edge_count);
     _arb_vec_clear(trans_site, edge_count);
+    _arb_vec_clear(dwell_cat, edge_count);
+    _arb_vec_clear(trans_cat, edge_count);
     free(site_selection_count);
 
     return result;
@@ -407,10 +444,6 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
 
         /* update frechet dwell and trans matrices */
         _update_frechet_matrices(csw, m, prec);
-
-        /* clear accumulators */
-        _arb_vec_zero(w->dwell_accum, edge_count);
-        _arb_vec_zero(w->trans_accum, edge_count);
 
         /* accumulate numerators and denominators over sites */
         _accum(w, csw, m, r_site, edge_is_requested, prec);

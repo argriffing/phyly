@@ -7,7 +7,6 @@ from __future__ import print_function, division
 from StringIO import StringIO
 import json
 import copy
-import random
 
 import numpy as np
 import pandas as pd
@@ -27,7 +26,7 @@ def check_em_monotonicity():
     node_count = edge_count + 1
 
     # Sample a random number of states.
-    n = random.randrange(2, 5)
+    n = np.random.randint(2, 5)
 
     # Sample nonnegative off-diagonal entries of a rate matrix.
     scale = np.random.exponential()
@@ -38,7 +37,7 @@ def check_em_monotonicity():
     edge_rates_in = np.exp(np.random.randn(edge_count))
 
     # Sample an array of soft observations.
-    site_count = random.randrange(1, 5)
+    site_count = np.random.randint(1, 5)
     arr = np.exp(np.random.randn(site_count, node_count, n))
     arr = arr / arr.sum(axis=1)[:, np.newaxis]
 
@@ -70,5 +69,5 @@ def check_em_monotonicity():
 
 def test_em_monotonicity():
     np.random.seed(1234)
-    for i in range(10):
+    for i in range(20):
         check_em_monotonicity()
