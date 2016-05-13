@@ -417,6 +417,44 @@ evaluate_site_derivatives(arb_t derivative,
 }
 
 
+/*
+ * This is a helper function for _recompute_second_order().
+ *
+ * d^2/dxdy log(f(x,y))
+ * = (d^2/dxdy f(x,y)) / f(x,y) -
+ *   ((d/dx f(x,y)) * (d/dy f(x,y))) / f(x,y)^2
+ * = ((d^2/dxdy f(x,y)) -
+ *   ((d/dx f(x,y)) * (d/dy f(x,y))) / f(x,y)) / f(x,y)
+ */
+static void
+_lhood_hess_to_ll_hess(arb_mat_t ll_hessian,
+        arb_t lhood, arb_struct *lhood_gradient, arb_mat_t lhood_hessian,
+        const int *pre_to_idx, slong prec)
+{
+    int i, j;
+    arb_t tmp;
+    slong edge_count = arb_mat_nrows(lhood_hessian);
+
+    arb_init(tmp);
+    arb_mat_zero(ll_hessian);
+    for (i = 0; i < edge_count; i++)
+    {
+        for (j = 0; j <= i; j++)
+        {
+            int a = pre_to_idx[i];
+            int b = pre_to_idx[j];
+            arb_ptr ll_hess_entry = arb_mat_entry(ll_hessian, a, b);
+            arb_ptr lhood_hess_entry = arb_mat_entry(lhood_hessian, a, b);
+
+            arb_mul(tmp, lhood_gradient+a, lhood_gradient+b, prec);
+            arb_div(tmp, tmp, lhood, prec);
+            arb_sub(ll_hess_entry, lhood_hess_entry, tmp, prec);
+            arb_div(ll_hess_entry, ll_hess_entry, lhood, prec);
+        }
+    }
+    arb_clear(tmp);
+}
+
 
 /*
  * Optionally allow custom edge rate coefficients.
@@ -442,14 +480,13 @@ _recompute_second_order(so_t so,
     slong site_count = model_and_data_site_count(m);
     slong edge_count = model_and_data_edge_count(m);
     slong node_count = model_and_data_node_count(m);
+    slong rate_category_count = model_and_data_rate_category_count(m);
 
-    arb_t x;
     arb_t lhood;
     arb_struct * lhood_gradient;
     arb_mat_t lhood_hessian;
     arb_mat_t ll_hessian;
 
-    arb_init(x);
     arb_init(lhood);
     lhood_gradient = _arb_vec_init(edge_count);
     arb_mat_init(lhood_hessian, edge_count, edge_count);
@@ -510,6 +547,11 @@ _recompute_second_order(so_t so,
                 w->base_plane->node_vectors, m->p, site,
                 m->root_prior, csw->equilibrium,
                 m->preorder[0], prec);
+
+        /*
+        for (cat = 0; cat < rate_category_count; cat++)
+        {
+        */
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < node_count; a++)
@@ -598,84 +640,48 @@ _recompute_second_order(so_t so,
             }
         }
 
-        /* define a site-specific coefficient */
-        arb_div(x, site_weights+site, site_weight_divisor, prec);
-        arb_div(x, x, lhood, prec);
-
         /*
-         * Compute the log likelihood hessian for this site, given:
+         * Compute the hessian of log likelihood for this site, given:
          *  - likelihood
          *  - likelihood gradient
          *  - likelihood hessian
          *
-         * d^2/dxdy log(f(x,y))
-         * = (d^2/dxdy f(x,y)) / f(x,y) -
-         *   ((d/dx f(x,y)) * (d/dy f(x,y))) / f(x,y)^2
-         * = ((d^2/dxdy f(x,y)) -
-         *   ((d/dx f(x,y)) * (d/dy f(x,y))) / f(x,y)) / f(x,y)
-         *    
+         * accumulate the hessian of log likelihood
          */
         if (req_h)
         {
-            arb_t tmp;
-            arb_init(tmp);
-
-            arb_mat_zero(ll_hessian);
-            for (i = 0; i < edge_count; i++)
-            {
-                int idx_i;
-                idx_i = pre_to_idx[i];
-
-                for (j = 0; j <= i; j++)
-                {
-                    int idx_j;
-                    arb_ptr ll_hess_entry;
-
-                    idx_j = pre_to_idx[j];
-
-                    ll_hess_entry = arb_mat_entry(ll_hessian, idx_i, idx_j);
-
-                    arb_ptr lhood_hess_entry;
-                    lhood_hess_entry = arb_mat_entry(lhood_hessian, idx_i, idx_j);
-
-                    arb_mul(tmp, lhood_gradient+idx_i, lhood_gradient+idx_j, prec);
-                    arb_div(tmp, tmp, lhood, prec);
-                    arb_sub(ll_hess_entry, lhood_hess_entry, tmp, prec);
-
-                    /* x is (site weight) / (site likelihood) */
-                    arb_mul(ll_hess_entry, ll_hess_entry, x, prec);
-                }
-            }
-            arb_clear(tmp);
+            _lhood_hess_to_ll_hess(ll_hessian,
+                    lhood, lhood_gradient, lhood_hessian, pre_to_idx, prec);
+            arb_mat_scalar_mul_arb(ll_hessian,
+                    ll_hessian, site_weights+site, prec);
+            arb_mat_scalar_div_arb(ll_hessian,
+                    ll_hessian, site_weight_divisor, prec);
+            arb_mat_add(so->ll_hessian, so->ll_hessian, ll_hessian, prec);
         }
 
         /* accumulate log likelihood */
+        /* if (req_y) */
         {
-            arb_t ll;
-            arb_init(ll);
-            arb_log(ll, lhood, prec);
-            arb_mul(ll, ll, site_weights + site, prec);
-            arb_div(ll, ll, site_weight_divisor, prec);
-            arb_add(so->ll, so->ll, ll, prec);
-            arb_clear(ll);
+            arb_t tmp;
+            arb_init(tmp);
+            arb_log(tmp, lhood, prec);
+            arb_div(tmp, tmp, site_weight_divisor, prec);
+            arb_addmul(so->ll, site_weights + site, tmp, prec);
+            arb_clear(tmp);
         }
 
         /* accumulate gradient of log likelihood */
         if (req_g)
         {
+            arb_t tmp;
+            arb_init(tmp);
+            arb_div(tmp, site_weights + site, lhood, prec);
+            arb_div(tmp, tmp, site_weight_divisor, prec);
             for (i = 0; i < edge_count; i++)
             {
-                arb_addmul(
-                        so->ll_gradient + i,
-                        lhood_gradient + i,
-                        x, prec);
+                arb_addmul(so->ll_gradient + i, lhood_gradient + i, tmp, prec);
             }
-        }
-
-        /* accumulate hessian of log likelihood */
-        if (req_h)
-        {
-            arb_mat_add(so->ll_hessian, so->ll_hessian, ll_hessian, prec);
+            arb_clear(tmp);
         }
     }
 
@@ -684,14 +690,12 @@ _recompute_second_order(so_t so,
     {
         for (i = 0; i < edge_count; i++)
         {
-            int idx_i;
-            idx_i = pre_to_idx[i];
             for (j = 0; j < i; j++)
             {
-                int idx_j;
-                idx_j = pre_to_idx[j];
-                arb_set(arb_mat_entry(so->ll_hessian, idx_j, idx_i),
-                        arb_mat_entry(so->ll_hessian, idx_i, idx_j));
+                int a = pre_to_idx[i];
+                int b = pre_to_idx[j];
+                arb_set(arb_mat_entry(so->ll_hessian, b, a),
+                        arb_mat_entry(so->ll_hessian, a, b));
             }
         }
     }
@@ -704,7 +708,6 @@ finish:
     arb_clear(site_weight_divisor);
     _arb_vec_clear(site_weights, site_count);
 
-    arb_clear(x);
     arb_clear(lhood);
     _arb_vec_clear(lhood_gradient, edge_count);
     arb_mat_clear(lhood_hessian);
