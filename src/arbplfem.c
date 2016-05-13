@@ -111,12 +111,12 @@ _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
     arb_mat_init(L_trans, state_count, state_count);
     arb_mat_init(Q, state_count, state_count);
 
-    /* L_dwell has unscaled rates out on diagonals and zeros on off-diagonals */
+    /* L_dwell has exit rates on diagonals and zeros on off-diagonals */
     for (state = 0; state < state_count; state++)
         arb_neg(arb_mat_entry(L_dwell, state, state),
                 arb_mat_entry(csw->rate_matrix, state, state));
 
-    /* L_trans has zeros on diagonals and unscaled rates on off-diagonals */
+    /* L_trans has zeros on diagonals and rates on off-diagonals */
     for (sa = 0; sa < state_count; sa++)
         for (sb = 0; sb < state_count; sb++)
             if (sa != sb)
@@ -368,7 +368,6 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                 /* Accumulate the category-specific expectations. */
                 for (idx = 0; idx < edge_count; idx++)
                 {
-                    /* todo: category-specific rates may be needed here */
                     if (!edge_is_requested[idx]) continue;
                     arb_addmul(dwell_site + idx, dwell_cat + idx, cat_lhood, prec);
                     arb_addmul(trans_site + idx, trans_cat + idx, cat_lhood, prec);
