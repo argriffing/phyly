@@ -64,6 +64,7 @@
 #include "arb_vec_calc_quad.h"
 #include "finite_differences.h"
 #include "equilibrium.h"
+#include "cross_site_ws.h"
 
 #include "parsemodel.h"
 #include "parsereduction.h"
@@ -430,19 +431,6 @@ likelihood_ws_init(likelihood_ws_t w, model_and_data_t m,
     {
         tmat = w->transition_matrices + idx;
         arb_mat_exp(tmat, tmat, w->prec);
-
-        /* For debugging, check if the transition matrix bounds are finite. */
-        /*
-        {
-            mag_t b;
-            mag_init(b);
-            arb_mat_bound_inf_norm(b, tmat);
-            flint_printf("debug: transition matrix norm bound: ");
-            mag_printd(b, 4);
-            flint_printf("\n");
-            mag_clear(b);
-        }
-        */
     }
 
     plane_init(w->base_plane, w->node_count, w->edge_count, w->state_count);
@@ -588,6 +576,7 @@ _recompute_second_order(so_t so,
         int req_y, int req_g, int req_h,
         slong prec)
 {
+    cross_site_ws_t csw;
     likelihood_ws_t w;
     int result = 0;
     int i, j, idx, site, a;
@@ -642,6 +631,7 @@ _recompute_second_order(so_t so,
             site_weight_divisor, site_weights, site_count, r_site, prec);
     if (result) goto finish;
 
+    cross_site_ws_init(csw, m);
     likelihood_ws_init(w, m, edge_rates, prec);
     _arb_vec_set(so->x, w->edge_rates, edge_count);
 
@@ -794,15 +784,6 @@ _recompute_second_order(so_t so,
                     arb_div(tmp, tmp, lhood, prec);
                     arb_sub(ll_hess_entry, lhood_hess_entry, tmp, prec);
 
-                    /*
-                    flint_printf("lhood hess term=");
-                    arb_printd(lhood_hess_entry, 15);
-                    flint_printf("\n");
-                    flint_printf("lhood grad term=");
-                    arb_printd(tmp, 15);
-                    flint_printf("\n\n");
-                    */
-
                     /* x is (site weight) / (site likelihood) */
                     arb_mul(ll_hess_entry, ll_hess_entry, x, prec);
                 }
@@ -859,6 +840,7 @@ _recompute_second_order(so_t so,
 
 finish:
 
+    cross_site_ws_clear(csw);
     likelihood_ws_clear(w);
 
     arb_clear(site_weight_divisor);

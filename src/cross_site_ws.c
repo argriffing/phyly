@@ -138,86 +138,99 @@ cross_site_ws_init(cross_site_ws_t w, const model_and_data_t m)
     }
 }
 
+/* rate matrix and edge rates have already been updated */
+static void
+_update_transition_matrices(cross_site_ws_t w, model_and_data_t m, slong prec)
+{
+    slong i, j;
+    arb_t s;
+    arb_init(s);
+    for (i = 0; i < w->rate_category_count; i++)
+    {
+        for (j = 0; j < w->edge_count; j++)
+        {
+            arb_mat_struct *tmat;
+            tmat = cross_site_ws_transition_matrix(w, i, j);
+            rate_mixture_get_rate(s, m->rate_mixture, i);
+            arb_mul(s, s, w->edge_rates + j, prec);
+            arb_mat_scalar_mul_arb(tmat, w->rate_matrix, s, prec);
+            arb_mat_exp(tmat, tmat, prec);
+        }
+    }
+    arb_clear(s);
+}
+
+/* the rate matrix and equilibrium have already been updated */
+static void
+_update_rate_divisor(cross_site_ws_t w, model_and_data_t m, slong prec)
+{
+    if (m->use_equilibrium_rate_divisor)
+    {
+        arb_struct *row_sums;
+        row_sums = _arb_vec_init(w->state_count);
+        _arb_mat_row_sums(row_sums, w->rate_matrix, prec);
+        _arb_vec_dot(w->rate_divisor,
+                row_sums, w->equilibrium, w->state_count, prec);
+        _arb_vec_clear(row_sums, w->state_count);
+        if (m->rate_mixture->mode != RATE_MIXTURE_NONE)
+        {
+            arb_t tmp;
+            arb_init(tmp);
+            rate_mixture_expectation(tmp, m->rate_mixture, prec);
+            arb_mul(w->rate_divisor, w->rate_divisor, tmp, prec);
+            arb_clear(tmp);
+        }
+    }
+    else
+    {
+        arb_set(w->rate_divisor, m->rate_divisor);
+    }
+}
+
 void
 cross_site_ws_update(cross_site_ws_t w, model_and_data_t m, slong prec)
+{
+    cross_site_ws_update_with_edge_rates(w, m, NULL, prec);
+}
+
+void
+cross_site_ws_update_with_edge_rates(cross_site_ws_t w,
+        model_and_data_t m, arb_struct *edge_rates, slong prec)
 {
     w->prec = prec;
 
     /* update the equilibrium if necessary, ignoring diagonal entries */
     if (model_and_data_uses_equilibrium(m))
     {
-        _arb_vec_rate_matrix_equilibrium(
-                w->equilibrium, m->mat, prec);
+        _arb_vec_rate_matrix_equilibrium(w->equilibrium, m->mat, prec);
     }
 
     /* update the unscaled rate matrix, and zero the diagonal */
-    {
-        arb_mat_set(w->rate_matrix, m->mat);
-        _arb_mat_zero_diagonal(w->rate_matrix);
-    }
+    arb_mat_set(w->rate_matrix, m->mat);
+    _arb_mat_zero_diagonal(w->rate_matrix);
 
-    /*
-     * Update the rate divisor, optionally using the equilibrium.
-     * If the equilibrium is used, then the 'outer layer' rate divisor
-     * will be ignored, and the 'middle layer' rate divisor will
-     * be a function of the rate matrix and of the rate mixture expectation.
-     */
-    {
-        if (m->use_equilibrium_rate_divisor)
-        {
-            arb_struct *row_sums;
-            row_sums = _arb_vec_init(w->state_count);
-            _arb_mat_row_sums(row_sums, w->rate_matrix, prec);
-            _arb_vec_dot(w->rate_divisor,
-                    row_sums, w->equilibrium, w->state_count, prec);
-            _arb_vec_clear(row_sums, w->state_count);
-            if (m->rate_mixture->mode != RATE_MIXTURE_NONE)
-            {
-                arb_t tmp;
-                arb_init(tmp);
-                rate_mixture_expectation(tmp, m->rate_mixture, prec);
-                arb_mul(w->rate_divisor, w->rate_divisor, tmp, prec);
-                arb_clear(tmp);
-            }
-        }
-        else
-        {
-            arb_set(w->rate_divisor, m->rate_divisor);
-        }
-    }
+    /* update the rate divisor, optionally using the equilibrium */
+    _update_rate_divisor(w, m, prec);
 
     /*
      * Scale the rate matrix according to the rate divisor.
      * Each rate matrix associated with a specific rate category
      * and branch will need to be further scaled.
      */
-    {
-        arb_mat_scalar_div_arb(w->rate_matrix,
-                w->rate_matrix, w->rate_divisor, prec);
-    }
+    arb_mat_scalar_div_arb(w->rate_matrix,
+            w->rate_matrix, w->rate_divisor, prec);
 
-    /* Update the diagonal of the rate matrix. */
+    /* update the diagonal of the rate matrix */
     _arb_update_rate_matrix_diagonal(w->rate_matrix, prec);
 
-    /* Update the transition probability matrices. */
+    /* optionally set edge rates */
+    if (edge_rates)
     {
-        slong i, j;
-        arb_t s;
-        arb_init(s);
-        for (i = 0; i < w->rate_category_count; i++)
-        {
-            for (j = 0; j < w->edge_count; j++)
-            {
-                arb_mat_struct *tmat;
-                tmat = cross_site_ws_transition_matrix(w, i, j);
-                rate_mixture_get_rate(s, m->rate_mixture, i);
-                arb_mul(s, s, w->edge_rates + j, prec);
-                arb_mat_scalar_mul_arb(tmat, w->rate_matrix, s, prec);
-                arb_mat_exp(tmat, tmat, prec);
-            }
-        }
-        arb_clear(s);
+        _arb_vec_set(w->edge_rates, edge_rates, w->edge_count);
     }
+
+    /* update the transition probability matrices */
+    _update_transition_matrices(w, m, prec);
 }
 
 void
