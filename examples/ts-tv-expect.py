@@ -89,7 +89,7 @@ def run(assumed_kappa):
     model_and_data = {
             "edges" : edges,
             "edge_rate_coefficients" : true_coeffs,
-            "use_equilibrium_root_prior" : True,
+            "root_prior" : "equilibrium_distribution",
             "rate_matrix" : true_m,
             "rate_divisor" : true_denom * 100,
             "probability_array" : probability_array}
@@ -108,7 +108,7 @@ def run(assumed_kappa):
     model_and_data = {
             "edges" : edges,
             "edge_rate_coefficients" : assumed_coeffs,
-            "use_equilibrium_root_prior" : True,
+            "root_prior" : "equilibrium_distribution",
             "rate_matrix" : assumed_m,
             "rate_divisor" : assumed_denom * 100,
             "probability_array" : probability_array}
