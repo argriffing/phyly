@@ -255,6 +255,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
         column_reduction_t r_site, const int *edge_is_requested, slong prec)
 {
     slong cat, site, idx, i;
+    arb_t tmp, cat_rate;
     arb_t site_lhood, cat_lhood, prior_prob, lhood;
     arb_struct *dwell_site, *trans_site;
     arb_struct *dwell_cat, *trans_cat;
@@ -269,6 +270,9 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
     slong node_count = model_and_data_node_count(m);
     slong state_count = model_and_data_state_count(m);
     slong rate_category_count = model_and_data_rate_category_count(m);
+
+    arb_init(tmp);
+    arb_init(cat_rate);
 
     arb_init(site_lhood);
     arb_init(cat_lhood);
@@ -342,6 +346,8 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
 
             if (!arb_is_zero(cat_lhood))
             {
+                rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+
                 /*
                  * Update marginal distribution vectors at nodes.
                  * This is a forward pass from the root to the leaves.
@@ -369,16 +375,15 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                 for (idx = 0; idx < edge_count; idx++)
                 {
                     if (!edge_is_requested[idx]) continue;
-                    arb_addmul(dwell_site + idx, dwell_cat + idx, cat_lhood, prec);
-                    arb_addmul(trans_site + idx, trans_cat + idx, cat_lhood, prec);
+                    arb_mul(tmp, cat_lhood, cat_rate, prec);
+                    arb_addmul(dwell_site + idx, dwell_cat + idx, tmp, prec);
+                    arb_addmul(trans_site + idx, trans_cat + idx, tmp, prec);
                 }
             }
         }
 
         /* Accumulate expectations across sites. */
         {
-            arb_t tmp;
-            arb_init(tmp);
             arb_div(tmp, site_weights + site, site_weight_divisor, prec);
             arb_div(tmp, tmp, site_lhood, prec);
             for (idx = 0; idx < edge_count; idx++)
@@ -387,11 +392,13 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                 arb_addmul(w->dwell_accum + idx, dwell_site + idx, tmp, prec);
                 arb_addmul(w->trans_accum + idx, trans_site + idx, tmp, prec);
             }
-            arb_clear(tmp);
         }
     }
 
 finish:
+
+    arb_clear(tmp);
+    arb_clear(cat_rate);
 
     arb_clear(site_lhood);
     arb_clear(cat_lhood);
