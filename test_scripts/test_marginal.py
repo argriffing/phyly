@@ -214,7 +214,7 @@ def test_rates_across_sites_uniform():
     assert_allclose(u.values, v.values)
 
 def test_rates_across_sites_vs_block_diagonal():
-    # Compare rates across sites vs. a block diagonal workaround.
+    # Compare rates across sites vs. an equivalent block diagonal formulation.
     rates = [1, 2]
     prior = [0.25, 0.75]
     # Pick an arbitrary site and an arbitrary node.
