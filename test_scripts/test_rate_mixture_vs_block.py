@@ -53,6 +53,13 @@ def _df(f, d):
     df = pd.read_json(StringIO(s_out), orient='split', precise_float=True)
     return df
 
+def _assert_allclose_series(a, b):
+    # Align the layouts of the two pandas Series objects,
+    # preparing to compare their values.
+    # The align member function returns two new pandas Series objects.
+    u, v = a.align(b)
+    assert_allclose(u.values, v.values)
+
 
 # 7 edges
 # 2 sites
@@ -133,3 +140,38 @@ def test_rate_mixture_equivalence():
         v = _df(f, x)
         # check that the two analyses give the same results
         assert_allclose(u.values, v.values)
+
+def test_arbitrary_edge_permutation():
+    # Check that permute(f(x)) = f(permute(x))
+    # where the permutation is over edges.
+    rates = [1, 2]
+    prior = [0.25, 0.75]
+    rate_mixture = dict(rates=rates, prior=prior)
+    #
+    edge_count = len(default_in['model_and_data']['edges'])
+    perm = [2, 3, 4, 0, 1, 5, 6]
+    # These functions have an 'edge' output column,
+    # but they do not have a 'state' output column.
+    for f in arbplf_deriv, arbplf_em_update:
+        print(f.__name__)
+        #
+        y = copy.deepcopy(default_in)
+        y['model_and_data']['rate_mixture'] = rate_mixture
+        u = _df(f, y).set_index('edge').value
+        uperm = copy.deepcopy(u)
+        for a, b in enumerate(perm):
+            uperm[a] = u[b]
+        #
+        x = copy.deepcopy(default_in)
+        x['model_and_data']['rate_mixture'] = rate_mixture
+        #
+        xm = x['model_and_data']
+        ym = y['model_and_data']
+        for a, b in enumerate(perm):
+            xm['edges'][a] = copy.deepcopy(
+                    ym['edges'][b])
+            xm['edge_rate_coefficients'][a] = copy.deepcopy(
+                    ym['edge_rate_coefficients'][b])
+        v = _df(f, x).set_index('edge').value
+        #
+        _assert_allclose_series(uperm, v)
