@@ -1,0 +1,38 @@
+markophylo
+http://www.ncbi.nlm.nih.gov/pubmed/26363176
+Bioinformatics.
+2016 Jan 1;32(1):130-2. doi: 10.1093/bioinformatics/btv541. Epub 2015 Sep 11.
+markophylo: Markov chain analysis on phylogenetic trees.
+Dang UJ, Golding GB.
+
+DiscML
+http://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-15-320
+DiscML: an R package for estimating evolutionary rates
+of discrete characters using maximum likelihood
+Tane Kim and Weilong Hao
+BMC Bioinformatics 2014 15:320
+DOI: 10.1186/1471-2105-15-320©  Kim and Hao;
+licensee BioMed Central Ltd. 2014
+Received: 26 July 2014
+Accepted: 25 September 2014
+Published: 27 September 2014
+
+GeLL
+http://www.ncbi.nlm.nih.gov/pubmed/25725494
+https://github.com/danielmoney/GeLL/tree/master/test
+Tests use PAML's brown.nuc alignment file.
+Gamma rate categories are used.
+The GTR nucleotide model is tested.
+Bioinformatics. 2015 Jul 15;31(14):2391-3.
+doi: 10.1093/bioinformatics/btv126. Epub 2015 Feb 27.
+GeLL: a generalized likelihood library for phylogenetic models.
+Money D, Whelan S.
+
+Bio++
+HyPhy
+PLL
+BEAST
+BEAGLE
+PAML
+
+so BMC Bioinformatics is not the same journal as Bioinformatics...
