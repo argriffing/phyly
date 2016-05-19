@@ -1,8 +1,3 @@
-Log likelihood.
-
-[in.json](in.json)
-[out.json](out.json)
-
 |    |   site |    value |
 |---:|-------:|---------:|
 |  0 |      0 | -11.2973 |
