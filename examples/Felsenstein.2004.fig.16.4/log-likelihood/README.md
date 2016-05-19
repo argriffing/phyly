@@ -1,4 +1,5 @@
-Compute the log likelihood for Figure 16.4.
+Compute the log likelihood for the first example in Figure 16.4 in
+Inferring Phylogenies (2004) by Joseph Felsenstein.
 
 ```bash
 $ arbplf-ll < in.json > out.json
