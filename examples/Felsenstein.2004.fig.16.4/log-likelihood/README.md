@@ -1,6 +1,6 @@
 Compute the log likelihood for Figure 16.4.
 
-```shell
+```bash
 $ arbplf-ll < in.json > out.json
 $ tabby < out.json > out.md
 ```
