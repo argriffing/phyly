@@ -1,7 +1,8 @@
-Log likelihood.
+Compute the log likelihood for Figure 16.4.
 
-[in.json](in.json)
-[out.json](out.json)
+<code>
+arbplf-ll < [in.json](in.json) > [out.json](out.json)
+</code>
 
 |    |   site |               value |
 |---:|-------:|--------------------:|

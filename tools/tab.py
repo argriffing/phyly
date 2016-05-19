@@ -1,0 +1,38 @@
+"""
+Render a json-formatted dataframe as a table in github-flavored markdown.
+
+stdin:
+{
+  "columns": ["site", "edge", "value"],
+  "data": [
+    [0, 0, 0.24807172467207936],
+    [0, 1, 0.031328846779255189],
+    [0, 2, 0.032598206224889001],
+    [0, 3, 0.010626317716079116],
+    [0, 4, 0.035569784557226071],
+    [0, 5, 0.013965825365431825],
+    [0, 6, 0.19776303812646395]]
+}
+
+stdout:
+|    |   site |   edge |                value |
+|---:|-------:|-------:|---------------------:|
+|  0 |      0 |      0 | 0.24807172467207936  |
+|  1 |      0 |      1 | 0.031328846779255189 |
+|  2 |      0 |      2 | 0.032598206224889001 |
+|  3 |      0 |      3 | 0.010626317716079116 |
+|  4 |      0 |      4 | 0.035569784557226071 |
+|  5 |      0 |      5 | 0.013965825365431825 |
+|  6 |      0 |      6 | 0.19776303812646395  |
+
+"""
+from __future__ import print_function
+
+from sys import stdin
+
+from tabulate import tabulate
+import pandas as pd
+
+df = pd.read_json(stdin, orient='split', precise_float=True)
+tab = tabulate(df, headers='keys', tablefmt='pipe', floatfmt='.17g')
+print(tab)
