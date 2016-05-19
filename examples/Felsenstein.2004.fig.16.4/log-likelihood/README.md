@@ -5,8 +5,6 @@ $ arbplf-ll < in.json > out.json
 $ tabby < out.json > out.md
 ```
 
-<details>
-<summary>in.json</summary>
 ```json
 {
 "model_and_data" :
@@ -32,22 +30,7 @@ $ tabby < out.json > out.md
    }
 }
 ```
-</details>
-
-<details>
-<summary>out.json</summary>
-```json
-{
-  "columns": ["site", "value"],
-  "data": [[0, -11.297288182875496]]
-}
-```
-</details>
-
-<details>
-<summary>out.md</summary>
 
 |    |   site |               value |
 |---:|-------:|--------------------:|
 |  0 |      0 | -11.297288182875496 |
-</details>
