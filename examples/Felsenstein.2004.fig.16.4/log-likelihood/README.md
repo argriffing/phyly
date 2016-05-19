@@ -2,7 +2,7 @@ Compute the log likelihood for Figure 16.4.
 
 <code>
 arbplf-ll < [in.json](in.json) | tee [out.json](out.json) |
-tab > [out.tab](out.tab)
+tabby > [out.md](out.md)
 </code>
 
 <details>
@@ -34,16 +34,20 @@ tab > [out.tab](out.tab)
 ```
 </details>
 
-out.json:
+<details>
+<summary>out.json</summary>
 ```json
 {
   "columns": ["site", "value"],
   "data": [[0, -11.297288182875496]]
 }
 ```
+</details>
 
-out.tab:
+<details>
+<summary>out.md</summary>
 
 |    |   site |               value |
 |---:|-------:|--------------------:|
 |  0 |      0 | -11.297288182875496 |
+</details>
