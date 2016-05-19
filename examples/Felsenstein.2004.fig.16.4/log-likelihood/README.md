@@ -1,4 +1,4 @@
-Compute the log likelihood for the first example in Figure 16.4 in
+Here we compute the log likelihood for the example in Figure 16.4 of
 Inferring Phylogenies (2004) by Joseph Felsenstein.
 
 ---
