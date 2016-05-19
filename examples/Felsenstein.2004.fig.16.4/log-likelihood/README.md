@@ -3,12 +3,6 @@ Inferring Phylogenies (2004) by Joseph Felsenstein.
 
 ---
 
-Commands:
-```bash
-$ arbplf-ll < in.json > out.json
-$ tabby < out.json > out.md
-```
-
 Input (in.json):
 ```json
 {
@@ -36,7 +30,21 @@ Input (in.json):
 }
 ```
 
-Output (out.json) rendered as a table (out.md):
+Commands:
+```bash
+$ arbplf-ll < in.json > out.json
+$ tabby < out.json > out.md
+```
+
+Output (out.json):
+```json
+{
+  "columns": ["site", "value"],
+  "data": [[0, -11.297288182875496]]
+}
+```
+
+Output rendered as a table (out.md):
 
 |    |   site |               value |
 |---:|-------:|--------------------:|
