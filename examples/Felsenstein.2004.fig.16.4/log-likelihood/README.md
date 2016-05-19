@@ -5,7 +5,8 @@ arbplf-ll < [in.json](in.json) | tee [out.json](out.json) |
 tab > [out.tab](out.tab)
 </code>
 
-in.json:
+<details>
+<summary>in.json</summary>
 ```json
 {
 "model_and_data" :
@@ -31,6 +32,7 @@ in.json:
    }
 }
 ```
+</details>
 
 out.json:
 ```json
