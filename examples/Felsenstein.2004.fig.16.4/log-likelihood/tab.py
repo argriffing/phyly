@@ -6,5 +6,5 @@ from tabulate import tabulate
 import pandas as pd
 
 df = pd.read_json(stdin, orient='split', precise_float=True)
-tab = tabulate(df, headers='keys', tablefmt='pipe')
+tab = tabulate(df, headers='keys', tablefmt='pipe', floatfmt='.17g')
 print(tab)
