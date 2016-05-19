@@ -1,8 +1,11 @@
 Example from Figure 16.4 in Inferring Phylogenies (2004)
 by Joseph Felsenstein.
 
+JSON input:
 ```json
-{"model_and_data" : {
+{
+"model_and_data" :
+  {
   "edges" : [[5, 0], [5, 1], [5, 6], [6, 2], [6, 7], [7, 3], [7, 4]],
   "edge_rate_coefficients" : [1, 20, 15, 30, 5, 30, 2],
   "rate_divisor" : 300,
@@ -20,9 +23,15 @@ by Joseph Felsenstein.
 	  [0, 0, 1, 0],
 	  [1, 1, 1, 1],
 	  [1, 1, 1, 1],
-	  [1, 1, 1, 1]]]}}
+	  [1, 1, 1, 1]]]
+   }
+}
 ```
 
+JSON output:
 ```json
-{"columns": ["site", "value"], "data": [[0, -11.297288182875496]]}
+{
+  "columns": ["site", "value"],
+  "data": [[0, -11.297288182875496]]
+}
 ```
