@@ -43,8 +43,7 @@ Output (out.json) rendered as a table (out.md):
 |  0 |      0 | -11.297288182875496 |
 
 Converting from log likelihood to likelihood:
-```python
->>> import math
->>> math.exp(-11.297288182875496)
-1.2406522905780375e-05
+```shell
+$ echo 'e(-11.297288182875496)' | bc -l
+.00001240652290578037
 ```
