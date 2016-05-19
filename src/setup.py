@@ -43,4 +43,6 @@ myext = Extension(
             'finite_differences.c',
             ])
 
-setup(name="arbplf", version="0.0.1", ext_modules = [myext])
+setup(name="arbplf", version="0.0.1",
+        scripts=['scripts/tabby'],
+        ext_modules = [myext])
