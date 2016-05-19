@@ -1,6 +1,8 @@
 Compute the log likelihood for the first example in Figure 16.4 in
 Inferring Phylogenies (2004) by Joseph Felsenstein.
 
+---
+
 Commands:
 ```bash
 $ arbplf-ll < in.json > out.json
@@ -40,7 +42,7 @@ Output (out.json) rendered as a table (out.md):
 |---:|-------:|--------------------:|
 |  0 |      0 | -11.297288182875496 |
 
-Transform the log likelihood to likelihood:
+Converting from log likelihood to likelihood:
 ```python
 >>> import math
 >>> math.exp(-11.297288182875496)
