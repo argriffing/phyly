@@ -54,6 +54,8 @@ the examples that involve scripting:
    -- Python 2D plotting library
  * [tabulate](https://bitbucket.org/astanin/python-tabulate)
    -- Pretty-print tabular data in Python
+ * [ete3](http://etetoolkit.org/)
+   -- A Python framework for the analysis and visualization of trees.
 
 The [jq](https://stedolan.github.io/jq/) tool may be used for json filtering.
 
