@@ -51,8 +51,6 @@ def my_layout(node):
         seq_face.margin_left = 4
         add_face_to_node(seq_face, node, column=1, aligned=True)
 
-
 ts.layout_fn = my_layout
 
-t.render('out.svg', tree_style=ts)
-print(t.get_ascii(show_internal=True))
+t.render('tree-and-data.png', tree_style=ts)
