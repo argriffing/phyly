@@ -3,6 +3,7 @@
 #include "arb.h"
 #include "arf.h"
 
+#include "arb_mat_extras.h"
 #include "util.h"
 
 #define FULL_RELATIVE_PRECISION 53
@@ -221,7 +222,6 @@ _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec)
     }
 }
 
-
 void
 _prune_update(arb_mat_t D,
         const arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec)
@@ -230,6 +230,11 @@ _prune_update(arb_mat_t D,
      * D = C o (A * B)
      * Analogous to _arb_mat_addmul
      * except with entrywise product instead of entrywise addition.
+     *
+     * Assume that A is a stochastic matrix so that its rows sum to 1.
+     * This means that each constant column of B will be mapped to itself.
+     * By a 'constant column' I mean a column that is a scalar multiple of the
+     * column of ones and whose entries are all exact.
      */
     arb_t accum;
     arb_init(accum);
@@ -250,19 +255,30 @@ _prune_update(arb_mat_t D,
         flint_fprintf(stderr, "internal error: unsupported aliasing\n");
         abort();
     }
-    for (i = 0; i < r; i++)
+    for (j = 0; j < t; j++)
     {
-        for (j = 0; j < t; j++)
+        if (_arb_mat_col_is_constant(B, j))
         {
-            arb_zero(accum);
-            for (k = 0; k < s; k++)
+            for (i = 0; i < r; i++)
             {
-                arb_addmul(accum,
-                        arb_mat_entry(A, i, k),
-                        arb_mat_entry(B, k, j), prec);
+                arb_mul(arb_mat_entry(D, i, j),
+                        arb_mat_entry(C, i, j), arb_mat_entry(B, 0, j), prec);
             }
-            arb_mul(arb_mat_entry(D, i, j),
-                    arb_mat_entry(C, i, j), accum, prec);
+        }
+        else
+        {
+            for (i = 0; i < r; i++)
+            {
+                arb_zero(accum);
+                for (k = 0; k < s; k++)
+                {
+                    arb_addmul(accum,
+                            arb_mat_entry(A, i, k),
+                            arb_mat_entry(B, k, j), prec);
+                }
+                arb_mul(arb_mat_entry(D, i, j),
+                        arb_mat_entry(C, i, j), accum, prec);
+            }
         }
     }
     arb_clear(accum);

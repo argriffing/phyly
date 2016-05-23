@@ -31,3 +31,21 @@ _arb_mat_vec_clear(arb_mat_struct *vec, slong len)
         flint_free(vec);
     }
 }
+
+int
+_arb_mat_col_is_constant(const arb_mat_t A, slong j)
+{
+    slong i;
+    arb_srcptr ref;
+    if (arb_mat_is_empty(A))
+        return 1;
+    ref = arb_mat_entry(A, 0, j);
+    if (!arb_is_exact(ref))
+        return 0;
+    for (i = 0; i < arb_mat_nrows(A); i++)
+    {
+        if (!arb_equal(arb_mat_entry(A, i, j), ref))
+            return 0;
+    }
+    return 1;
+}
