@@ -42,6 +42,21 @@ The package depends on recent versions of these C libraries:
  * [arb](https://github.com/fredrik-johansson/arb)
    -- C library for <b>arb</b>itrary-precision interval arithmetic
 
+Various Python libraries could be required to run tests or to run
+the examples that involve scripting:
+ * [numpy](https://github.com/numpy/numpy)
+   -- <b>Num</b>erical <b>Py</b>thon library
+ * [scipy](https://github.com/scipy/scipy)
+   -- <b>Sci</b>entific <b>Py</b>thon library
+ * [pandas](http://pandas.pydata.org)
+   -- Python data analysis library
+ * [matplotlib](http://matplotlib.org)
+   -- Python 2D plotting library
+ * [tabulate](https://bitbucket.org/astanin/python-tabulate)
+   -- Pretty-print tabular data in Python
+ * [ete3](http://etetoolkit.org/)
+   -- A Python framework for the analysis and visualization of trees.
+
 The [jq](https://stedolan.github.io/jq/) tool may be used for json filtering.
 
 
