@@ -53,4 +53,4 @@ def my_layout(node):
 
 ts.layout_fn = my_layout
 
-t.render('tree-and-data.png', tree_style=ts)
+t.render('treefig.png', tree_style=ts)
