@@ -1,5 +1,6 @@
-#include "evaluate_site_lhood.h"
+#include "arb_mat_extras.h"
 #include "util.h"
+#include "evaluate_site_lhood.h"
 
 /* Calculate the likelihood, storing many intermediate calculations. */
 void
@@ -44,12 +45,12 @@ evaluate_site_lhood(arb_t lhood,
             if (lhood_edge_vectors)
             {
                 emat = lhood_edge_vectors + idx;
-                arb_mat_mul(emat, tmat, nmatb, prec);
+                _arb_mat_mul_stochastic(emat, tmat, nmatb, prec);
                 _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
             }
             else
             {
-                _prune_update(nmat, nmat, tmat, nmatb, prec);
+                _prune_update_prob(nmat, nmat, tmat, nmatb, prec);
             }
         }
     }

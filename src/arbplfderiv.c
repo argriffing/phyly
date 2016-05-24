@@ -182,14 +182,14 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
                 {
                     rmat = csw->rate_matrix;
                     emat = w->lhood_edge_vectors + idx;
-                    _prune_update(nmat, nmat, rmat, emat, prec);
+                    _prune_update_rate(nmat, nmat, rmat, emat, prec);
                 }
                 else if (idx == curr_idx)
                 {
                     b = g->indices[idx];
                     tmat = tmat_base + idx;
                     nmatb = w->deriv_node_vectors + b;
-                    _prune_update(nmat, nmat, tmat, nmatb, prec);
+                    _prune_update_prob(nmat, nmat, tmat, nmatb, prec);
                 }
                 else
                 {
