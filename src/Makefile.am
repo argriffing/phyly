@@ -41,6 +41,8 @@ CORE_SOURCES = \
 	rosenbrock.h \
 	equilibrium.c \
 	equilibrium.h \
+	distribution.c \
+	distribution.h \
 	cross_site_ws.c \
 	cross_site_ws.h \
 	finite_differences.c \

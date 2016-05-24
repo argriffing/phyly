@@ -310,10 +310,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
             continue;
 
         /* update base node vectors */
-        pmat_update_base_node_vectors(
-                w->base_node_vectors, m->p, site,
-                m->root_prior, csw->equilibrium,
-                m->preorder[0], prec);
+        pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
 
         /* clear cross-category expectations and site lhood */
         _arb_vec_zero(dwell_site, edge_count);
@@ -336,6 +333,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
                     w->base_node_vectors,
+                    m->root_prior, csw->equilibrium,
                     tmat_base,
                     m->g, m->preorder, node_count, prec);
 

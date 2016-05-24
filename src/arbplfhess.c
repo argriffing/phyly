@@ -345,6 +345,7 @@ evaluate_site_derivatives(arb_t derivative,
         csr_graph_struct *g, int *preorder,
         const arb_mat_struct *rate_matrix,
         const arb_mat_struct *transition_matrices,
+        const root_prior_t r, const arb_struct *equilibrium,
         likelihood_ws_t w, int *idx_to_a, int *b_to_idx,
         int deriv_idx, plane_t plane, int update_indirect, slong prec)
 {
@@ -416,7 +417,8 @@ evaluate_site_derivatives(arb_t derivative,
     }
 
     /* Report the sum of state entries associated with the root. */
-    _arb_mat_sum(derivative, plane->node_vectors + preorder[0], prec);
+    root_prior_expectation(derivative, r,
+            plane->node_vectors + preorder[0], equilibrium, prec);
 }
 
 
@@ -565,10 +567,7 @@ _recompute_second_order(so_t so,
          * according to prior state distributions and data.
          * Edges remain unused.
          */
-        pmat_update_base_node_vectors(
-                w->base_plane->node_vectors, m->p, site,
-                m->root_prior, csw->equilibrium,
-                m->preorder[0], prec);
+        pmat_update_base_node_vectors(w->base_plane->node_vectors, m->p, site);
 
         /* zero cross-category lhood accumulators */
         arb_zero(site_lhood);
@@ -594,6 +593,7 @@ _recompute_second_order(so_t so,
                     w->lhood_plane->node_vectors,
                     w->lhood_plane->edge_vectors,
                     w->base_plane->node_vectors,
+                    m->root_prior, csw->equilibrium,
                     tmat_base,
                     m->g, m->preorder, node_count, prec);
 
@@ -647,6 +647,7 @@ _recompute_second_order(so_t so,
                     evaluate_site_derivatives(cat_lhood_gradient + idx_i,
                             m->g, m->preorder,
                             csw->rate_matrix, tmat_base,
+                            m->root_prior, csw->equilibrium,
                             w, idx_to_a, b_to_idx,
                             idx_i, w->deriv_plane, update_indirect, prec);
 
@@ -662,6 +663,7 @@ _recompute_second_order(so_t so,
                                         cat_lhood_hessian, idx_i, idx_j),
                                     m->g, m->preorder,
                                     csw->rate_matrix, tmat_base,
+                                    m->root_prior, csw->equilibrium,
                                     w, idx_to_a, b_to_idx,
                                     idx_j, w->hess_plane, update_indirect, prec);
                         }
@@ -911,10 +913,7 @@ void _compute_ll(arb_t ll,
          * according to prior state distributions and data.
          * Edges remain unused.
          */
-        pmat_update_base_node_vectors(
-                w->base_plane->node_vectors, m->p, site,
-                m->root_prior, csw->equilibrium,
-                m->preorder[0], prec);
+        pmat_update_base_node_vectors(w->base_plane->node_vectors, m->p, site);
 
         /* Reset pointers in the virtual plane. */
         for (a = 0; a < node_count; a++)
@@ -930,6 +929,7 @@ void _compute_ll(arb_t ll,
                 w->lhood_plane->node_vectors,
                 w->lhood_plane->edge_vectors,
                 w->base_plane->node_vectors,
+                m->root_prior, csw->equilibrium,
                 tmat_base,
                 m->g, m->preorder, node_count, prec);
 

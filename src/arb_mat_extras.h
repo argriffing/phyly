@@ -18,6 +18,7 @@ void _arb_mat_mul_stochastic(
 void _arb_mat_mul_rate_matrix(
         arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec);
 int _arb_mat_is_finite(const arb_mat_t A);
+void _arb_mat_sum(arb_t dst, const arb_mat_t src, slong prec);
 
 #ifdef __cplusplus
 }

@@ -6,6 +6,7 @@
 
 #include "util.h"
 #include "equilibrium.h"
+#include "arb_mat_extras.h"
 #include "model.h"
 
 
@@ -136,10 +137,7 @@ pmat_clear(pmat_t mat)
 void
 pmat_update_base_node_vectors(
         arb_mat_struct *base_node_vectors,
-        const pmat_t p, slong site,
-        const root_prior_t root_prior,
-        const arb_struct *equilibrium,
-        slong root_node_index, slong prec)
+        const pmat_t p, slong site)
 {
     slong i, j;
     slong node_count, state_count;
@@ -156,8 +154,10 @@ pmat_update_base_node_vectors(
     }
 
     /* Optionally update the root node vector. */
+    /*
     bvec = base_node_vectors + root_node_index;
     root_prior_mul_col_vec(bvec, root_prior, equilibrium, prec);
+    */
 }
 
 
@@ -184,6 +184,7 @@ root_prior_clear(root_prior_t r)
     free(r->custom_distribution);
 }
 
+/* fixme: deprecated */
 void
 root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
         const arb_struct *equilibrium, slong prec)
@@ -222,6 +223,68 @@ root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
             arb_ptr p = arb_mat_entry(A, i, 0);
             arb_set_d(d, r->custom_distribution[i]);
             arb_mul(p, p, d, prec);
+        }
+        arb_clear(d);
+    }
+    else
+    {
+        abort(); /* assert */
+    }
+}
+
+void
+root_prior_expectation(arb_t out,
+        const root_prior_t r, const arb_mat_t A,
+        const arb_struct *equilibrium, slong prec)
+{
+    slong i;
+    if (arb_mat_ncols(A) != 1) abort(); /* assert */
+    if (arb_mat_nrows(A) != r->n) abort(); /* assert */
+    if (r->mode == ROOT_PRIOR_NONE)
+    {
+        _arb_mat_sum(out, A, prec);
+    }
+    else if (r->mode == ROOT_PRIOR_UNIFORM)
+    {
+        if (equilibrium) abort(); /* assert */
+        if (_arb_mat_col_is_constant(A, 0))
+        {
+            arb_set(out, arb_mat_entry(A, 0, 0));
+        }
+        else
+        {
+            _arb_mat_sum(out, A, prec);
+            arb_div_si(out, out, r->n, prec);
+        }
+    }
+    else if (r->mode == ROOT_PRIOR_EQUILIBRIUM)
+    {
+        if (!equilibrium) abort(); /* assert */
+        if (_arb_mat_col_is_constant(A, 0) &&
+            _arb_vec_is_finite(equilibrium, r->n))
+        {
+            arb_set(out, arb_mat_entry(A, 0, 0));
+        }
+        else
+        {
+            arb_zero(out);
+            for (i = 0; i < r->n; i++)
+            {
+                arb_addmul(out, equilibrium + i, arb_mat_entry(A, i, 0), prec);
+            }
+        }
+    }
+    else if (r->mode == ROOT_PRIOR_CUSTOM)
+    {
+        arb_t d;
+        arb_init(d);
+        if (equilibrium) abort(); /* assert */
+        if (!r->custom_distribution) abort(); /* assert */
+        arb_zero(out);
+        for (i = 0; i < r->n; i++)
+        {
+            arb_set_d(d, r->custom_distribution[i]);
+            arb_addmul(out, arb_mat_entry(A, i, 0), d, prec);
         }
         arb_clear(d);
     }

@@ -161,11 +161,6 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
                 tmpd = *pmat_srcentry(m->p, site, a, state);
                 arb_set_d(arb_mat_entry(nmat, state, 0), tmpd);
             }
-            if (a == m->preorder[0])
-            {
-                root_prior_mul_col_vec(
-                        nmat, m->root_prior, csw->equilibrium, prec);
-            }
 
             /*
              * Multiplicatively accumulate precomputed vectors
@@ -205,11 +200,8 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
         /* Report the sum of state entries associated with the root. */
         nmat = w->deriv_node_vectors + m->root_node_index;
         arb_struct * deriv = derivatives + deriv_idx;
-        arb_zero(deriv);
-        for (state = 0; state < state_count; state++)
-        {
-            arb_add(deriv, deriv, arb_mat_entry(nmat, state, 0), prec);
-        }
+        root_prior_expectation(deriv,
+                m->root_prior, nmat, csw->equilibrium, prec);
     }
 
 }
@@ -288,10 +280,7 @@ _nd_accum_update(nd_accum_t arr,
         coords[0] = site;
 
         /* update base node vectors */
-        pmat_update_base_node_vectors(
-                w->base_node_vectors, m->p, site,
-                m->root_prior, csw->equilibrium,
-                m->preorder[0], prec);
+        pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
 
         /*
          * Set all cross-category marginal vectors to zero,
@@ -309,15 +298,13 @@ _nd_accum_update(nd_accum_t arr,
             const arb_mat_struct * tmat_base;
             tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
 
-            pmat_update_base_node_vectors(
-                    w->base_node_vectors, m->p, site,
-                    m->root_prior, csw->equilibrium,
-                    m->preorder[0], prec);
+            pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
 
             evaluate_site_lhood(cat_lhood,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
                     w->base_node_vectors,
+                    m->root_prior, csw->equilibrium,
                     tmat_base,
                     m->g, m->preorder, node_count, prec);
 
