@@ -17,6 +17,7 @@ void _arb_mat_mul_stochastic(
         arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec);
 void _arb_mat_mul_rate_matrix(
         arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec);
+int _arb_mat_is_finite(const arb_mat_t A);
 
 #ifdef __cplusplus
 }

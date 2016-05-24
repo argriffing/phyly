@@ -173,3 +173,14 @@ _arb_mat_mul_rate_matrix(
         }
     }
 }
+
+int
+_arb_mat_is_finite(const arb_mat_t A)
+{
+    slong i, j;
+    for (i = 0; i < arb_mat_nrows(A); i++)
+        for (j = 0; j < arb_mat_ncols(A); j++)
+            if (!arb_is_finite(arb_mat_entry(A, i, j)))
+                return 0;
+    return 1;
+}
