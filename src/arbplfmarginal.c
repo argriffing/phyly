@@ -191,6 +191,7 @@ _nd_accum_update(nd_accum_t arr,
                     w->marginal_node_vectors,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
+                    m->root_prior, csw->equilibrium,
                     tmat_base,
                     m->g, m->preorder, csw->node_count, csw->state_count, prec);
 

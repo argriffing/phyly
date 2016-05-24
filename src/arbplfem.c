@@ -354,6 +354,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                         w->marginal_node_vectors,
                         w->lhood_node_vectors,
                         w->lhood_edge_vectors,
+                        m->root_prior, csw->equilibrium,
                         tmat_base,
                         m->g, m->preorder, node_count, state_count, prec);
 

@@ -184,7 +184,6 @@ root_prior_clear(root_prior_t r)
     free(r->custom_distribution);
 }
 
-/* fixme: deprecated */
 void
 root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
         const arb_struct *equilibrium, slong prec)

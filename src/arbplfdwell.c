@@ -246,6 +246,7 @@ _update_site(nd_accum_t arr,
                 w->marginal_node_vectors,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
+                m->root_prior, csw->equilibrium,
                 tmat_base,
                 m->g, m->preorder, node_count, state_count, prec);
 
