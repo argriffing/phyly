@@ -8,6 +8,7 @@ evaluate_site_lhood(arb_t lhood,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
         const arb_mat_struct *base_node_vectors,
+        const root_prior_t r, const arb_struct *equilibrium,
         const arb_mat_struct *transition_matrices,
         const csr_graph_struct *g,
         const int *preorder, int node_count, slong prec)
@@ -58,5 +59,5 @@ evaluate_site_lhood(arb_t lhood,
     /* Report the sum of state entries associated with the root. */
     int root_node_index = preorder[0];
     nmat = lhood_node_vectors + root_node_index;
-    _arb_mat_sum(lhood, nmat, prec);
+    root_prior_expectation(lhood, r, nmat, equilibrium, prec);
 }

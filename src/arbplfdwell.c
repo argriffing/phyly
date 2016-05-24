@@ -213,10 +213,7 @@ _update_site(nd_accum_t arr,
     nd_axis_struct *edge_axis = arr->axes + EDGE_AXIS;
 
     /* update base node vectors */
-    pmat_update_base_node_vectors(
-            w->base_node_vectors, m->p, site,
-            m->root_prior, csw->equilibrium,
-            m->preorder[0], prec);
+    pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
 
     /* clear cross-category expectations and site lhood */
     _arb_vec_zero(w->cc_edge_expectations, edge_count);
@@ -237,6 +234,7 @@ _update_site(nd_accum_t arr,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
                 w->base_node_vectors,
+                m->root_prior, csw->equilibrium,
                 tmat_base,
                 m->g, m->preorder, node_count, prec);
 
@@ -248,6 +246,7 @@ _update_site(nd_accum_t arr,
                 w->marginal_node_vectors,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
+                m->root_prior, csw->equilibrium,
                 tmat_base,
                 m->g, m->preorder, node_count, state_count, prec);
 

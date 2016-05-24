@@ -144,10 +144,7 @@ _nd_accum_update(nd_accum_t arr,
         coords[0] = site;
 
         /* update base node vectors */
-        pmat_update_base_node_vectors(
-                w->base_node_vectors, m->p, site,
-                m->root_prior, csw->equilibrium,
-                m->preorder[0], prec);
+        pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
 
         /* sum over rate categories */
         arb_zero(post_lhood_sum);
@@ -160,6 +157,7 @@ _nd_accum_update(nd_accum_t arr,
                     w->lhood_node_vectors,
                     NULL,
                     w->base_node_vectors,
+                    m->root_prior, csw->equilibrium,
                     tmat_base,
                     m->g, m->preorder, csw->node_count, prec);
 

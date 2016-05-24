@@ -137,10 +137,7 @@ _nd_accum_update(nd_accum_t arr,
         coords[0] = site;
 
         /* update base node vectors */
-        pmat_update_base_node_vectors(
-                w->base_node_vectors, m->p, site,
-                m->root_prior, csw->equilibrium,
-                m->preorder[0], prec);
+        pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
 
         /*
          * Set all cross-category marginal vectors to zero,
@@ -169,6 +166,7 @@ _nd_accum_update(nd_accum_t arr,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
                     w->base_node_vectors,
+                    m->root_prior, csw->equilibrium,
                     tmat_base,
                     m->g, m->preorder, csw->node_count, prec);
 
@@ -193,6 +191,7 @@ _nd_accum_update(nd_accum_t arr,
                     w->marginal_node_vectors,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
+                    m->root_prior, csw->equilibrium,
                     tmat_base,
                     m->g, m->preorder, csw->node_count, csw->state_count, prec);
 

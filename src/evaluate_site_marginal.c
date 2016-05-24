@@ -62,6 +62,7 @@ evaluate_site_marginal(
         arb_mat_struct *marginal_node_vectors,
         arb_mat_struct *lhood_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
+        const root_prior_t r, const arb_struct *equilibrium,
         const arb_mat_struct *transition_matrices,
         csr_graph_struct *g, const int *preorder,
         int node_count, int state_count, slong prec)
@@ -75,7 +76,10 @@ evaluate_site_marginal(
 
     arb_mat_init(tmp, state_count, 1);
 
-    _arb_mat_ones(marginal_node_vectors + preorder[0]);
+    /* Initialize using the root prior. */
+    mvec = marginal_node_vectors + preorder[0];
+    _arb_mat_ones(mvec);
+    root_prior_mul_col_vec(mvec, r, equilibrium, prec);
 
     for (u = 0; u < node_count; u++)
     {

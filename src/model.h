@@ -57,7 +57,9 @@ void root_prior_init(root_prior_t r, int n, enum root_prior_mode mode);
 void root_prior_clear(root_prior_t r);
 void root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
         const arb_struct *equilibrium, slong prec);
-
+void root_prior_expectation(arb_t out,
+        const root_prior_t r, const arb_mat_t A,
+        const arb_struct *equilibrium, slong prec);
 
 
 typedef struct
@@ -78,10 +80,7 @@ void pmat_pre_init(pmat_t mat);
 void pmat_init(pmat_t mat, int s, int r, int c);
 void pmat_clear(pmat_t mat);
 void pmat_update_base_node_vectors(
-        arb_mat_struct *base_node_vectors, const pmat_t p, slong site,
-        const root_prior_t root_prior, const arb_struct *equilibrium,
-        slong root_node_index, slong prec);
-
+        arb_mat_struct *base_node_vectors, const pmat_t p, slong site);
 
 
 

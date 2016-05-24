@@ -392,22 +392,6 @@ _csr_graph_get_preorder_edges(
 }
 
 void
-_arb_mat_sum(arb_t dst, arb_mat_t src, slong prec)
-{
-    slong i, j, r, c;
-    r = arb_mat_nrows(src);
-    c = arb_mat_ncols(src);
-    arb_zero(dst);
-    for (i = 0; i < r; i++)
-    {
-        for (j = 0; j < c; j++)
-        {
-            arb_add(dst, dst, arb_mat_entry(src, i, j), prec);
-        }
-    }
-}
-
-void
 _arb_mat_row_sums(arb_struct *dest, arb_mat_t src, slong prec)
 {
     slong i, j, r, c;

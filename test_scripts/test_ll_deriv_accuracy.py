@@ -62,47 +62,60 @@ def myderiv(d):
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     return df
 
-def test_using_finite_differences():
+def check_using_finite_differences(rate_mixture, root_prior):
     d_in = default_in
 
-    def my_objective(rate_mixture, X):
+    def objective(X):
         d = copy.deepcopy(d_in)
         d['model_and_data']['edge_rate_coefficients'] = X
         d['site_reduction'] = {'aggregation' : 'sum'}
         if rate_mixture:
             d['model_and_data']['rate_mixture'] = rate_mixture
+        if root_prior:
+            d['model_and_data']['root_prior'] = root_prior
         y = myll(d).value[0]
         return -y
 
-    def my_gradient(rate_mixture, X):
+    def gradient(X):
         d = copy.deepcopy(d_in)
         d['model_and_data']['edge_rate_coefficients'] = X
         d['site_reduction'] = {'aggregation' : 'sum'}
         if rate_mixture:
             d['model_and_data']['rate_mixture'] = rate_mixture
+        if root_prior:
+            d['model_and_data']['root_prior'] = root_prior
         y = myderiv(d).set_index('edge').value.values
         return (-y).tolist()
 
-    rate_mixtures = (None, dict(prior=[0.3, 0.7], rates=[1, 2]))
+    x0 = d_in['model_and_data']['edge_rate_coefficients']
+
+    y0 = objective(x0)
+    d0 = gradient(x0)
+
+    # check the gradient using numerical differences of 1e-8
+    numgrad = []
+    delta = 1e-8
+    for i in range(len(x0)):
+        u = x0[:]
+        u[i] += delta
+        y = objective(u)
+        numgrad.append((y - y0) / delta)
+
+    # Require that the finite differences gradient
+    # is in the ballpark of the internally computed gradient.
+    assert_allclose(numgrad, d0, rtol=1e-3)
+
+
+def test_using_finite_differences():
+    rate_mixtures = (None,
+            dict(prior=[0.3, 0.7], rates=[1, 2]))
+    root_priors = (None,
+            "uniform_distribution",
+            "equilibrium_distribution",
+            [0.25, 0.25, 0.25, 0.25])
+
     for rate_mixture in rate_mixtures:
-
-        objective = partial(my_objective, rate_mixture)
-        gradient = partial(my_gradient, rate_mixture)
-
-        x0 = d_in['model_and_data']['edge_rate_coefficients']
-
-        y0 = objective(x0)
-        d0 = gradient(x0)
-
-        # check the gradient using numerical differences of 1e-8
-        numgrad = []
-        delta = 1e-8
-        for i in range(len(x0)):
-            u = x0[:]
-            u[i] += delta
-            y = objective(u)
-            numgrad.append((y - y0) / delta)
-
-        # Require that the finite differences gradient
-        # is in the ballpark of the internally computed gradient.
-        assert_allclose(numgrad, d0, rtol=1e-3)
+        for root_prior in root_priors:
+            print('rate mixture:', rate_mixture)
+            print('root prior:', root_prior)
+            check_using_finite_differences(rate_mixture, root_prior)
