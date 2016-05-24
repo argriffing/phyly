@@ -2,70 +2,6 @@
 #include "util.h"
 #include "evaluate_site_lhood.h"
 
-
-/* Assume that each row of A sums to 1 */
-static void
-_arb_mat_mul_stochastic(
-        arb_mat_t C, const arb_mat_t A, const arb_mat_t B, slong prec)
-{
-    slong ar, ac, br, bc, i, j, k;
-
-    ar = arb_mat_nrows(A);
-    ac = arb_mat_ncols(A);
-    br = arb_mat_nrows(B);
-    bc = arb_mat_ncols(B);
-
-    if (ac != br || ar != arb_mat_nrows(C) || bc != arb_mat_ncols(C))
-    {
-        flint_printf("arb_mat_mul: incompatible dimensions\n");
-        abort();
-    }
-
-    if (br == 0)
-    {
-        arb_mat_zero(C);
-        return;
-    }
-
-    if (A == C || B == C)
-    {
-        arb_mat_t T;
-        arb_mat_init(T, ar, bc);
-        _arb_mat_mul_stochastic(T, A, B, prec);
-        arb_mat_swap(T, C);
-        arb_mat_clear(T);
-        return;
-    }
-
-    for (j = 0; j < bc; j++)
-    {
-        if (_arb_mat_col_is_constant(B, j))
-        {
-            for (i = 0; i < ar; i++)
-            {
-                arb_set(arb_mat_entry(C, i, j), arb_mat_entry(B, 0, j));
-            }
-        }
-        else
-        {
-            for (i = 0; i < ar; i++)
-            {
-                arb_mul(arb_mat_entry(C, i, j),
-                          arb_mat_entry(A, i, 0),
-                          arb_mat_entry(B, 0, j), prec);
-
-                for (k = 1; k < br; k++)
-                {
-                    arb_addmul(arb_mat_entry(C, i, j),
-                                 arb_mat_entry(A, i, k),
-                                 arb_mat_entry(B, k, j), prec);
-                }
-            }
-        }
-    }
-}
-
-
 /* Calculate the likelihood, storing many intermediate calculations. */
 void
 evaluate_site_lhood(arb_t lhood,
@@ -114,7 +50,7 @@ evaluate_site_lhood(arb_t lhood,
             }
             else
             {
-                _prune_update(nmat, nmat, tmat, nmatb, prec);
+                _prune_update_prob(nmat, nmat, tmat, nmatb, prec);
             }
         }
     }

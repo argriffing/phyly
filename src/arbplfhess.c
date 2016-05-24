@@ -60,6 +60,7 @@
 #include "evaluate_site_lhood.h"
 #include "arb_calc.h"
 #include "arb_vec_extras.h"
+#include "arb_mat_extras.h"
 #include "arb_vec_calc.h"
 #include "arb_vec_calc_quad.h"
 #include "finite_differences.h"
@@ -377,7 +378,7 @@ evaluate_site_derivatives(arb_t derivative,
             {
                 emati = indirect->edge_pvectors[idx];
                 emat = plane->edge_vectors + idx;
-                arb_mat_mul(emat, rmat, emati, prec);
+                _arb_mat_mul_rate_matrix(emat, rmat, emati, prec);
                 _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
                 if (update_indirect)
                 {
@@ -391,7 +392,7 @@ evaluate_site_derivatives(arb_t derivative,
                 tmat = transition_matrices + idx;
                 nmatb = plane->node_vectors + b;
                 emat = plane->edge_vectors + idx;
-                arb_mat_mul(emat, tmat, nmatb, prec);
+                _arb_mat_mul_stochastic(emat, tmat, nmatb, prec);
                 _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
                 if (update_indirect)
                 {
