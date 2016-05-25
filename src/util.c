@@ -8,6 +8,13 @@
 
 #define FULL_RELATIVE_PRECISION 53
 
+int _can_round(arb_t x)
+{
+    /* This cannot deal with values like -1 +/- 1e-1000000000000 */
+    /* return arb_can_round_arf(x, 53, ARF_RND_NEAR); */
+    return arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION;
+}
+
 void
 _arb_sum(arb_t dest, arb_struct *src, slong len, slong prec)
 {
@@ -17,13 +24,6 @@ _arb_sum(arb_t dest, arb_struct *src, slong len, slong prec)
     {
         arb_add(dest, dest, src + i, prec);
     }
-}
-
-int _can_round(arb_t x)
-{
-    /* This cannot deal with values like -1 +/- 1e-1000000000000 */
-    /* return arb_can_round_arf(x, 53, ARF_RND_NEAR); */
-    return arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION;
 }
 
 int
