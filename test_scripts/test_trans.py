@@ -222,3 +222,27 @@ class TestTransEdgeOrder(TestCase):
         actual = out.set_index('site').value.values
         # check that the two calculations are equivalent
         assert_allclose(actual, desired)
+
+def test_explicit_vs_implicit_aggregation_over_transitions():
+    for agg in 'sum', 'avg':
+        print('test agg', agg)
+        #
+        # explicit trans reduction
+        x = copy.deepcopy(default_in)
+        x['site_reduction'] = {'aggregation' : agg}
+        x['trans_reduction'] = {
+                'selection' : [
+                    [0, 1], [0, 2], [0, 3],
+                    [2, 0], [2, 1], [2, 3],
+                    [1, 0], [1, 2], [1, 3],
+                    [3, 0], [3, 1], [3, 2]],
+                'aggregation' : agg}
+        f = mytrans(x).set_index('edge').value
+        #
+        # implicit trans reduction
+        y = copy.deepcopy(default_in)
+        y['site_reduction'] = {'aggregation' : agg}
+        y['trans_reduction'] = {'aggregation' : agg}
+        g = mytrans(y).set_index('edge').value
+        #
+        _assert_allclose_series(f, g)
