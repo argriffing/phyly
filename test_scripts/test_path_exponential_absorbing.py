@@ -71,28 +71,30 @@ def test_marginal():
     assert_allclose(actual, desired)
 
 def test_trans_01():
-    d = copy.deepcopy(D)
-    d['trans_reduction'] = {"selection" : [[0, 1]], "aggregation" : "sum"}
-    s = arbplf_trans(json.dumps(d))
-    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
-    actual = df.set_index('edge').value.values
-    # compute the desired closed form solution
-    u = np.cumsum([0] + rates)
-    a, b = u[:-1], u[1:]
-    desired = exp(-a) - exp(-b)
-    # compare actual and desired result
-    assert_allclose(actual, desired)
+    for agg in ('sum', 'avg', 'only'):
+        d = copy.deepcopy(D)
+        d['trans_reduction'] = {"selection" : [[0, 1]], "aggregation" : agg}
+        s = arbplf_trans(json.dumps(d))
+        df = pd.read_json(StringIO(s), orient='split', precise_float=True)
+        actual = df.set_index('edge').value.values
+        # compute the desired closed form solution
+        u = np.cumsum([0] + rates)
+        a, b = u[:-1], u[1:]
+        desired = exp(-a) - exp(-b)
+        # compare actual and desired result
+        assert_allclose(actual, desired)
 
 def test_trans_10():
-    d = copy.deepcopy(D)
-    d['trans_reduction'] = {"selection" : [[1, 0]], "aggregation" : "sum"}
-    s = arbplf_trans(json.dumps(d))
-    df = pd.read_json(StringIO(s), orient='split', precise_float=True)
-    actual = df.set_index('edge').value.values
-    # compute the desired closed form solution
-    desired = np.zeros_like(actual)
-    # compare actual and desired result
-    assert_equal(actual, desired)
+    for agg in ('sum', 'avg', 'only'):
+        d = copy.deepcopy(D)
+        d['trans_reduction'] = {"selection" : [[1, 0]], "aggregation" : agg}
+        s = arbplf_trans(json.dumps(d))
+        df = pd.read_json(StringIO(s), orient='split', precise_float=True)
+        actual = df.set_index('edge').value.values
+        # compute the desired closed form solution
+        desired = np.zeros_like(actual)
+        # compare actual and desired result
+        assert_equal(actual, desired)
 
 def test_truncated_ll():
     d = copy.deepcopy(D)

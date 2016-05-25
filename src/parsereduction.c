@@ -74,6 +74,9 @@ _validate_column_aggregation(column_reduction_t r,
     int i;
     double weight;
     int n;
+    const char valid_agg_string_msg[] = (
+            "{\"sum\", \"avg\", \"only\"}");
+
     if (!root)
     {
         r->agg_mode = AGG_NONE;
@@ -88,11 +91,22 @@ _validate_column_aggregation(column_reduction_t r,
         {
             r->agg_mode = AGG_AVG;
         }
+        else if (!strcmp(json_string_value(root), "only"))
+        {
+            if (r->selection_len != 1)
+            {
+                fprintf(stderr, "error: %s aggregation (\"only\"): "
+                        "when using this aggregation mode, "
+                        "the selection length must be exactly 1\n", name);
+                return -1;
+            }
+            r->agg_mode = AGG_ONLY;
+        }
         else
         {
             fprintf(stderr, "error: %s aggregation (string): ", name);
-            fprintf(stderr, "the only valid aggregation strings are "
-                    "\"sum\" and \"avg\"\n");
+            fprintf(stderr, "the only valid aggregation strings are %s",
+                    valid_agg_string_msg);
             return -1;
         }
     }
@@ -127,8 +141,9 @@ _validate_column_aggregation(column_reduction_t r,
     {
         fprintf(stderr, "error: %s aggregation: ", name);
         fprintf(stderr, "if provided, the aggregation should be either "
-                "the string \"sum\", or the string \"avg\", "
-                "or an array of numeric weights for a weighted sum\n");
+                "one of the strings %s "
+                "or an array of numeric weights for a weighted sum\n",
+                valid_agg_string_msg);
         return -1;
     }
     return 0;
