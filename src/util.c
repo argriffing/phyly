@@ -10,9 +10,34 @@
 
 int _can_round(arb_t x)
 {
+    int can_round;
     /* This cannot deal with values like -1 +/- 1e-1000000000000 */
-    /* return arb_can_round_arf(x, 53, ARF_RND_NEAR); */
-    return arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION;
+    /* slong prec = 53; */
+    /* can_round = arb_can_round_arf(x, prec, ARF_RND_NEAR); */
+    can_round = (arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION);
+    /* debug */
+    /*
+    if (!can_round)
+    {
+        slong e, bits;
+        flint_printf("failed to round\n");
+        arb_printd(x, 100); flint_printf("\n");
+        arb_print(x); flint_printf("\n");
+
+        e = _fmpz_sub_small(
+                ARF_EXPREF(arb_midref(x)),
+                MAG_EXPREF(arb_radref(x)));
+        bits = arb_bits(x);
+        flint_printf("e: %wd\n", e);
+        flint_printf("bits: %wd\n", bits);
+
+        e = FLINT_MIN(e, FLINT_MAX(bits, prec) + 10);
+        flint_printf("adjusted e: %wd\n", e);
+
+        flint_printf("\n");
+    }
+    */
+    return can_round;
 }
 
 void
