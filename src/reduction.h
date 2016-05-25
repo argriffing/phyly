@@ -7,6 +7,7 @@
 #define AGG_AVG 1
 #define AGG_SUM 2
 #define AGG_WEIGHTED_SUM 3
+#define AGG_ONLY 4
 
 #ifdef __cplusplus
 extern "C" {

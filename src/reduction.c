@@ -80,6 +80,18 @@ get_edge_agg_weights(
         }
         arb_set_si(weight_divisor, r->selection_len);
     }
+    else if (r->agg_mode == AGG_ONLY)
+    {
+        if (r->selection_len != 1)
+        {
+            fprintf(stderr, "error: when using {\"aggregation\" : \"only\"}, "
+                    "the selection length must be exactly 1\n");
+            result = -1;
+            goto finish;
+        }
+        arb_one(weight_divisor);
+        arb_one(weights + 0);
+    }
     else
     {
         fprintf(stderr, "internal error: unexpected aggregation mode\n");
@@ -163,6 +175,18 @@ get_column_agg_weights(
             arb_set_si(weights+idx, idx_selection_count[idx]);
         }
         arb_set_si(weight_divisor, r->selection_len);
+    }
+    else if (r->agg_mode == AGG_ONLY)
+    {
+        if (r->selection_len != 1)
+        {
+            fprintf(stderr, "error: when using {\"aggregation\" : \"only\"}, "
+                    "the selection length must be exactly 1\n");
+            result = -1;
+            goto finish;
+        }
+        arb_one(weight_divisor);
+        arb_one(weights + 0);
     }
     else
     {
