@@ -50,7 +50,7 @@ Input (in.json):
 
 Commands:
 ```bash
-$ arbplf-trans < in.json > out.json
+$ arbplf-dwell < in.json > out.json
 $ tabby < out.json > out.md
 ```
 
