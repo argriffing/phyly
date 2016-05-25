@@ -84,8 +84,10 @@ get_edge_agg_weights(
     {
         if (r->selection_len != 1)
         {
-            fprintf(stderr, "error: when using {\"aggregation\" : \"only\"}, "
-                    "the selection length must be exactly 1\n");
+            fprintf(stderr, "error (get_edge_agg_weights): "
+                    "when using {\"aggregation\" : \"only\"}, "
+                    "the selection length must be exactly 1 "
+                    "(selection_len = %d)\n", r->selection_len);
             result = -1;
             goto finish;
         }

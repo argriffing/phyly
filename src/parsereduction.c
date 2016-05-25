@@ -97,7 +97,8 @@ _validate_column_aggregation(column_reduction_t r,
             {
                 fprintf(stderr, "error: %s aggregation (\"only\"): "
                         "when using this aggregation mode, "
-                        "the selection length must be exactly 1\n", name);
+                        "the selection length must be exactly 1 "
+                        "(selection_len = %d)\n", name, r->selection_len);
                 return -1;
             }
             r->agg_mode = AGG_ONLY;
@@ -312,8 +313,9 @@ validate_column_pair_reduction(column_reduction_t r,
 
     /*
      * If a selection has been specified, then validate the aggregation
-     * as usual. Otherwise if no selection has been specified then allow
-     * {AGG_SUM, AGG_AVG} but not {AGG_NONE, AGG_WEIGHTED_SUM}.
+     * as usual. Otherwise if no selection has been specified
+     * then allow {AGG_SUM, AGG_AVG}
+     * but not {AGG_NONE, AGG_ONLY, AGG_WEIGHTED_SUM}.
      */
     if (selection)
     {
