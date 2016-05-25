@@ -272,21 +272,20 @@ validate_column_pair_reduction(column_reduction_t r,
     json_t *selection = NULL;
     json_t *aggregation = NULL;
 
-    int result;
     json_error_t err;
-    size_t flags;
+    size_t flags = JSON_STRICT;
+    int k = k0;
+    int result = 0;
 
-    result = 0;
-    flags = JSON_STRICT;
+    if (k0 != k1) abort(); /* assert */
 
     *first_idx = NULL;
     *second_idx = NULL;
 
     if (root)
     {
-        /* For pair reduction, 'selection' is required (not optional). */
         result = json_unpack_ex(root, &err, flags,
-                "{s:o, s?o}",
+                "{s?o, s?o}",
                 "selection", &selection,
                 "aggregation", &aggregation);
         if (result)
@@ -296,12 +295,66 @@ validate_column_pair_reduction(column_reduction_t r,
         }
     }
 
-    result = _validate_column_pair_selection(r, first_idx, second_idx,
-            k0, k1, name, selection);
-    if (result) return result;
+    /*
+     * If a selection has been specified, then validate the aggregation
+     * as usual. Otherwise if no selection has been specified then allow
+     * {AGG_SUM, AGG_AVG} but not {AGG_NONE, AGG_WEIGHTED_SUM}.
+     */
+    if (selection)
+    {
+        result = _validate_column_pair_selection(r, first_idx, second_idx,
+                k0, k1, name, selection);
+        if (result) return result;
 
-    result = _validate_column_aggregation(r, name, aggregation);
-    if (result) return result;
+        result = _validate_column_aggregation(r, name, aggregation);
+        if (result) return result;
+    }
+    else
+    {
+        r->agg_mode = -1;
+        if (aggregation && json_is_string(aggregation))
+        {
+            if (!strcmp(json_string_value(aggregation), "sum"))
+            {
+                r->agg_mode = AGG_SUM;
+            }
+            else if (!strcmp(json_string_value(aggregation), "avg"))
+            {
+                r->agg_mode = AGG_AVG;
+            }
+
+            /* choose all pairs */
+            {
+                slong i, a, b, len;
+                len = k * (k - 1);
+                r->selection_len = len;
+                r->selection = malloc(len * sizeof(int));
+                *first_idx = flint_malloc(len * sizeof(int));
+                *second_idx = flint_malloc(len * sizeof(int));
+                i = 0;
+                for (a = 0; a < k; a++)
+                {
+                    for (b = 0; b < k; b++)
+                    {
+                        if (a != b)
+                        {
+                            r->selection[i] = i;
+                            (*first_idx)[i] = a;
+                            (*second_idx)[i] = b;
+                            i++;
+                        }
+                    }
+                }
+            }
+        }
+        if (r->agg_mode == -1)
+        {
+            fprintf(stderr, "error: %s reduction (no selection): ", name);
+            fprintf(stderr, "if no selection is specified, "
+                    "a \"sum\" or \"avg\" aggregation is required\n");
+            return -1;
+        }
+    }
 
     return result;
 }

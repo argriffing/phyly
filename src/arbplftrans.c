@@ -477,7 +477,7 @@ _query(model_and_data_t m,
     axis_components[1].name = "second_state";
     axis_components[1].indices = second_idx;
 
-    /* initialize axes at zero precision */
+    /* initialize the first two axes at zero precision */
     nd_axis_init(site_axis, "site", site_count, r_site, 0, NULL, 0);
     nd_axis_init(edge_axis, "edge", edge_count, r_edge, 0, NULL, 0);
 
