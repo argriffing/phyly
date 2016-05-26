@@ -1,10 +1,10 @@
 Compute one EM update of the edge rate coefficients,
 following the setup of Figure 16.4 of
-Inferring Phylogenies (2004) by Joseph Felsenstein
+Inferring Phylogenies (2004) by Joseph Felsenstein,
 but in the complete absence of data.
 
-Because no data is available, the EM update
-does not change the edge rate coefficients.
+Because this analysis does not use the available data,
+the EM update does not change the edge rate coefficients.
 
 ---
 
