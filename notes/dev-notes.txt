@@ -21,3 +21,7 @@ $ nosetests
 
 Another configure option:
 $ ../configure --prefix=~/.local CFLAGS='-march=native -O3 -ffast-math -g -Wall -Wextra'
+
+Warning !!!
+the -ffast-math flag appears to break the 'signbit' function
+that I use to control -0.0 vs. 0.0.

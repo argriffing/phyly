@@ -313,7 +313,7 @@ _nd_accum_recursively_build_json(nd_accum_t a,
     if (axis_idx == a->ndim)
     {
         double d;
-        d = arf_get_d(arb_midref(a->data + offset), ARF_RND_NEAR);
+        d = _arb_get_d(a->data + offset);
         if (j_row)
         {
             j_row_next = json_deep_copy(j_row);

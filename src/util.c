@@ -10,11 +10,46 @@
 
 int _can_round(arb_t x)
 {
-    int can_round;
     /* This cannot deal with values like -1 +/- 1e-1000000000000 */
     /* slong prec = 53; */
     /* can_round = arb_can_round_arf(x, prec, ARF_RND_NEAR); */
-    can_round = (arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION);
+
+    if (arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION)
+        return 1;
+
+    /* If the absolute value is tiny then we will round. */
+    /* The min subnormal positive double is 2^-1074 */
+    {
+        int can_round;
+        mag_t t;
+        mag_init_set_arf(t, arb_midref(x));
+        mag_add(t, t, arb_radref(x));
+        can_round = mag_cmp_2exp_si(t, -1074) < 0;
+        mag_clear(t);
+        /*
+        if (can_round)
+        {
+            double d;
+            d = _arb_get_d(x);
+            if (d)
+            {
+                flint_fprintf(stderr,
+                        "internal error: unexpectedly nonzero tiny double\n");
+                flint_fprintf(stderr, "%.100g\n", d);
+                abort();
+            }
+            if (signbit(d))
+            {
+                flint_fprintf(stderr,
+                        "internal error: unexpected signbit\n");
+                flint_fprintf(stderr, "%.100g\n", d);
+                abort();
+            }
+        }
+        */
+        return can_round;
+    }
+
     /* debug */
     /*
     if (!can_round)
@@ -37,7 +72,38 @@ int _can_round(arb_t x)
         flint_printf("\n");
     }
     */
-    return can_round;
+}
+
+/* do not return negative zero */
+double
+_arb_get_d(const arb_t x)
+{
+    double d;
+    d = arf_get_d(arb_midref(x), ARF_RND_NEAR);
+    if (d == 0.0 && signbit(d)) d = fabs(d);
+    /*
+    if (d == 0.0 && signbit(d))
+    {
+        flint_fprintf(stderr,
+                "internal error (_arb_get_d): unexpected signbit\n");
+        flint_fprintf(stderr, "%.100g\n", d);
+        abort();
+    }
+    if (d == 0.0)
+    {
+        flint_fprintf(stderr, "d == 0.0 %.100g %d\n", d, signbit(d));
+    }
+    if (d == -0.0)
+    {
+        flint_fprintf(stderr, "d == -0.0 %.100g %d\n", d, signbit(d));
+    }
+    if (d != 0.0)
+    {
+        flint_fprintf(stderr, "d != -0.0 %.100g %d\n", d, signbit(d));
+    }
+    flint_fprintf(stderr, "_arb_get_d %lf %d\n", d, signbit(d));
+    */
+    return d;
 }
 
 void
