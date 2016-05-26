@@ -61,31 +61,37 @@ entry of the list of edges.
 
 <dt>root_prior</dt>
 <dd>
-A prior distribution over states.
+An optional prior distribution over states at the node
+situated at the root of the tree.
 </dd>
 
 <dt>rate_matrix</dt>
 <dd>
-Off-diagonal entries of this matrix specify transition rates between states.
+Off-diagonal entries specify transition rates between states.
 The CTMC process defined by this rate matrix is shared across
-all edges of the tree, although each edge may scale this rate
+all edges of the tree, although each edge may further scale this rate
 by its own coefficient.
 Diagonal entries of this matrix are ignored.
+The rate matrix in this particular example defines a Jukes-Cantor process.
 </dd>
 
 <dt>rate_divisor</dt>
 <dd>
-In this example, the rate matrix is divided by 3
-so that the off-diagonal entries of each row sum to 1.
+In this example, the rate matrix is scaled by 1/3
+so that the off-diagonal entries of each row of the scaled matrix
+add up to 1.
 </dd>
 
 <dt>probability_array</dt>
 <dd>
-This is a 3 dimensional ndarray that allows a separate
+This is a 3 dimensional nd-array that allows a separate
 emission likelihood to be specified for each (site, node, state) triple.
-In this example we have 1 site, 8 nodes, and 4 states (A, C, G, T).
-The first five rows specify the 5 aligned leaf taxon nucleotides `ACCCG`,
-and the last three rows indicate that no data is available for internal nodes.
+In this example we have 1 site, 8 nodes, and 4 nucleotide states (A, C, G, T).
+The first five rows define a single column (ACCCG)
+in an alignment of 5 leaf taxon nucleotide sequences,
+and the last three rows indicate that no nucleotide sequence data is available
+for any of the three internal nodes for this column.
+This format is quite flexible but is unwieldy for large amounts of data.
 </dd>
 
 </dl>
