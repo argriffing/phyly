@@ -10,99 +10,41 @@
 
 int _can_round(arb_t x)
 {
-    /* This cannot deal with values like -1 +/- 1e-1000000000000 */
-    /* slong prec = 53; */
+    /*
+     * arb_can_round_arf() fails for intervals with positive width
+     * centered on representable numbers, regardless of rounding mode.
+     */
     /* can_round = arb_can_round_arf(x, prec, ARF_RND_NEAR); */
 
     if (arb_rel_accuracy_bits(x) >= FULL_RELATIVE_PRECISION)
         return 1;
 
-    /* If the absolute value is tiny then we will round. */
-    /* The min subnormal positive double is 2^-1074 */
+    /*
+     * The min subnormal positive double is 2^-1074,
+     * so any number with magnitude less than half of that
+     * will be closer to zero than to any other double.
+     */
     {
         int can_round;
         mag_t t;
         mag_init_set_arf(t, arb_midref(x));
         mag_add(t, t, arb_radref(x));
-        can_round = mag_cmp_2exp_si(t, -1074) < 0;
+        can_round = mag_cmp_2exp_si(t, -1075) < 0;
         mag_clear(t);
-        /*
-        if (can_round)
-        {
-            double d;
-            d = _arb_get_d(x);
-            if (d)
-            {
-                flint_fprintf(stderr,
-                        "internal error: unexpectedly nonzero tiny double\n");
-                flint_fprintf(stderr, "%.100g\n", d);
-                abort();
-            }
-            if (signbit(d))
-            {
-                flint_fprintf(stderr,
-                        "internal error: unexpected signbit\n");
-                flint_fprintf(stderr, "%.100g\n", d);
-                abort();
-            }
-        }
-        */
         return can_round;
     }
-
-    /* debug */
-    /*
-    if (!can_round)
-    {
-        slong e, bits;
-        flint_printf("failed to round\n");
-        arb_printd(x, 100); flint_printf("\n");
-        arb_print(x); flint_printf("\n");
-
-        e = _fmpz_sub_small(
-                ARF_EXPREF(arb_midref(x)),
-                MAG_EXPREF(arb_radref(x)));
-        bits = arb_bits(x);
-        flint_printf("e: %wd\n", e);
-        flint_printf("bits: %wd\n", bits);
-
-        e = FLINT_MIN(e, FLINT_MAX(bits, prec) + 10);
-        flint_printf("adjusted e: %wd\n", e);
-
-        flint_printf("\n");
-    }
-    */
 }
 
-/* do not return negative zero */
 double
 _arb_get_d(const arb_t x)
 {
     double d;
     d = arf_get_d(arb_midref(x), ARF_RND_NEAR);
-    if (d == 0.0 && signbit(d)) d = fabs(d);
     /*
-    if (d == 0.0 && signbit(d))
-    {
-        flint_fprintf(stderr,
-                "internal error (_arb_get_d): unexpected signbit\n");
-        flint_fprintf(stderr, "%.100g\n", d);
-        abort();
-    }
-    if (d == 0.0)
-    {
-        flint_fprintf(stderr, "d == 0.0 %.100g %d\n", d, signbit(d));
-    }
-    if (d == -0.0)
-    {
-        flint_fprintf(stderr, "d == -0.0 %.100g %d\n", d, signbit(d));
-    }
-    if (d != 0.0)
-    {
-        flint_fprintf(stderr, "d != -0.0 %.100g %d\n", d, signbit(d));
-    }
-    flint_fprintf(stderr, "_arb_get_d %lf %d\n", d, signbit(d));
-    */
+     * Avoid returning -0.0.
+     * Note: the -ffast-math gcc flag causes problems with signbit().
+     */
+    if (d == 0.0 && signbit(d)) d = fabs(d);
     return d;
 }
 
