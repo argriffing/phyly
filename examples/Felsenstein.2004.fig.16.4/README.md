@@ -8,7 +8,7 @@ on each branch are considered to be known.
 
 ![tree figure](treefig.png)
 
-Most of the analyses operate on input similar to the JSON string below.
+Most of the analyses operate on input files similar to the JSON file below.
 
 ```json
 {
