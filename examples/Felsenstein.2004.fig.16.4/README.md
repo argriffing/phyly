@@ -9,6 +9,33 @@ on each branch are considered to be known.
 ![tree figure](treefig.png)
 
 Most of the analyses operate on input similar to the JSON string below.
+
+```json
+{
+"model_and_data" :
+  {
+  "edges" : [[7, 0], [7, 1], [7, 6], [6, 2], [6, 5], [5, 3], [5, 4]],
+  "edge_rate_coefficients" : [0.01, 0.2, 0.15, 0.3, 0.05, 0.3, 0.02],
+  "root_prior" : [0.25, 0.25, 0.25, 0.25],
+  "rate_matrix" : [
+	 [0, 1, 1, 1],
+	 [1, 0, 1, 1],
+	 [1, 1, 0, 1],
+	 [1, 1, 1, 0]],
+  "rate_divisor" : 3,
+  "probability_array" : [
+	 [[1, 0, 0, 0],
+	  [0, 1, 0, 0],
+	  [0, 1, 0, 0],
+	  [0, 1, 0, 0],
+	  [0, 0, 1, 0],
+	  [1, 1, 1, 1],
+	  [1, 1, 1, 1],
+	  [1, 1, 1, 1]]]
+   }
+}
+```
+
 Here are some explanations of the strings it contains:
 <dl>
 
@@ -28,8 +55,8 @@ This list defines the 'tree topology'.
 <dt>edge_rate_coefficients</dt>
 <dd>
 An ordered list of edge-specific rate scaling factors.
-The *i*th coefficient in this list is associated with the *i*th
-edge defined in the `edges` list.
+The nth coefficient in this list is associated with the nth
+entry of the list of edges.
 </dd>
 
 <dt>root_prior</dt>
@@ -62,31 +89,3 @@ and the last three rows indicate that no data is available for internal nodes.
 </dd>
 
 </dl>
-
-`model_and_data
-
-```json
-{
-"model_and_data" :
-  {
-  "edges" : [[7, 0], [7, 1], [7, 6], [6, 2], [6, 5], [5, 3], [5, 4]],
-  "edge_rate_coefficients" : [0.01, 0.2, 0.15, 0.3, 0.05, 0.3, 0.02],
-  "root_prior" : [0.25, 0.25, 0.25, 0.25],
-  "rate_matrix" : [
-	 [0, 1, 1, 1],
-	 [1, 0, 1, 1],
-	 [1, 1, 0, 1],
-	 [1, 1, 1, 0]],
-  "rate_divisor" : 3,
-  "probability_array" : [
-	 [[1, 0, 0, 0],
-	  [0, 1, 0, 0],
-	  [0, 1, 0, 0],
-	  [0, 1, 0, 0],
-	  [0, 0, 1, 0],
-	  [1, 1, 1, 1],
-	  [1, 1, 1, 1],
-	  [1, 1, 1, 1]]]
-   }
-}
-```
