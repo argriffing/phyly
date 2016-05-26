@@ -505,7 +505,7 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
         for (edge = 0; edge < edge_count; edge++)
         {
             idx = m->edge_map->order[edge];
-            d = arf_get_d(arb_midref(final + idx), ARF_RND_NEAR);
+            d = _arb_get_d(final + idx);
             x = json_pack("[i, f]", edge, d);
             json_array_append_new(j_data, x);
         }

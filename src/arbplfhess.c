@@ -373,6 +373,12 @@ evaluate_site_derivatives(arb_t derivative,
         /* initialize the state vector for node a */
         arb_mat_set(nmat, w->base_plane->node_vectors + a);
 
+        /* debug */
+        /*
+        flint_printf("a=%d nmat before:\n", a);
+        arb_mat_printd(nmat, 15); flint_printf("\n");
+        */
+
         for (idx = start; idx < stop; idx++)
         {
             if (idx == deriv_idx)
@@ -412,13 +418,28 @@ evaluate_site_derivatives(arb_t derivative,
             }
         }
 
+        /* debug */
+        /*
+        flint_printf("a=%d nmat after:\n", a);
+        arb_mat_printd(nmat, 15); flint_printf("\n");
+        */
+
         /* move back towards the root of the tree */
         curr_idx = b_to_idx[a];
     }
 
+
     /* Report the sum of state entries associated with the root. */
-    root_prior_expectation(derivative, r,
-            plane->node_vectors + preorder[0], equilibrium, prec);
+    nmat = plane->node_vectors + preorder[0];
+    root_prior_expectation(derivative, r, nmat, equilibrium, prec);
+
+    /* debug */
+    /*
+    flint_printf("final nmat:\n");
+    arb_mat_printd(nmat, 15); flint_printf("\n");
+    flint_printf("final derivative:\n");
+    arb_printd(derivative, 15); flint_printf("\n");
+    */
 }
 
 
@@ -440,6 +461,12 @@ _lhood_hess_to_ll_hess(arb_mat_t ll_hessian,
     arb_t tmp;
     slong edge_count = arb_mat_nrows(lhood_hessian);
 
+    /* debug */
+    /*
+    flint_printf("lhood hessian:\n");
+    arb_mat_printd(lhood_hessian, 15); flint_printf("\n");
+    */
+
     arb_init(tmp);
     arb_mat_zero(ll_hessian);
     for (i = 0; i < edge_count; i++)
@@ -457,6 +484,13 @@ _lhood_hess_to_ll_hess(arb_mat_t ll_hessian,
             arb_div(ll_hess_entry, ll_hess_entry, lhood, prec);
         }
     }
+
+    /* debug */
+    /*
+    flint_printf("ll hessian:\n");
+    arb_mat_printd(ll_hessian, 15); flint_printf("\n");
+    */
+
     arb_clear(tmp);
 }
 
@@ -1219,7 +1253,7 @@ inv_hess_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
                 {
                     p = arb_mat_entry(inv_ll_hessian, j, i);
                 }
-                d = arf_get_d(arb_midref(p), ARF_RND_NEAR);
+                d = _arb_get_d(p);
                 x = json_pack("[i, i, f]", first_edge, second_edge, d);
                 json_array_append_new(j_data, x);
             }
@@ -1285,7 +1319,8 @@ hess_query(model_and_data_t m, column_reduction_t r_site, int *result_out)
                 {
                     p = arb_mat_entry(so->ll_hessian, j, i);
                 }
-                d = arf_get_d(arb_midref(p), ARF_RND_NEAR);
+                d = _arb_get_d(p);
+                /* flint_printf("value %lf signbit %d\n", d, signbit(d)); */
                 x = json_pack("[i, i, f]", first_edge, second_edge, d);
                 json_array_append_new(j_data, x);
             }
@@ -1340,7 +1375,7 @@ newton_delta_query(
         for (i = 0; i < edge_count; i++)
         {
             idx = m->edge_map->order[i];
-            d = arf_get_d(arb_midref(newton_delta + idx), ARF_RND_NEAR);
+            d = _arb_get_d(newton_delta + idx);
             x = json_pack("[i, f]", i, d);
             json_array_append_new(j_data, x);
         }
@@ -1395,7 +1430,7 @@ newton_point_query(
         for (i = 0; i < edge_count; i++)
         {
             idx = m->edge_map->order[i];
-            d = arf_get_d(arb_midref(newton_point + idx), ARF_RND_NEAR);
+            d = _arb_get_d(newton_point + idx);
             x = json_pack("[i, f]", i, d);
             json_array_append_new(j_data, x);
         }
@@ -1674,7 +1709,7 @@ newton_refine_query(
         for (i = 0; i < edge_count; i++)
         {
             idx = m->edge_map->order[i];
-            d = arf_get_d(arb_midref(x_out + idx), ARF_RND_NEAR);
+            d = _arb_get_d(x_out + idx);
             j_x = json_pack("[i, f]", i, d);
             json_array_append_new(j_data, j_x);
         }
