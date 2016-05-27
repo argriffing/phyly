@@ -195,3 +195,68 @@ def test_equilibrium_rate_divisor():
         d_out = json.loads(f(json.dumps(d_in)))
 
         assert_equal(c_out, d_out)
+
+
+def test_equilibrium_rate_divisor_with_root_prior():
+    for f in _funcs:
+        print('equilibrium rate divisor with root prior test', f.__name__)
+
+        c_in = copy.deepcopy(_C)
+        m = c_in['model_and_data']
+        for arr in m['probability_array']:
+            arr[0] = [1, 1]
+        m['root_prior'] = [0.25, 0.75]
+
+        d_in = copy.deepcopy(_D)
+        m = d_in['model_and_data']
+        for arr in m['probability_array']:
+            arr[0] = [1, 1]
+        m['root_prior'] = "equilibrium_distribution"
+
+        if f is arbplf_trans:
+            trans = {
+                "selection" : [[0, 1], [1, 0]],
+                "aggregation" : "sum"}
+            c_in['trans_reduction'] = trans
+            d_in['trans_reduction'] = trans
+
+        print(c_in)
+        print(d_in)
+        print()
+
+        c_out = json.loads(f(json.dumps(c_in)))
+        d_out = json.loads(f(json.dumps(d_in)))
+
+        assert_equal(c_out, d_out)
+
+def test_equilibrium_rate_divisor_with_root_prior_b():
+    for f in _funcs:
+        print('equilibrium rate divisor with root prior b test', f.__name__)
+
+        c_in = copy.deepcopy(_C)
+        m = c_in['model_and_data']
+        for arr in m['probability_array']:
+            arr[0] = [1, 1]
+        m['root_prior'] = "equilibrium_distribution"
+
+        d_in = copy.deepcopy(_D)
+        m = d_in['model_and_data']
+        for arr in m['probability_array']:
+            arr[0] = [1, 1]
+        m['root_prior'] = [0.25, 0.75]
+
+        if f is arbplf_trans:
+            trans = {
+                "selection" : [[0, 1], [1, 0]],
+                "aggregation" : "sum"}
+            c_in['trans_reduction'] = trans
+            d_in['trans_reduction'] = trans
+
+        print(c_in)
+        print(d_in)
+        print()
+
+        c_out = json.loads(f(json.dumps(c_in)))
+        d_out = json.loads(f(json.dumps(d_in)))
+
+        assert_equal(c_out, d_out)

@@ -189,8 +189,18 @@ root_prior_mul_col_vec(arb_mat_t A, const root_prior_t r,
         const arb_struct *equilibrium, slong prec)
 {
     slong i;
-    if (arb_mat_ncols(A) != 1) abort(); /* assert */
-    if (arb_mat_nrows(A) != r->n) abort(); /* assert */
+    if (arb_mat_ncols(A) != 1)
+    {
+        flint_fprintf(stderr, "internal error (root_prior_expectation): "
+                "expected 1 column but observed %wd\n", arb_mat_ncols(A));
+        abort();
+    }
+    if (arb_mat_nrows(A) != r->n)
+    {
+        flint_fprintf(stderr, "internal error (root_prior_expectation): "
+                "expected %d rows but observed %wd\n", r->n, arb_mat_nrows(A));
+        abort();
+    }
     if (r->mode == ROOT_PRIOR_NONE)
     {
         return;
@@ -237,15 +247,24 @@ root_prior_expectation(arb_t out,
         const arb_struct *equilibrium, slong prec)
 {
     slong i;
-    if (arb_mat_ncols(A) != 1) abort(); /* assert */
-    if (arb_mat_nrows(A) != r->n) abort(); /* assert */
+    if (arb_mat_ncols(A) != 1)
+    {
+        flint_fprintf(stderr, "internal error (root_prior_expectation): "
+                "expected 1 column but observed %wd\n", arb_mat_ncols(A));
+        abort();
+    }
+    if (arb_mat_nrows(A) != r->n)
+    {
+        flint_fprintf(stderr, "internal error (root_prior_expectation): "
+                "expected %d rows but observed %wd\n", r->n, arb_mat_nrows(A));
+        abort();
+    }
     if (r->mode == ROOT_PRIOR_NONE)
     {
         _arb_mat_sum(out, A, prec);
     }
     else if (r->mode == ROOT_PRIOR_UNIFORM)
     {
-        if (equilibrium) abort(); /* assert */
         if (_arb_mat_col_is_constant(A, 0))
         {
             arb_set(out, arb_mat_entry(A, 0, 0));
@@ -277,7 +296,6 @@ root_prior_expectation(arb_t out,
     {
         arb_t d;
         arb_init(d);
-        if (equilibrium) abort(); /* assert */
         if (!r->custom_distribution) abort(); /* assert */
         arb_zero(out);
         for (i = 0; i < r->n; i++)
