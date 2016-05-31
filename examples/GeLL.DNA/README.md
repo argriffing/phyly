@@ -47,8 +47,8 @@ pG	0.40904476825485114
 ```
 
 ```shell
-$ python mkarray.json > brown.nuc.json
-$ python mkjson.py > model.json
-$ jq -s '.[0] * .[1]' brown.nuc.json model.json > in.json
+$ python mknuc.py > nuc.json
+$ python mkmodel.py > model.json
+$ jq -s '.[0] * .[1]' nuc.json model.json > in.json
 $ arbplf-ll < in.json
 ```

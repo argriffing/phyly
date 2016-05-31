@@ -22,8 +22,6 @@ import numpy as np
 
 import dendropy
 
-import mkarray
-
 # Impose a node order.
 nodes = ['Human', 'Chimpanzee', 'Gorilla', 'Orangutan', 'Gibbon', 'A', 'B', 'C']
 
@@ -50,6 +48,16 @@ for edge in t.edges():
         b = nodes.index(nodestr(head))
         edges.append([a, b])
         edge_rate_coefficients.append(blen)
+
+
+# after newton refinement
+"""
+edges = [[7, 6], [6, 2], [6, 5], [5, 1], [5, 0], [7, 4], [7, 3]]
+edge_rate_coefficients = [
+        0.13145200724721293, 0.074353875249493578, 0.03549942903352548,
+        0.074617521458904559, 0.05798731228835121, 0.54487253533045377,
+        0.35032287773486109]
+"""
 
 gamma_shape = 0.19242344607262146
 rate_category_count = 4
