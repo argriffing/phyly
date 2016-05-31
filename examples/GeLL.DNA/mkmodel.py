@@ -60,11 +60,13 @@ edge_rate_coefficients = [
 """
 
 # after newton refinement, under R gamma discretization
+"""
 edges = [[7, 6], [6, 2], [6, 5], [5, 1], [5, 0], [7, 4], [7, 3]]
 edge_rate_coefficients = [
         0.13145200573081059, 0.074353875690038762, 0.03549942844687657,
         0.074617521553158941, 0.057987312415124601, 0.54487251982330476,
         0.3503228685883748]
+"""
 
 gamma_shape = 0.19242344607262146
 rate_category_count = 4
