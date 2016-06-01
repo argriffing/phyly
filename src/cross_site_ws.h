@@ -1,6 +1,8 @@
 #ifndef CROSS_SITE_WS_H
 #define CROSS_SITE_WS_H
 
+/* cross-site workspace */
+
 #include "flint/flint.h"
 #include "arb.h"
 #include "arb_mat.h"

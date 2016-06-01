@@ -40,6 +40,7 @@ myext = Extension(
             'rosenbrock.c',
             'equilibrium.c',
             'distribution.c',
+            'rate_mixture.c',
             'cross_site_ws.c',
             'finite_differences.c',
             ])
