@@ -23,6 +23,11 @@ typedef struct
     arb_struct *rate_divisor;
     arb_mat_struct *rate_matrix;
 
+    /* rate mixture stuff */
+    arb_struct *rate_mix_prior;
+    arb_struct *rate_mix_rates;
+    arb_struct *rate_mix_expect;
+
     /* matrices for each category and edge */
     arb_mat_struct *transition_matrices;
     arb_mat_struct *dwell_frechet_matrices;

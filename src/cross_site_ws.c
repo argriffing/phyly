@@ -39,6 +39,9 @@ cross_site_ws_pre_init(cross_site_ws_t w)
     w->equilibrium = NULL;
     w->rate_divisor = NULL;
     w->rate_matrix = NULL;
+    w->rate_mix_prior = NULL;
+    w->rate_mix_rates = NULL;
+    w->rate_mix_expect = NULL;
     w->transition_matrices = NULL;
     w->dwell_frechet_matrices = NULL;
     w->trans_frechet_matrices = NULL;
@@ -113,6 +116,11 @@ cross_site_ws_init(cross_site_ws_t w, const model_and_data_t m)
     w->edge_count = model_and_data_edge_count(m);
     w->state_count = model_and_data_state_count(m);
 
+    /* rate mixture workspace */
+    w->rate_mix_prior = _arb_vec_init(w->rate_category_count);
+    w->rate_mix_rates = _arb_vec_init(w->rate_category_count);
+    w->rate_mix_expect = _arb_vec_init(1);
+
     /* initialize edge rates */
     _cross_site_ws_init_edge_rates(w, m);
 
@@ -140,8 +148,7 @@ cross_site_ws_init(cross_site_ws_t w, const model_and_data_t m)
 
 /* rate matrix and edge rates have already been updated */
 static void
-_update_transition_matrices(cross_site_ws_t w,
-        const model_and_data_t m, slong prec)
+_update_transition_matrices(cross_site_ws_t w, slong prec)
 {
     slong i, j;
     arb_t s;
@@ -152,8 +159,7 @@ _update_transition_matrices(cross_site_ws_t w,
         {
             arb_mat_struct *tmat;
             tmat = cross_site_ws_transition_matrix(w, i, j);
-            rate_mixture_get_rate(s, m->rate_mixture, i);
-            arb_mul(s, s, w->edge_rates + j, prec);
+            arb_mul(s, w->rate_mix_rates + i, w->edge_rates + j, prec);
             arb_mat_scalar_mul_arb(tmat, w->rate_matrix, s, prec);
             arb_mat_exp(tmat, tmat, prec);
         }
@@ -161,10 +167,12 @@ _update_transition_matrices(cross_site_ws_t w,
     arb_clear(s);
 }
 
-/* the rate matrix and equilibrium have already been updated */
+/*
+ * The rate matrix, equilibrium, and rate mixture rate expectation
+ * have already been updated.
+ */
 static void
-_update_rate_divisor(cross_site_ws_t w,
-        const model_and_data_t m, slong prec)
+_update_rate_divisor(cross_site_ws_t w, const model_and_data_t m, slong prec)
 {
     if (m->use_equilibrium_rate_divisor)
     {
@@ -174,18 +182,23 @@ _update_rate_divisor(cross_site_ws_t w,
         _arb_vec_dot(w->rate_divisor,
                 row_sums, w->equilibrium, w->state_count, prec);
         _arb_vec_clear(row_sums, w->state_count);
-        if (m->rate_mixture->mode != RATE_MIXTURE_NONE)
-        {
-            arb_t tmp;
-            arb_init(tmp);
-            rate_mixture_expectation(tmp, m->rate_mixture, prec);
-            arb_mul(w->rate_divisor, w->rate_divisor, tmp, prec);
-            arb_clear(tmp);
-        }
+        arb_mul(w->rate_divisor, w->rate_divisor, w->rate_mix_expect, prec);
     }
     else
     {
         arb_set(w->rate_divisor, m->rate_divisor);
+    }
+}
+
+static void
+_update_rate_mixture(cross_site_ws_t w, const model_and_data_t m, slong prec)
+{
+    slong i;
+    rate_mixture_expectation(w->rate_mix_expect, m->rate_mixture, prec);
+    for (i = 0; i < w->rate_category_count; i++)
+    {
+        rate_mixture_get_rate(w->rate_mix_rates + i, m->rate_mixture, i);
+        rate_mixture_get_prob(w->rate_mix_prior + i, m->rate_mixture, i, prec);
     }
 }
 
@@ -200,6 +213,9 @@ cross_site_ws_update_with_edge_rates(cross_site_ws_t w,
         const model_and_data_t m, const arb_struct *edge_rates, slong prec)
 {
     w->prec = prec;
+
+    /* update rate mixture */
+    _update_rate_mixture(w, m, prec);
 
     /* update the equilibrium if necessary, ignoring diagonal entries */
     if (model_and_data_uses_equilibrium(m))
@@ -232,7 +248,7 @@ cross_site_ws_update_with_edge_rates(cross_site_ws_t w,
     }
 
     /* update the transition probability matrices */
-    _update_transition_matrices(w, m, prec);
+    _update_transition_matrices(w, prec);
 }
 
 void
@@ -271,6 +287,20 @@ cross_site_ws_clear(cross_site_ws_t w)
     {
         arb_mat_clear(w->rate_matrix);
         flint_free(w->rate_matrix);
+    }
+
+    /* Clear stuff related to the rate mixture. */
+    if (w->rate_mix_prior)
+    {
+        _arb_vec_clear(w->rate_mix_prior, w->rate_category_count);
+    }
+    if (w->rate_mix_rates)
+    {
+        _arb_vec_clear(w->rate_mix_rates, w->rate_category_count);
+    }
+    if (w->rate_mix_expect)
+    {
+        _arb_vec_clear(w->rate_mix_expect, 1);
     }
 
     /*

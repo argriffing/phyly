@@ -112,8 +112,6 @@ rate_mixture_category_count(const rate_mixture_t x)
 void
 rate_mixture_expectation(arb_t rate, const rate_mixture_t x, slong prec)
 {
-    slong i;
-    arb_t tmp, tmpb;
     if (x->mode == RATE_MIXTURE_UNDEFINED)
     {
         flint_fprintf(stderr, "internal error: undefined rate mixture\n");
@@ -121,12 +119,12 @@ rate_mixture_expectation(arb_t rate, const rate_mixture_t x, slong prec)
     }
     else if (x->mode == RATE_MIXTURE_NONE)
     {
-        flint_fprintf(stderr, "internal error: computing the expected rate "
-                      "of a trivial rate mixture\n");
-        abort();
+        arb_one(rate);
     }
     else if (x->mode == RATE_MIXTURE_UNIFORM || x->mode == RATE_MIXTURE_CUSTOM)
     {
+        slong i;
+        arb_t tmp, tmpb;
         arb_init(tmp);
         arb_init(tmpb);
         arb_zero(rate);
