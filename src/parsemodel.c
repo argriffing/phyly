@@ -552,20 +552,17 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
     int n;
     json_t *rates = NULL;
     json_t *prior = NULL;
-    rate_mixture_struct *x;
+    custom_rate_mixture_struct *cmix;
 
-    x = m->rate_mixture;
-
-    int result;
+    int result = 0;
     json_error_t err;
-    size_t flags;
-
-    result = 0;
+    size_t flags = JSON_STRICT;
+    rate_mixture_struct *x = m->rate_mixture;
 
     if (root && !json_is_null(root))
     {
-        flags = JSON_STRICT;
-
+        cmix = flint_malloc(sizeof(custom_rate_mixture_struct));
+        x->custom_mix = cmix;
         result = json_unpack_ex(root, &err, flags,
                 "{s:o, s:o}",
                 "rates", &rates,
@@ -587,9 +584,9 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
 
             n = json_array_size(rates);
 
-            rate_mixture_init(x, n);
+            custom_rate_mixture_init(cmix, n);
 
-            result = _validate_nonnegative_array(x->rates, n, rates);
+            result = _validate_nonnegative_array(cmix->rates, n, rates);
             if (result)
             {
                 fprintf(stderr, "_validate_rate_mixture: "
@@ -610,6 +607,7 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
                 if (!strcmp(json_string_value(prior), s_uniform))
                 {
                     x->mode = RATE_MIXTURE_UNIFORM;
+                    cmix->mode = x->mode;
                 }
                 else
                 {
@@ -619,7 +617,7 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
             }
             else if (json_is_array(prior))
             {
-                result = _validate_nonnegative_array(x->prior, n, prior);
+                result = _validate_nonnegative_array(cmix->prior, n, prior);
                 if (result)
                 {
                     fprintf(stderr, "_validate_rate_mixture: "
@@ -627,6 +625,7 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
                     return -1;
                 }
                 x->mode = RATE_MIXTURE_CUSTOM;
+                cmix->mode = x->mode;
             }
         }
     }

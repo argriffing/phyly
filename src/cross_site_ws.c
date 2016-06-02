@@ -190,18 +190,6 @@ _update_rate_divisor(cross_site_ws_t w, const model_and_data_t m, slong prec)
     }
 }
 
-static void
-_update_rate_mixture(cross_site_ws_t w, const model_and_data_t m, slong prec)
-{
-    slong i;
-    rate_mixture_expectation(w->rate_mix_expect, m->rate_mixture, prec);
-    for (i = 0; i < w->rate_category_count; i++)
-    {
-        rate_mixture_get_rate(w->rate_mix_rates + i, m->rate_mixture, i);
-        rate_mixture_get_prob(w->rate_mix_prior + i, m->rate_mixture, i, prec);
-    }
-}
-
 void
 cross_site_ws_update(cross_site_ws_t w, const model_and_data_t m, slong prec)
 {
@@ -215,7 +203,9 @@ cross_site_ws_update_with_edge_rates(cross_site_ws_t w,
     w->prec = prec;
 
     /* update rate mixture */
-    _update_rate_mixture(w, m, prec);
+    rate_mixture_summarize(
+            w->rate_mix_prior, w->rate_mix_rates, w->rate_mix_expect,
+            m->rate_mixture, prec);
 
     /* update the equilibrium if necessary, ignoring diagonal entries */
     if (model_and_data_uses_equilibrium(m))
