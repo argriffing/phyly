@@ -640,7 +640,7 @@ _validate_gamma_rate_mixture(model_and_data_t m, json_t *root)
 {
     json_t *gamma_shape = NULL;
     json_t *gamma_categories = NULL;
-    json_t *invariant_prior = NULL;
+    json_t *invariable_prior = NULL;
     gamma_rate_mixture_struct *g;
 
     int result = 0;
@@ -657,25 +657,25 @@ _validate_gamma_rate_mixture(model_and_data_t m, json_t *root)
             "{s:o, s:o, s?o}",
             "gamma_shape", &gamma_shape,
             "gamma_categories", &gamma_categories,
-            "invariant_prior", &invariant_prior);
+            "invariable_prior", &invariable_prior);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
         return result;
     }
 
-    /* read the invariant prior */
-    if (!invariant_prior || json_is_null(invariant_prior))
+    /* read the invariable prior */
+    if (!invariable_prior || json_is_null(invariable_prior))
     {
-        g->invariant_prior = 0;
+        g->invariable_prior = 0;
     }
-    else if (json_is_number(invariant_prior))
+    else if (json_is_number(invariable_prior))
     {
-        g->invariant_prior = json_number_value(invariant_prior);
+        g->invariable_prior = json_number_value(invariable_prior);
     }
     else
     {
-        fprintf(stderr, "invariant_prior: not a number\n");
+        fprintf(stderr, "invariable_prior: not a number\n");
         result = -1;
         return result;
     }

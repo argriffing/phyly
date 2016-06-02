@@ -94,9 +94,11 @@ def discretized_gamma(N, alpha, use_mean=1):
 
 def mixture_objective(X):
     # same as block_objective, but implemented with a rate mixture
-    print(X)
+    #print(X)
     kappa, logit_theta, alpha = X[-3:]
     edge_rates = X[:-3].tolist()
+
+    print('alpha:', alpha)
 
     theta = expit(logit_theta)
     t = theta
@@ -147,12 +149,15 @@ def mixture_objective(X):
                 arr[root_node][k*1 + i] *= (
                         pi[i] / 1)
         probability_array.append(arr)
+    rate_mixture = dict(
+            rates = mixture_rates.tolist(),
+            prior = 'uniform_distribution')
+    gamma_rate_mixture = dict(gamma_shape=alpha, gamma_categories=4)
     model_and_data = {
             "edges" : edges,
             "rate_divisor" : 100 * x,
-            "rate_mixture" : {
-                'rates' : mixture_rates.tolist(),
-                'prior' : 'uniform_distribution'},
+            'gamma_rate_mixture' : gamma_rate_mixture,
+            #'rate_mixture' : rate_mixture,
             "edge_rate_coefficients" : edge_rates,
             "rate_matrix" : rate_matrix,
             "probability_array" : probability_array}
@@ -166,13 +171,13 @@ def mixture_objective(X):
         return np.inf
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     y = -df.value.values[0]
-    print(y)
+    #print(y)
     return y
 
 
 def block_objective(X):
     # implemented with a block matrix
-    print(X)
+    #print(X)
     kappa, logit_theta, alpha = X[-3:]
     edge_rates = X[:-3].tolist()
 
@@ -241,7 +246,7 @@ def block_objective(X):
         return np.inf
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     y = -df.value.values[0]
-    print(y)
+    #print(y)
     return y
 
 
@@ -251,8 +256,8 @@ def main():
     #_numerically_discretized_gamma(4, alpha, use_mean=1);
     #return
 
-    #objective = mixture_objective
-    objective = block_objective
+    objective = mixture_objective
+    #objective = block_objective
 
     edge_rates = [1, 30, 1, 30, 30]
     kappa = 0.2

@@ -2,8 +2,11 @@
 #include "arb.h"
 #include "arb_calc.h"
 #include "acb_hypgeom.h"
+#include "arb_vec_extras.h"
 
 #include "gamma_discretization.h"
+
+#define GAMMA_DISC_DEBUG 0
 
 
 typedef struct
@@ -101,6 +104,7 @@ _find_interval_bound(arf_interval_t r, int target_sign,
 {
     int result = ARB_CALC_SUCCESS;
     int sign;
+    int logratio;
     arf_t q;
     arf_struct *head, *tail;
     if (target_sign == 1)
@@ -115,10 +119,15 @@ _find_interval_bound(arf_interval_t r, int target_sign,
     }
     arf_init(q);
     arf_one(q);
+    logratio = target_sign;
     while (1)
     {
         sign = _sign(q, p, prec);
-        //flint_printf("sign=%d target=%d prec=%wd\n", sign, target_sign, prec);
+        if (GAMMA_DISC_DEBUG)
+        {
+            flint_printf("sign=%d target=%d prec=%wd\n",
+                    sign, target_sign, prec);
+        }
         if (sign == 0)
         {
             /* the sign is ambiguous */
@@ -136,7 +145,8 @@ _find_interval_bound(arf_interval_t r, int target_sign,
         {
             /* keep searching, towards zero or towards infinity */
             arf_set(tail, q);
-            arf_mul_2exp_si(q, q, target_sign);
+            arf_mul_2exp_si(q, q, logratio);
+            logratio += target_sign;
         }
     }
     arf_clear(q);
@@ -233,6 +243,12 @@ gamma_rates(arb_struct *rates, slong n, const arb_t s, slong prec)
     for (k = 1; k < n; k++)
     {
         gamma_quantile(quantiles + k, k, n, s, prec);
+    }
+
+    if (GAMMA_DISC_DEBUG)
+    {
+        flint_printf("quantiles prec=%wd\n", prec);
+        _arb_vec_printd(quantiles, n+1, 15);
     }
     for (k = 0; k < n+1; k++)
     {

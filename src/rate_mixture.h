@@ -19,7 +19,7 @@ typedef struct
 {
     int gamma_categories;
     double gamma_shape;
-    double invariant_prior;
+    double invariable_prior;
 } gamma_rate_mixture_struct;
 typedef gamma_rate_mixture_struct gamma_rate_mixture_t[1];
 

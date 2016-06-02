@@ -145,7 +145,7 @@ gamma_rate_mixture_init(gamma_rate_mixture_t x)
 {
     x->gamma_categories = 1;
     x->gamma_shape = 1;
-    x->invariant_prior = 0;
+    x->invariable_prior = 0;
 }
 
 void
@@ -158,7 +158,7 @@ slong
 gamma_rate_mixture_category_count(const gamma_rate_mixture_t x)
 {
     slong n = x->gamma_categories;
-    if (x->invariant_prior)
+    if (x->invariable_prior)
         n++;
     return n;
 }
@@ -174,7 +174,7 @@ gamma_rate_mixture_summarize(
     arb_t p, q;
     arb_init(p);
     arb_init(q);
-    arb_set_d(p, x->invariant_prior);
+    arb_set_d(p, x->invariable_prior);
     arb_sub_si(q, p, 1, prec);
     arb_neg(q, q);
 
@@ -188,8 +188,8 @@ gamma_rate_mixture_summarize(
         arb_div_si(r, q, x->gamma_categories, prec);
     }
 
-    /* optional probability corresponding to the invariant category */
-    if (x->invariant_prior)
+    /* optional probability corresponding to the invariable category */
+    if (x->invariable_prior)
     {
         r = rate_mix_prior + x->gamma_categories;
         arb_set(r, p);
@@ -204,7 +204,7 @@ gamma_rate_mixture_summarize(
         arb_clear(s);
     }
 
-    /* normalize the rates to account for a possible invariant category */
+    /* normalize the rates to account for a possible invariable category */
     for (i = 0; i < x->gamma_categories; i++)
     {
         r = rate_mix_rates + i;
