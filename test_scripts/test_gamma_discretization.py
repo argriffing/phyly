@@ -15,6 +15,7 @@ from functools import partial
 import json
 import copy
 import sys
+import time
 
 import numpy as np
 import pandas as pd
@@ -36,13 +37,13 @@ _easy_funcs = (
         arbplf_ll,
         arbplf_deriv,
         arbplf_hess, arbplf_inv_hess,
-        arbplf_newton_delta, arbplf_newton_update,
-        arbplf_em_update)
+        arbplf_newton_delta, arbplf_newton_update)
 
 # These are still easy to test, but are a bit more difficult.
 # They are not tested in this module.
 _less_easy_funcs = (
-        arbplf_marginal, arbplf_dwell, arbplf_trans, arbplf_newton_refine)
+        arbplf_marginal, arbplf_dwell, arbplf_trans,
+        arbplf_newton_refine, arbplf_em_update)
 
 def _df(f, d):
     s_in = json.dumps(d)
@@ -150,3 +151,34 @@ def test_invariable_site_rate_mixture_equivalence():
         v = _df(f, x)
         # check that the two analyses give the same results
         assert_allclose(u.values, v.values)
+
+def test_small_gamma_shape():
+    # Check the gamma discretization.
+    # When the shape is near zero,
+    # all but one category has nearly zero rate.
+    # Because the gamma_rate_mixture is internally normalized to have
+    # expected rate 1, in practice this means it has effectively a single
+    # category and this category has rate 4 and probability 1/4.
+    gamma_rate_mixture = dict(
+            gamma_shape = 1e-6,
+            gamma_categories = 4)
+    rate_mixture = dict(
+            rates = [0, 4],
+            prior = [3/4, 1/4])
+    #
+    for f in _easy_funcs:
+        print(f.__name__)
+        start = time.time()
+        # let the engine do the discretization
+        x = copy.deepcopy(default_in)
+        x['model_and_data']['gamma_rate_mixture'] = gamma_rate_mixture
+        u = _df(f, x)
+        # use a precomputed discretization
+        x = copy.deepcopy(default_in)
+        x['model_and_data']['rate_mixture'] = rate_mixture
+        v = _df(f, x)
+        # check that the two analyses give the same results
+        assert_allclose(u.values, v.values)
+        print(u)
+        print(v)
+        print('time:', time.time() - start)
