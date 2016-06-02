@@ -135,6 +135,69 @@ custom_rate_mixture_expectation(arb_t rate, const custom_rate_mixture_t x, slong
 }
 
 
+/* gamma rate mixture functions */
+
+
+void
+gamma_rate_mixture_init(gamma_rate_mixture_t x)
+{
+    x->gamma_categories = 1;
+    x->gamma_shape = 1;
+    x->invariant_prior = 0;
+}
+
+void
+gamma_rate_mixture_clear(gamma_rate_mixture_t x)
+{
+    gamma_rate_mixture_init(x);
+}
+
+slong
+gamma_rate_mixture_category_count(const gamma_rate_mixture_t x)
+{
+    slong n = x->gamma_categories;
+    if (x->invariant_prior)
+        n++;
+    return n;
+}
+
+void
+gamma_rate_mixture_summarize(
+        arb_ptr rate_mix_prior, arb_ptr rate_mix_rates, arb_ptr rate_mix_expect,
+        const gamma_rate_mixture_t x, slong prec)
+{
+    slong i;
+    arb_ptr x;
+
+    arb_t p, q;
+    arb_init(p);
+    arb_init(q);
+    arb_set_d(p, x->invariant_prior);
+    arb_sub_si(q, p, 1, prec);
+    arb_neg(q, q);
+
+    /* probabilities corresponding to gamma rate categories */
+    for (i = 0; i < x->gamma_categories; i++)
+    {
+        x = rate_mix_prior + i;
+        arb_div_si(x, q, x->gamma_categories);
+    }
+
+    /* optional probability corresponding to the invariant category */
+    if (x->invariant_prior)
+    {
+        x = rate_mix_prior + x->gamma_categories;
+        arb_set(x, p);
+    }
+
+    /* the expectation is designed to be 1 */
+    arb_one(rate_mix_expect);
+
+    arb_clear(p);
+    arb_clear(q);
+}
+
+
 
 /* generic rate mixture functions */
 

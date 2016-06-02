@@ -15,6 +15,21 @@ enum rate_mixture_mode {
     RATE_MIXTURE_UNIFORM,
     RATE_MIXTURE_GAMMA};
 
+typedef struct
+{
+    int gamma_categories;
+    double gamma_shape;
+    double invariant_prior;
+} gamma_rate_mixture_struct;
+typedef gamma_rate_mixture_struct gamma_rate_mixture_t[1];
+
+void gamma_rate_mixture_init(gamma_rate_mixture_t x, int n);
+void gamma_rate_mixture_clear(gamma_rate_mixture_t x);
+slong gamma_rate_mixture_category_count(const gamma_rate_mixture_t x);
+void gamma_rate_mixture_summarize(
+        arb_ptr rate_mix_prior, arb_ptr rate_mix_rates, arb_ptr rate_mix_expect,
+        const gamma_rate_mixture_t x, slong prec);
+
 
 typedef struct
 {
@@ -38,13 +53,13 @@ void custom_rate_mixture_expectation(
 
 typedef struct
 {
+    gamma_rate_mixture_struct * gamma_mix;
     custom_rate_mixture_struct * custom_mix;
     enum rate_mixture_mode mode;
 } rate_mixture_struct;
 typedef rate_mixture_struct rate_mixture_t[1];
 
 void rate_mixture_pre_init(rate_mixture_t x);
-void rate_mixture_init(rate_mixture_t x, int n);
 void rate_mixture_clear(rate_mixture_t x);
 slong rate_mixture_category_count(const rate_mixture_t x);
 void rate_mixture_summarize(
