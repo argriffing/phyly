@@ -633,19 +633,34 @@ _recompute_second_order(so_t so,
             /* compute category likelihood */
             arb_mul(cat_lhood, cat_lhood, prior_prob, prec);
 
-            /* todo: allow some rate categories to be infeasible */
             if (arb_is_zero(cat_lhood))
             {
-                fprintf(stderr, "error: infeasible\n");
-                result = -1;
-                goto finish;
-            }
+                if (arb_is_zero(cat_rate))
+                {
+                    /*
+                     * If the category rate is zero and the site is infeasible,
+                     * then changing the edge rate scaling factors will not
+                     * rescue the feasibility, so the derivatives should
+                     * all be zero.
+                     */
+                    continue;
+                }
+                else
+                {
+                    /* todo: allow some rate categories to be infeasible */
+                    if (arb_is_zero(cat_lhood))
+                    {
+                        fprintf(stderr, "error: infeasible\n");
+                        result = -1;
+                        goto finish;
+                    }
 
-            /* todo: allow some rate categories to be infeasible */
-            if (arb_contains_zero(cat_lhood))
-            {
-                so_indeterminate(so);
-                goto finish;
+                    if (arb_contains_zero(cat_lhood))
+                    {
+                        so_indeterminate(so);
+                        goto finish;
+                    }
+                }
             }
 
             /*

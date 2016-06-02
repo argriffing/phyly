@@ -117,3 +117,36 @@ def test_rate_mixture_equivalence():
         v = _df(f, x)
         # check that the two analyses give the same results
         assert_allclose(u.values, v.values)
+
+def test_invariable_site_rate_mixture_equivalence():
+    # Check the gamma discretization.
+    gamma_rate_mixture = dict(
+            gamma_shape = 0.5,
+            gamma_categories = 4,
+            invariable_prior = 0.3)
+    rate_mixture = dict(
+            rates = [
+                0.0333877533835995 / 0.7,
+                0.251915917593438 / 0.7,
+                0.820268481973649 / 0.7,
+                2.89442784704931 / 0.7,
+                0.0],
+            prior = [
+                0.7 / 4,
+                0.7 / 4,
+                0.7 / 4,
+                0.7 / 4,
+                0.3])
+    #
+    for f in _easy_funcs:
+        print(f.__name__)
+        # let the engine do the discretization
+        x = copy.deepcopy(default_in)
+        x['model_and_data']['gamma_rate_mixture'] = gamma_rate_mixture
+        u = _df(f, x)
+        # use a precomputed discretization
+        x = copy.deepcopy(default_in)
+        x['model_and_data']['rate_mixture'] = rate_mixture
+        v = _df(f, x)
+        # check that the two analyses give the same results
+        assert_allclose(u.values, v.values)
