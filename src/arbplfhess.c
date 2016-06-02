@@ -521,8 +521,7 @@ _recompute_second_order(so_t so,
     slong node_count = model_and_data_node_count(m);
     slong rate_category_count = model_and_data_rate_category_count(m);
 
-    arb_t cat_rate, cat_rate_squared, rate;
-    arb_t prior_prob;
+    arb_t cat_rate_squared, rate;
 
     arb_t tmp;
     arb_mat_t ll_hessian;
@@ -530,10 +529,8 @@ _recompute_second_order(so_t so,
     arb_struct * site_weights;
     arb_t site_weight_divisor;
 
-    arb_init(cat_rate);
     arb_init(cat_rate_squared);
     arb_init(rate);
-    arb_init(prior_prob);
 
     /* category-specific lhood-related values */
     arb_t cat_lhood;
@@ -610,6 +607,8 @@ _recompute_second_order(so_t so,
 
         for (cat = 0; cat < rate_category_count; cat++)
         {
+            const arb_struct * cat_rate = csw->rate_mix_rates + cat;
+            const arb_struct * prior_prob = csw->rate_mix_prior + cat;
             arb_mat_struct *tmat_base;
             tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
 
@@ -632,7 +631,6 @@ _recompute_second_order(so_t so,
                     m->g, m->preorder, node_count, prec);
 
             /* compute category likelihood */
-            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
             arb_mul(cat_lhood, cat_lhood, prior_prob, prec);
 
             /* todo: allow some rate categories to be infeasible */
@@ -707,7 +705,6 @@ _recompute_second_order(so_t so,
 
             /* Accumulate the lhood data. */
             arb_add(site_lhood, site_lhood, cat_lhood, prec);
-            rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
             arb_mul(cat_rate_squared, cat_rate, cat_rate, prec);
             for (i = 0; i < edge_count; i++)
             {
@@ -799,10 +796,8 @@ finish:
     arb_clear(site_weight_divisor);
     _arb_vec_clear(site_weights, site_count);
 
-    arb_clear(cat_rate);
     arb_clear(cat_rate_squared);
     arb_clear(rate);
-    arb_clear(prior_prob);
 
     /* clear category-specific lhood-related values */
     arb_clear(cat_lhood);

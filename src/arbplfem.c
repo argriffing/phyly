@@ -98,13 +98,12 @@ _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
     slong state, cat, idx, sa, sb;
     arb_mat_t P, L_dwell, L_trans, Q;
-    arb_t cat_rate, rate;
+    arb_t rate;
 
     slong state_count = model_and_data_state_count(m);
     slong edge_count = model_and_data_edge_count(m);
     slong rate_category_count = model_and_data_rate_category_count(m);
 
-    arb_init(cat_rate);
     arb_init(rate);
     arb_mat_init(P, state_count, state_count);
     arb_mat_init(L_dwell, state_count, state_count);
@@ -125,7 +124,7 @@ _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
 
     for (cat = 0; cat < rate_category_count; cat++)
     {
-        rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+        const arb_struct * cat_rate = csw->rate_mix_rates + cat;
         for (idx = 0; idx < edge_count; idx++)
         {
             arb_mat_struct *fmat;
@@ -144,7 +143,6 @@ _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
         }
     }
 
-    arb_clear(cat_rate);
     arb_clear(rate);
     arb_mat_clear(P);
     arb_mat_clear(L_dwell);
@@ -255,8 +253,8 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
         column_reduction_t r_site, const int *edge_is_requested, slong prec)
 {
     slong cat, site, idx, i;
-    arb_t tmp, cat_rate;
-    arb_t site_lhood, cat_lhood, prior_prob, lhood;
+    arb_t tmp;
+    arb_t site_lhood, cat_lhood, lhood;
     arb_struct *dwell_site, *trans_site;
     arb_struct *dwell_cat, *trans_cat;
     int result = 0;
@@ -272,11 +270,9 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
     slong rate_category_count = model_and_data_rate_category_count(m);
 
     arb_init(tmp);
-    arb_init(cat_rate);
 
     arb_init(site_lhood);
     arb_init(cat_lhood);
-    arb_init(prior_prob);
     arb_init(lhood);
 
     dwell_site = _arb_vec_init(edge_count);
@@ -319,6 +315,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
 
         for (cat = 0; cat < rate_category_count; cat++)
         {
+            const arb_struct * prior_prob = csw->rate_mix_prior + cat;
             arb_mat_struct *tmat_base, *dwell_base, *trans_base;
             tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
             dwell_base = cross_site_ws_dwell_frechet_matrix(csw, cat, 0);
@@ -338,13 +335,12 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                     m->g, m->preorder, node_count, prec);
 
             /* Compute the likelihood for the rate category. */
-            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
             arb_mul(cat_lhood, lhood, prior_prob, prec);
             arb_add(site_lhood, site_lhood, cat_lhood, prec);
 
             if (!arb_is_zero(cat_lhood))
             {
-                rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
+                const arb_struct * cat_rate = csw->rate_mix_rates + cat;
 
                 /*
                  * Update marginal distribution vectors at nodes.
@@ -397,11 +393,9 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
 finish:
 
     arb_clear(tmp);
-    arb_clear(cat_rate);
 
     arb_clear(site_lhood);
     arb_clear(cat_lhood);
-    arb_clear(prior_prob);
     arb_clear(lhood);
 
     arb_clear(site_weight_divisor);

@@ -212,7 +212,7 @@ _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
     slong site, idx, edge;
-    arb_t cat_rate, cat_lhood, prior_prob, post_lhood, post_lhood_sum;
+    arb_t cat_lhood, post_lhood, post_lhood_sum;
     nd_axis_struct *site_axis, *edge_axis;
     int *coords;
     slong cat;
@@ -256,9 +256,7 @@ _nd_accum_update(nd_accum_t arr,
     derivatives = _arb_vec_init(edge_count);
     cc_derivatives = _arb_vec_init(edge_count);
 
-    arb_init(cat_rate);
     arb_init(cat_lhood);
-    arb_init(prior_prob);
     arb_init(post_lhood);
     arb_init(post_lhood_sum);
 
@@ -295,8 +293,10 @@ _nd_accum_update(nd_accum_t arr,
         arb_zero(post_lhood_sum);
         for (cat = 0; cat < ncats; cat++)
         {
-            const arb_mat_struct * tmat_base;
-            tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
+            const arb_struct *prior_prob = csw->rate_mix_prior + cat;
+            const arb_struct *cat_rate = csw->rate_mix_rates + cat;
+            const arb_mat_struct * tmat_base = cross_site_ws_transition_matrix(
+                    csw, cat, 0);
 
             pmat_update_base_node_vectors(w->base_node_vectors, m->p, site);
 
@@ -309,7 +309,6 @@ _nd_accum_update(nd_accum_t arr,
                     m->g, m->preorder, node_count, prec);
 
             /* Compute the likelihood for the site and category. */
-            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
             arb_mul(post_lhood, prior_prob, cat_lhood, prec);
             arb_add(post_lhood_sum, post_lhood_sum, post_lhood, prec);
 
@@ -318,8 +317,6 @@ _nd_accum_update(nd_accum_t arr,
                     edge_idx_is_requested,
                     m, csw, w,
                     idx_to_a, b_to_idx, site, cat, prec);
-
-            rate_mixture_get_rate(cat_rate, m->rate_mixture, cat);
 
             /* Multiply derivatives by the category rate. */
             for (idx = 0; idx < edge_count; idx++)
@@ -362,9 +359,7 @@ _nd_accum_update(nd_accum_t arr,
     _arb_vec_clear(derivatives, edge_count);
     _arb_vec_clear(cc_derivatives, edge_count);
 
-    arb_clear(cat_rate);
     arb_clear(cat_lhood);
-    arb_clear(prior_prob);
     arb_clear(post_lhood);
     arb_clear(post_lhood_sum);
 

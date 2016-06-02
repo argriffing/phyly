@@ -10,9 +10,14 @@
 #include "parsemodel.h"
 #include "model.h"
 #include "csr_graph.h"
+#include "rate_mixture.h"
 
-
-
+/* helper function */
+static int
+_exists(const json_t *value)
+{
+    return (value && !json_is_null(value));
+}
 
 /*
  * Array size must already be known.
@@ -552,87 +557,151 @@ _validate_rate_mixture(model_and_data_t m, json_t *root)
     int n;
     json_t *rates = NULL;
     json_t *prior = NULL;
-    rate_mixture_struct *x;
+    custom_rate_mixture_struct *cmix;
 
-    x = m->rate_mixture;
-
-    int result;
+    int result = 0;
     json_error_t err;
-    size_t flags;
+    size_t flags = JSON_STRICT;
+    rate_mixture_struct *x = m->rate_mixture;
 
-    result = 0;
-
-    if (root && !json_is_null(root))
+    cmix = flint_malloc(sizeof(custom_rate_mixture_struct));
+    x->custom_mix = cmix;
+    result = json_unpack_ex(root, &err, flags,
+            "{s:o, s:o}",
+            "rates", &rates,
+            "prior", &prior);
+    if (result)
     {
-        flags = JSON_STRICT;
+        fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+        return result;
+    }
 
-        result = json_unpack_ex(root, &err, flags,
-                "{s:o, s:o}",
-                "rates", &rates,
-                "prior", &prior);
-        if (result)
+    /* read the 'rates' array */
+    {
+        if (!json_is_array(rates))
         {
-            fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
-            return result;
+            fprintf(stderr, "_validate_rate_mixture: "
+                    "'rates' is not an array\n");
+            return -1;
         }
 
-        /* read the 'rates' array */
+        n = json_array_size(rates);
+
+        custom_rate_mixture_init(cmix, n);
+
+        result = _validate_nonnegative_array(cmix->rates, n, rates);
+        if (result)
         {
-            if (!json_is_array(rates))
+            fprintf(stderr, "_validate_rate_mixture: "
+                    "invalid 'rates' array\n");
+            return -1;
+        }
+    }
+
+    /* read the 'prior' array (or the string "uniform_distribution") */
+    {
+        const char s_uniform[] = "uniform_distribution";
+        const char s_msg[] = (
+                "_validate_rate_mixture: the 'prior'"
+                "argument must be either a nonnegative array or the string "
+                "\"uniform_distribution\"\n");
+        if (json_is_string(prior))
+        {
+            if (!strcmp(json_string_value(prior), s_uniform))
             {
-                fprintf(stderr, "_validate_rate_mixture: "
-                        "'rates' is not an array\n");
+                x->mode = RATE_MIXTURE_UNIFORM;
+                cmix->mode = x->mode;
+            }
+            else
+            {
+                fprintf(stderr, s_msg);
                 return -1;
             }
-
-            n = json_array_size(rates);
-
-            rate_mixture_init(x, n);
-
-            result = _validate_nonnegative_array(x->rates, n, rates);
+        }
+        else if (json_is_array(prior))
+        {
+            result = _validate_nonnegative_array(cmix->prior, n, prior);
             if (result)
             {
                 fprintf(stderr, "_validate_rate_mixture: "
-                        "invalid 'rates' array\n");
+                        "invalid 'prior' array\n");
                 return -1;
             }
+            x->mode = RATE_MIXTURE_CUSTOM;
+            cmix->mode = x->mode;
         }
+    }
 
-        /* read the 'prior' array (or the string "uniform_distribution") */
-        {
-            const char s_uniform[] = "uniform_distribution";
-            const char s_msg[] = (
-                    "_validate_rate_mixture: the 'prior'"
-                    "argument must be either a nonnegative array or the string "
-                    "\"uniform_distribution\"\n");
-            if (json_is_string(prior))
-            {
-                if (!strcmp(json_string_value(prior), s_uniform))
-                {
-                    x->mode = RATE_MIXTURE_UNIFORM;
-                }
-                else
-                {
-                    fprintf(stderr, s_msg);
-                    return -1;
-                }
-            }
-            else if (json_is_array(prior))
-            {
-                result = _validate_nonnegative_array(x->prior, n, prior);
-                if (result)
-                {
-                    fprintf(stderr, "_validate_rate_mixture: "
-                            "invalid 'prior' array\n");
-                    return -1;
-                }
-                x->mode = RATE_MIXTURE_CUSTOM;
-            }
-        }
+    return result;
+}
+
+static int
+_validate_gamma_rate_mixture(model_and_data_t m, json_t *root)
+{
+    json_t *gamma_shape = NULL;
+    json_t *gamma_categories = NULL;
+    json_t *invariant_prior = NULL;
+    gamma_rate_mixture_struct *g;
+
+    int result = 0;
+    json_error_t err;
+    size_t flags = JSON_STRICT;
+    rate_mixture_struct *x = m->rate_mixture;
+
+    x->mode = RATE_MIXTURE_GAMMA;
+
+    g = flint_malloc(sizeof(custom_rate_mixture_struct));
+    gamma_rate_mixture_init(g);
+    x->gamma_mix = g;
+    result = json_unpack_ex(root, &err, flags,
+            "{s:o, s:o, s?o}",
+            "gamma_shape", &gamma_shape,
+            "gamma_categories", &gamma_categories,
+            "invariant_prior", &invariant_prior);
+    if (result)
+    {
+        fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
+        return result;
+    }
+
+    /* read the invariant prior */
+    if (!invariant_prior || json_is_null(invariant_prior))
+    {
+        g->invariant_prior = 0;
+    }
+    else if (json_is_number(invariant_prior))
+    {
+        g->invariant_prior = json_number_value(invariant_prior);
     }
     else
     {
-        x->mode = RATE_MIXTURE_NONE;
+        fprintf(stderr, "invariant_prior: not a number\n");
+        result = -1;
+        return result;
+    }
+
+    /* read the gamma shape */
+    if (json_is_number(gamma_shape))
+    {
+        g->gamma_shape = json_number_value(gamma_shape);
+    }
+    else
+    {
+        fprintf(stderr, "gamma_shape: not a number\n");
+        result = -1;
+        return result;
+    }
+
+    /* read the number of gamma categories */
+    if (json_is_integer(gamma_categories))
+    {
+        g->gamma_categories = json_integer_value(gamma_categories);
+    }
+    else
+    {
+        fprintf(stderr, "gamma_categories: not an integer\n");
+        result = -1;
+        return result;
     }
 
     return result;
@@ -649,6 +718,7 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     json_t *rate_divisor = NULL;
     json_t *root_prior = NULL;
     json_t *rate_mixture = NULL;
+    json_t *gamma_rate_mixture = NULL;
 
     int result;
     json_error_t err;
@@ -658,14 +728,15 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     flags = JSON_STRICT;
 
     result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o, s:o, s:o, s?o, s?o, s?o}",
+            "{s:o, s:o, s:o, s:o, s?o, s?o, s?o, s?o}",
             "edges", &edges,
             "edge_rate_coefficients", &edge_rate_coefficients,
             "rate_matrix", &rate_matrix,
             "probability_array", &probability_array,
             "rate_divisor", &rate_divisor,
             "root_prior", &root_prior,
-            "rate_mixture", &rate_mixture);
+            "rate_mixture", &rate_mixture,
+            "gamma_rate_mixture", &gamma_rate_mixture);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
@@ -690,8 +761,26 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     result = _validate_root_prior(m, root_prior);
     if (result) return result;
 
-    result = _validate_rate_mixture(m, rate_mixture);
-    if (result) return result;
+    if (_exists(rate_mixture) && _exists(gamma_rate_mixture))
+    {
+        fprintf(stderr, "error: both gamma_rate_mixture and rate_mixture "
+                "have been specified\n");
+        return -1;
+    }
+    else if (_exists(gamma_rate_mixture))
+    {
+        result = _validate_gamma_rate_mixture(m, gamma_rate_mixture);
+        if (result) return result;
+    }
+    else if (_exists(rate_mixture))
+    {
+        result = _validate_rate_mixture(m, rate_mixture);
+        if (result) return result;
+    }
+    else
+    {
+        m->rate_mixture->mode = RATE_MIXTURE_NONE;
+    }
 
     return result;
 }

@@ -112,7 +112,7 @@ _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
     slong site, cat;
-    arb_t cat_lhood, prior_prob, ll, post_lhood_sum;
+    arb_t cat_lhood, ll, post_lhood_sum;
     nd_axis_struct *site_axis;
     int *coords;
 
@@ -120,7 +120,6 @@ _nd_accum_update(nd_accum_t arr,
     slong site_count = model_and_data_site_count(m);
 
     arb_init(cat_lhood);
-    arb_init(prior_prob);
     arb_init(ll);
     arb_init(post_lhood_sum);
 
@@ -150,6 +149,7 @@ _nd_accum_update(nd_accum_t arr,
         arb_zero(post_lhood_sum);
         for (cat = 0; cat < ncats; cat++)
         {
+            const arb_struct * prior_prob = csw->rate_mix_prior + cat;
             const arb_mat_struct * tmat_base;
             tmat_base = cross_site_ws_transition_matrix(csw, cat, 0);
 
@@ -162,7 +162,6 @@ _nd_accum_update(nd_accum_t arr,
                     m->g, m->preorder, csw->node_count, prec);
 
             /* Compute the likelihood for the site and category. */
-            rate_mixture_get_prob(prior_prob, m->rate_mixture, cat, prec);
             arb_addmul(post_lhood_sum, prior_prob, cat_lhood, prec);
         }
 
@@ -171,7 +170,6 @@ _nd_accum_update(nd_accum_t arr,
     }
 
     arb_clear(cat_lhood);
-    arb_clear(prior_prob);
     arb_clear(post_lhood_sum);
     arb_clear(ll);
 

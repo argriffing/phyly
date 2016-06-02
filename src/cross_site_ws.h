@@ -1,6 +1,8 @@
 #ifndef CROSS_SITE_WS_H
 #define CROSS_SITE_WS_H
 
+/* cross-site workspace */
+
 #include "flint/flint.h"
 #include "arb.h"
 #include "arb_mat.h"
@@ -20,6 +22,11 @@ typedef struct
     arb_struct *equilibrium;
     arb_struct *rate_divisor;
     arb_mat_struct *rate_matrix;
+
+    /* rate mixture stuff */
+    arb_struct *rate_mix_prior;
+    arb_struct *rate_mix_rates;
+    arb_struct *rate_mix_expect;
 
     /* matrices for each category and edge */
     arb_mat_struct *transition_matrices;
