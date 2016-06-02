@@ -43,6 +43,8 @@ CORE_SOURCES = \
 	equilibrium.h \
 	distribution.c \
 	distribution.h \
+	gamma_discretization.c \
+	gamma_discretization.h \
 	rate_mixture.c \
 	rate_mixture.h \
 	cross_site_ws.c \

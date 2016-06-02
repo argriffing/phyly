@@ -1,6 +1,10 @@
 #include "flint/flint.h"
 #include "arb.h"
 #include "arb_calc.h"
+#include "acb_hypgeom.h"
+
+#include "gamma_discretization.h"
+
 
 typedef struct
 {
@@ -63,9 +67,6 @@ static int
 _sign(const arf_t q, const quantile_args_t p, slong prec)
 {
     int sign;
-    int order = 1;
-    int regularized = 1;
-    int result;
     arb_t x, y, g;
 
     arb_init(x);
@@ -74,7 +75,7 @@ _sign(const arf_t q, const quantile_args_t p, slong prec)
 
     arb_set_arf(x, q);
     /* for arb_calc callback compatibility we need to remove const */
-    result = _arb_gamma_objective(y, x, (quantile_args_struct *) p, 1, prec);
+    _arb_gamma_objective(y, x, (quantile_args_struct *) p, 1, prec);
 
     arb_sgn(g, y);
     if (arb_contains_zero(g))
@@ -249,12 +250,14 @@ gamma_rates(arb_struct *rates, slong n, const arb_t s, slong prec)
 }
 
 
+/*
 int
 main()
 {
     slong k;
     slong n = 4;
-    double shape = 0.5;
+    //double shape = 0.5;
+    double shape = 0.19242344607262146239;
     arb_t s;
     arb_struct *rates;
     slong prec = 4;
@@ -289,3 +292,4 @@ main()
 
     return 0;
 }
+*/

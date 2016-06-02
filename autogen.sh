@@ -2,8 +2,8 @@
 
 autoreconf --install
 
-args="--prefix=/usr/local \
-CFLAGS='-march=native -O3 -ffast-math -g -Wall -Wextra'"
+args="--prefix=/home/username/.local \
+CFLAGS='-march=native -O3 -g -Wall -Wextra'"
 
 echo
 echo "----------------------------------------------------------------"

@@ -43,6 +43,7 @@ myext = Extension(
             'rate_mixture.c',
             'cross_site_ws.c',
             'finite_differences.c',
+            'gamma_discretization.c',
             ])
 
 setup(name="arbplf", version="0.0.1",

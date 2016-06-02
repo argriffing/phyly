@@ -23,7 +23,7 @@ typedef struct
 } gamma_rate_mixture_struct;
 typedef gamma_rate_mixture_struct gamma_rate_mixture_t[1];
 
-void gamma_rate_mixture_init(gamma_rate_mixture_t x, int n);
+void gamma_rate_mixture_init(gamma_rate_mixture_t x);
 void gamma_rate_mixture_clear(gamma_rate_mixture_t x);
 slong gamma_rate_mixture_category_count(const gamma_rate_mixture_t x);
 void gamma_rate_mixture_summarize(

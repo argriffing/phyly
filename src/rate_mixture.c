@@ -1,6 +1,8 @@
 #include "arb.h"
 
 #include "rate_mixture.h"
+#include "gamma_discretization.h"
+#include "arb_vec_extras.h"
 
 void
 custom_rate_mixture_pre_init(custom_rate_mixture_t x)
@@ -167,7 +169,7 @@ gamma_rate_mixture_summarize(
         const gamma_rate_mixture_t x, slong prec)
 {
     slong i;
-    arb_ptr x;
+    arb_ptr r;
 
     arb_t p, q;
     arb_init(p);
@@ -176,22 +178,38 @@ gamma_rate_mixture_summarize(
     arb_sub_si(q, p, 1, prec);
     arb_neg(q, q);
 
+    /* the expectation is designed to be 1 */
+    arb_one(rate_mix_expect);
+
     /* probabilities corresponding to gamma rate categories */
     for (i = 0; i < x->gamma_categories; i++)
     {
-        x = rate_mix_prior + i;
-        arb_div_si(x, q, x->gamma_categories);
+        r = rate_mix_prior + i;
+        arb_div_si(r, q, x->gamma_categories, prec);
     }
 
     /* optional probability corresponding to the invariant category */
     if (x->invariant_prior)
     {
-        x = rate_mix_prior + x->gamma_categories;
-        arb_set(x, p);
+        r = rate_mix_prior + x->gamma_categories;
+        arb_set(r, p);
     }
 
-    /* the expectation is designed to be 1 */
-    arb_one(rate_mix_expect);
+    /* set the discretized gamma rates */
+    {
+        arb_t s;
+        arb_init(s);
+        arb_set_d(s, x->gamma_shape);
+        gamma_rates(rate_mix_rates, x->gamma_categories, s, prec);
+        arb_clear(s);
+    }
+
+    /* normalize the rates to account for a possible invariant category */
+    for (i = 0; i < x->gamma_categories; i++)
+    {
+        r = rate_mix_rates + i;
+        arb_div(r, r, q, prec);
+    }
 
     arb_clear(p);
     arb_clear(q);
@@ -206,6 +224,7 @@ void
 rate_mixture_pre_init(rate_mixture_t x)
 {
     x->custom_mix = NULL;
+    x->gamma_mix = NULL;
     x->mode = RATE_MIXTURE_UNDEFINED;
 }
 
@@ -215,6 +234,10 @@ rate_mixture_clear(rate_mixture_t x)
     if (x->custom_mix)
     {
         custom_rate_mixture_clear(x->custom_mix);
+    }
+    if (x->gamma_mix)
+    {
+        gamma_rate_mixture_clear(x->gamma_mix);
     }
 }
 
@@ -233,6 +256,10 @@ rate_mixture_category_count(const rate_mixture_t x)
     else if (x->mode == RATE_MIXTURE_UNIFORM || x->mode == RATE_MIXTURE_CUSTOM)
     {
         return x->custom_mix->n;
+    }
+    else if (x->mode == RATE_MIXTURE_GAMMA)
+    {
+        return gamma_rate_mixture_category_count(x->gamma_mix);
     }
     else
     {
@@ -266,6 +293,29 @@ rate_mixture_summarize(
             custom_rate_mixture_get_rate(
                     rate_mix_rates + i, x->custom_mix, i);
         }
+    }
+    else if (x->mode == RATE_MIXTURE_GAMMA)
+    {
+        gamma_rate_mixture_summarize(
+                rate_mix_prior, rate_mix_rates, rate_mix_expect,
+                x->gamma_mix, prec);
+
+        /* debug */
+        /*
+        flint_printf("rate mix expect:\n");
+        arb_printd(rate_mix_expect, 15);
+        flint_printf("\n");
+
+        flint_printf("rate mix prior:\n");
+        _arb_vec_printd(rate_mix_prior,
+                gamma_rate_mixture_category_count(x->gamma_mix), 15);
+        flint_printf("\n");
+
+        flint_printf("rate mix rates:\n");
+        _arb_vec_printd(rate_mix_rates,
+                gamma_rate_mixture_category_count(x->gamma_mix), 15);
+        flint_printf("\n");
+        */
     }
     else
     {
