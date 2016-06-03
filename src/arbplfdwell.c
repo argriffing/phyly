@@ -234,7 +234,7 @@ _update_site(nd_accum_t arr,
                 w->base_node_vectors,
                 m->root_prior, csw->equilibrium,
                 tmat_base,
-                m->g, m->preorder, node_count, prec);
+                m->g, m->navigation->preorder, node_count, prec);
 
         /*
          * Update marginal distribution vectors at nodes.
@@ -242,11 +242,12 @@ _update_site(nd_accum_t arr,
          */
         evaluate_site_marginal(
                 w->marginal_node_vectors,
+                w->base_node_vectors,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
                 m->root_prior, csw->equilibrium,
                 tmat_base,
-                m->g, m->preorder, node_count, state_count, prec);
+                m->g, m->navigation, node_count, state_count, prec);
 
         /* Update expectations at edges. */
         evaluate_site_frechet(
@@ -255,7 +256,7 @@ _update_site(nd_accum_t arr,
                 w->lhood_node_vectors,
                 w->lhood_edge_vectors,
                 fmat_base,
-                m->g, m->preorder, node_count, state_count, prec);
+                m->g, m->navigation->preorder, node_count, state_count, prec);
 
         /* compute category likelihood */
         arb_mul(cat_lhood, lhood, prior_prob, prec);

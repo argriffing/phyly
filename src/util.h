@@ -39,7 +39,8 @@ void _prune_update_rate(arb_mat_t d,
         const arb_mat_t c, const arb_mat_t a, const arb_mat_t b, slong prec);
 void _prune_update_prob(arb_mat_t d,
         const arb_mat_t c, const arb_mat_t a, const arb_mat_t b, slong prec);
-void _csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g);
+void _csr_graph_get_backward_maps(
+        int *idx_to_a, int *b_to_idx, const csr_graph_t g);
 void _csr_graph_get_preorder_edges(
         int *pre_to_idx, const csr_graph_t g, const int *preorder_nodes);
 void _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec);

@@ -385,7 +385,7 @@ _prune_update_rate(arb_mat_t D,
  * Note that the edges do not need to be traversed in any particular order.
  */
 void
-_csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g)
+_csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, const csr_graph_t g)
 {
     int idx;
     int a, b;

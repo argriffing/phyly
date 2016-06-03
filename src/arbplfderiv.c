@@ -306,7 +306,7 @@ _nd_accum_update(nd_accum_t arr,
                     w->base_node_vectors,
                     m->root_prior, csw->equilibrium,
                     tmat_base,
-                    m->g, m->preorder, node_count, prec);
+                    m->g, m->navigation->preorder, node_count, prec);
 
             /* Compute the likelihood for the site and category. */
             arb_mul(post_lhood, prior_prob, cat_lhood, prec);

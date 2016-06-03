@@ -332,7 +332,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                     w->base_node_vectors,
                     m->root_prior, csw->equilibrium,
                     tmat_base,
-                    m->g, m->preorder, node_count, prec);
+                    m->g, m->navigation->preorder, node_count, prec);
 
             /* Compute the likelihood for the rate category. */
             arb_mul(cat_lhood, lhood, prior_prob, prec);
@@ -348,11 +348,12 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                  */
                 evaluate_site_marginal(
                         w->marginal_node_vectors,
+                        w->base_node_vectors,
                         w->lhood_node_vectors,
                         w->lhood_edge_vectors,
                         m->root_prior, csw->equilibrium,
                         tmat_base,
-                        m->g, m->preorder, node_count, state_count, prec);
+                        m->g, m->navigation, node_count, state_count, prec);
 
                 /* Update dwell and trans expectations on edges. */
                 _evaluate_edge_expectations(
@@ -363,7 +364,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                         w->lhood_edge_vectors,
                         dwell_base,
                         trans_base,
-                        m->g, m->preorder, node_count, state_count,
+                        m->g, m->navigation->preorder, node_count, state_count,
                         edge_is_requested, prec);
 
                 /* Accumulate the category-specific expectations. */

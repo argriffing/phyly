@@ -168,7 +168,7 @@ _nd_accum_update(nd_accum_t arr,
                     w->base_node_vectors,
                     m->root_prior, csw->equilibrium,
                     tmat_base,
-                    m->g, m->preorder, csw->node_count, prec);
+                    m->g, m->navigation->preorder, csw->node_count, prec);
 
             /* Compute the likelihood for the site and category. */
             arb_mul(post_lhood, prior_prob, cat_lhood, prec);
@@ -188,11 +188,12 @@ _nd_accum_update(nd_accum_t arr,
              */
             evaluate_site_marginal(
                     w->marginal_node_vectors,
+                    w->base_node_vectors,
                     w->lhood_node_vectors,
                     w->lhood_edge_vectors,
                     m->root_prior, csw->equilibrium,
-                    tmat_base,
-                    m->g, m->preorder, csw->node_count, csw->state_count, prec);
+                    tmat_base, m->g, m->navigation,
+                    csw->node_count, csw->state_count, prec);
 
             /*
              * Accumulate the marginal probabilities for this category.
