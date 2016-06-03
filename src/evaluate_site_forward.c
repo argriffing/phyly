@@ -20,6 +20,7 @@
  * linear combinations of labeled state transition counts.
  */
 #include "evaluate_site_forward.h"
+#include "model.h"
 #include "util.h"
 
 
@@ -31,11 +32,10 @@ evaluate_site_forward(
         arb_mat_struct *lhood_edge_vectors,
         const root_prior_t r, const arb_struct *equilibrium,
         const arb_mat_struct *transition_matrices,
-        csr_graph_struct *g, const int *preorder,
-        const int *idx_to_a, const int *b_to_idx,
+        csr_graph_struct *g, const navigation_t nav,
         int node_count, int state_count, slong prec)
 {
-    int u, a, b;
+    int u;
     int parent_idx, idx;
     int start, stop;
     arb_mat_t tmp;
@@ -44,7 +44,7 @@ evaluate_site_forward(
 
     for (u = 0; u < node_count; u++)
     {
-        a = preorder[u];
+        slong a = nav->preorder[u];
 
         /*
          * For each state at node 'a',
@@ -52,14 +52,14 @@ evaluate_site_forward(
          */
         {
             const arb_mat_struct *bvec = base_node_vectors + a;
-            _arb_mat_ones(tmp);
             if (u == 0)
             {
+                _arb_mat_ones(tmp);
                 root_prior_mul_col_vec(tmp, r, equilibrium, prec);
             }
             else
             {
-                parent_idx = b_to_idx[a];
+                parent_idx = nav->b_to_idx[a];
                 arb_mat_set(tmp, forward_complete_edge_vectors + parent_idx);
             }
             _arb_mat_mul_entrywise(tmp, tmp, bvec, prec);
@@ -70,14 +70,13 @@ evaluate_site_forward(
 
         for (idx = start; idx < stop; idx++)
         {
-            b = g->indices[idx];
             arb_mat_struct *fivec = forward_incomplete_edge_vectors + idx;
             arb_mat_struct *fcvec = forward_complete_edge_vectors + idx;
 
             /* compute forward incomplete edge vector of edge idx */
             {
-                slong idx2, b2;
-                arb_set(fivec, tmp);
+                slong idx2;
+                arb_mat_set(fivec, tmp);
                 for (idx2 = start; idx2 < stop; idx2++)
                 {
                     const arb_mat_struct *lvec = lhood_edge_vectors + idx2;

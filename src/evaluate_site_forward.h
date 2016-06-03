@@ -1,5 +1,5 @@
-#ifndef EVALUATE_SITE_MARGINAL_H
-#define EVALUATE_SITE_MARGINAL_H
+#ifndef EVALUATE_SITE_FORWARD_H
+#define EVALUATE_SITE_FORWARD_H
 
 #include "flint/flint.h"
 #include "arb.h"
@@ -11,6 +11,7 @@
 extern "C" {
 #endif
 
+void
 evaluate_site_forward(
         arb_mat_struct *forward_incomplete_edge_vectors,
         arb_mat_struct *forward_complete_edge_vectors,
@@ -18,9 +19,8 @@ evaluate_site_forward(
         arb_mat_struct *lhood_edge_vectors,
         const root_prior_t r, const arb_struct *equilibrium,
         const arb_mat_struct *transition_matrices,
-        csr_graph_struct *g, const int *preorder,
-        const int *idx_to_a, const int *b_to_idx,
-        int node_count, int state_count, slong prec)
+        csr_graph_struct *g, const navigation_t nav,
+        int node_count, int state_count, slong prec);
 
 #ifdef __cplusplus
 }

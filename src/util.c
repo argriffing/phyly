@@ -192,7 +192,8 @@ _arb_mat_indeterminate(arb_mat_t m)
 }
 
 void
-_arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
+_arb_mat_mul_entrywise(arb_mat_t c,
+        const arb_mat_t a, const arb_mat_t b, slong prec)
 {
     slong i, j, nr, nc;
 

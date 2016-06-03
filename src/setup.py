@@ -30,6 +30,7 @@ myext = Extension(
             'evaluate_site_lhood.c',
             'evaluate_site_marginal.c',
             'evaluate_site_frechet.c',
+            'evaluate_site_forward.c',
             'parsemodel.c',
             'reduction.c',
             'parsereduction.c',
