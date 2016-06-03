@@ -7,6 +7,7 @@
 #include "util.h"
 
 #define FULL_RELATIVE_PRECISION 53
+#define UTIL_DEBUG 0
 
 int _can_round(arb_t x)
 {
@@ -536,13 +537,20 @@ _arb_mat_exp_frechet(arb_mat_t P, arb_mat_t F,
         }
     }
 
-    /*
-    flint_printf("debug: exp frechet matrix:\n");
-    arb_mat_printd(M, 15); flint_printf("\n");
-    */
+    if (UTIL_DEBUG)
+    {
+        flint_printf("debug: arb_mat_exp frechet input:\n");
+        arb_mat_printd(M, 15); flint_printf("\n");
+    }
 
     /* Compute the matrix exponential of M */
     arb_mat_exp(M, M, prec);
+
+    if (UTIL_DEBUG)
+    {
+        flint_printf("debug: arb_mat_exp frechet output:\n");
+        arb_mat_printd(M, 15); flint_printf("\n");
+    }
 
     /* Copy matrix blocks from M to P and from M to F */
     for (i = 0; i < n; i++)
@@ -600,7 +608,7 @@ _arb_mat_proportions(arb_mat_t b, const arb_mat_t a, slong prec)
     {
         _arb_mat_indeterminate(b);
     }
-    else if (nonzero_count == 1 && zero_count == size - 1)
+    else if (zero_count == size - 1)
     {
         for (i = 0; i < r; i++)
         {
@@ -618,8 +626,36 @@ _arb_mat_proportions(arb_mat_t b, const arb_mat_t a, slong prec)
     {
         arb_t total;
         arb_init(total);
-        _arb_mat_sum(total, b, prec);
-        arb_mat_scalar_div_arb(b, a, total, prec);
+        _arb_mat_sum(total, a, prec);
+
+        if (arb_contains_zero(total))
+        {
+            arb_t u;
+
+            /* debug */
+            /*
+            flint_printf("debug: total includes zero\n");
+            arb_printd(total, 15); flint_printf("\n");
+            arb_mat_printd(b, 15); flint_printf("\n");
+            */
+
+            /*
+             * Define a completely uninformative distribution.
+             * Each entry will be 1/2 +- 1/2.
+             */
+            arb_init(u);
+            arb_one(u);
+            mag_one(arb_radref(u));
+            arb_mul_2exp_si(u, u, -1);
+            for (i = 0; i < r; i++)
+                for (j = 0; j < c; j++)
+                    arb_set(arb_mat_entry(b, i, j), u);
+            arb_clear(u);
+        }
+        else
+        {
+            arb_mat_scalar_div_arb(b, a, total, prec);
+        }
         arb_clear(total);
     }
 }

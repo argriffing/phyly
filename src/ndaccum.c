@@ -1,6 +1,8 @@
 #include "ndaccum.h"
 #include "util.h"
 
+#define DEBUG_ROUNDING 0
+
 void
 nd_axis_update_precision(nd_axis_t axis, column_reduction_t r, slong prec)
 {
@@ -172,11 +174,12 @@ nd_accum_can_round(nd_accum_t a)
     {
         if (!_can_round(a->data + i))
         {
-            /*
-            flint_printf("debug: failed to round element %d of %d:\n",
-                    i, a->size);
-            arb_printd(a->data + i, 15); flint_printf("\n");
-            */
+            if (DEBUG_ROUNDING)
+            {
+                flint_printf("debug: failed to round element %d of %d:\n",
+                        i, a->size);
+                arb_printd(a->data + i, 15); flint_printf("\n");
+            }
             return 0;
         }
     }

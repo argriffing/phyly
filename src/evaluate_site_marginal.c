@@ -27,7 +27,7 @@ _arb_mat_div_entrywise_marginal(
     {
         for (j = 0; j < nc; j++)
         {
-            if (arb_is_zero(arb_mat_entry(b, i, j)))
+            if (arb_contains_zero(arb_mat_entry(b, i, j)))
             {
                 if (arb_is_zero(arb_mat_entry(a, i, j)))
                 {
@@ -38,11 +38,13 @@ _arb_mat_div_entrywise_marginal(
                 }
                 else
                 {
+                    /* debug */
                     /*
                     fprintf(stderr, "internal error: unexpected ratio\n");
                     arb_mat_printd(a, 15); flint_printf("\n");
                     arb_mat_printd(b, 15); flint_printf("\n");
                     */
+
                     arb_indeterminate(arb_mat_entry(c, i, j));
                 }
             }
