@@ -13,8 +13,8 @@ extern "C" {
 
 void
 evaluate_site_forward(
-        arb_mat_struct *forward_incomplete_edge_vectors,
-        arb_mat_struct *forward_complete_edge_vectors,
+        arb_mat_struct *forward_edge_vectors,
+        arb_mat_struct *forward_node_vectors,
         arb_mat_struct *base_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
         const root_prior_t r, const arb_struct *equilibrium,

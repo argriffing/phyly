@@ -131,19 +131,6 @@ old_evaluate_site_marginal(
 }
 
 
-
-/*
-evaluate_site_forward(
-        arb_mat_struct *forward_incomplete_edge_vectors,
-        arb_mat_struct *forward_complete_edge_vectors,
-        arb_mat_struct *base_node_vectors,
-        arb_mat_struct *lhood_edge_vectors,
-        const root_prior_t r, const arb_struct *equilibrium,
-        const arb_mat_struct *transition_matrices,
-        csr_graph_struct *g, const navigation_t nav,
-        int node_count, int state_count, slong prec)
-*/
-
 void
 evaluate_site_marginal(
         arb_mat_struct *marginal_node_vectors,
@@ -155,16 +142,57 @@ evaluate_site_marginal(
         csr_graph_struct *g, const navigation_t nav,
         int node_count, int state_count, slong prec)
 {
+    arb_t lhood;
+
+    /* compute lhood */
+    {
+        const arb_mat_struct *lvec = lhood_node_vectors + nav->preorder[0];
+        arb_init(lhood);
+        root_prior_expectation(lhood, r, lvec, equilibrium, prec);
+    }
+
+    /* evaluate unnormalized marginal vectors */
+    evaluate_site_marginal_unnormalized(
+            marginal_node_vectors, base_node_vectors,
+            lhood_node_vectors, lhood_edge_vectors,
+            r, equilibrium, transition_matrices,
+            g, nav, node_count, state_count, prec);
+
+    /* divide each vector by the likelihood */
+    {
+        slong a;
+        for (a = 0; a < node_count; a++)
+        {
+            arb_mat_struct *mvec = marginal_node_vectors + a;
+            arb_mat_scalar_div_arb(mvec, mvec, lhood, prec);
+        }
+    }
+
+    arb_clear(lhood);
+}
+
+
+void
+evaluate_site_marginal_unnormalized(
+        arb_mat_struct *marginal_node_vectors,
+        arb_mat_struct *base_node_vectors,
+        arb_mat_struct *lhood_node_vectors,
+        arb_mat_struct *lhood_edge_vectors,
+        const root_prior_t r, const arb_struct *equilibrium,
+        const arb_mat_struct *transition_matrices,
+        csr_graph_struct *g, const navigation_t nav,
+        int node_count, int state_count, slong prec)
+{
     /* Inefficiently allocate and compute forward vectors. */
     slong edge_count = node_count - 1;
-    arb_mat_struct *forward_incomplete_edge_vectors = _arb_mat_vec_init(
+    arb_mat_struct *forward_edge_vectors = _arb_mat_vec_init(
             state_count, 1, edge_count);
-    arb_mat_struct *forward_complete_edge_vectors = _arb_mat_vec_init(
-            state_count, 1, edge_count);
+    arb_mat_struct *forward_node_vectors = _arb_mat_vec_init(
+            state_count, 1, node_count);
 
     /* Evaluate forward edge vectors. */
     evaluate_site_forward(
-            forward_incomplete_edge_vectors, forward_complete_edge_vectors,
+            forward_edge_vectors, forward_node_vectors,
             base_node_vectors, lhood_edge_vectors,
             r, equilibrium, transition_matrices,
             g, nav, node_count, state_count, prec);
@@ -175,34 +203,13 @@ evaluate_site_marginal(
         for (u = 0; u < node_count; u++)
         {
             slong a = nav->preorder[u];
-            arb_mat_struct *mvec = marginal_node_vectors + a;
-            const arb_mat_struct *lvec = lhood_node_vectors + a;
-            if (u == 0)
-            {
-                /* note that lvec does not include prior */
-                arb_mat_set(mvec, lvec);
-                root_prior_mul_col_vec(mvec, r, equilibrium, prec);
-            }
-            else
-            {
-                slong idx = nav->b_to_idx[a];
-                const arb_mat_struct *v = forward_complete_edge_vectors + idx;
-                _arb_mat_mul_entrywise(mvec, lvec, v, prec);
-            }
+            _arb_mat_mul_entrywise(
+                    marginal_node_vectors + a,
+                    forward_node_vectors + a,
+                    lhood_node_vectors + a, prec);
         }
     }
 
-    /* Normalize each posterior distribution. */
-    /* fixme: is each denominator equal to the likelihood? */
-    {
-        slong a;
-        for (a = 0; a < node_count; a++)
-        {
-            arb_mat_struct *mvec = marginal_node_vectors + a;
-            _arb_mat_proportions(mvec, mvec, prec);
-        }
-    }
-
-    _arb_mat_vec_clear(forward_incomplete_edge_vectors, edge_count);
-    _arb_mat_vec_clear(forward_complete_edge_vectors, edge_count);
+    _arb_mat_vec_clear(forward_edge_vectors, edge_count);
+    _arb_mat_vec_clear(forward_node_vectors, node_count);
 }

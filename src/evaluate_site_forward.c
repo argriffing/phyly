@@ -23,11 +23,15 @@
 #include "model.h"
 #include "util.h"
 
+/*
+ * incomplete_edge_vectors -> edge_vectors
+ * complete_edge_vectors -> node_vectors
+ */
 
 void
 evaluate_site_forward(
-        arb_mat_struct *forward_incomplete_edge_vectors,
-        arb_mat_struct *forward_complete_edge_vectors,
+        arb_mat_struct *forward_edge_vectors,
+        arb_mat_struct *forward_node_vectors,
         arb_mat_struct *base_node_vectors,
         arb_mat_struct *lhood_edge_vectors,
         const root_prior_t r, const arb_struct *equilibrium,
@@ -35,10 +39,22 @@ evaluate_site_forward(
         csr_graph_struct *g, const navigation_t nav,
         int node_count, int state_count, slong prec)
 {
-    int u;
-    int parent_idx, idx;
+    slong u;
+    int idx;
     int start, stop;
     arb_mat_t tmp;
+
+    /*
+     * Define the forward node vector at the root.
+     * The forward node vector is about the likelihood above,
+     * but not including, the node of interest.
+     */
+    {
+        slong a = nav->preorder[0];
+        arb_mat_struct *fnvec = forward_node_vectors + a;
+        _arb_mat_ones(fnvec);
+        root_prior_mul_col_vec(fnvec, r, equilibrium, prec);
+    }
 
     arb_mat_init(tmp, state_count, 1);
 
@@ -47,50 +63,40 @@ evaluate_site_forward(
         slong a = nav->preorder[u];
 
         /*
-         * For each state at node 'a',
-         * get the likelihood of everything above and including that node.
+         * The tmp vector is about the likelihood above,
+         * and including, the node of interest.
          */
-        {
-            const arb_mat_struct *bvec = base_node_vectors + a;
-            if (u == 0)
-            {
-                _arb_mat_ones(tmp);
-                root_prior_mul_col_vec(tmp, r, equilibrium, prec);
-            }
-            else
-            {
-                parent_idx = nav->b_to_idx[a];
-                arb_mat_set(tmp, forward_complete_edge_vectors + parent_idx);
-            }
-            _arb_mat_mul_entrywise(tmp, tmp, bvec, prec);
-        }
+        _arb_mat_mul_entrywise(tmp,
+                forward_node_vectors + a,
+                base_node_vectors + a, prec);
 
         start = g->indptr[a];
         stop = g->indptr[a+1];
 
         for (idx = start; idx < stop; idx++)
         {
-            arb_mat_struct *fivec = forward_incomplete_edge_vectors + idx;
-            arb_mat_struct *fcvec = forward_complete_edge_vectors + idx;
+            slong b = g->indices[idx];
+            arb_mat_struct *fevec = forward_edge_vectors + idx;
+            arb_mat_struct *fnvec = forward_node_vectors + b;
 
-            /* compute forward incomplete edge vector of edge idx */
+            /* compute forward edge vector of edge idx */
             {
                 slong idx2;
-                arb_mat_set(fivec, tmp);
+                arb_mat_set(fevec, tmp);
                 for (idx2 = start; idx2 < stop; idx2++)
                 {
                     const arb_mat_struct *lvec = lhood_edge_vectors + idx2;
                     if (idx2 != idx)
                     {
-                        _arb_mat_mul_entrywise(fivec, fivec, lvec, prec);
+                        _arb_mat_mul_entrywise(fevec, fevec, lvec, prec);
                     }
                 }
             }
 
-            /* compute forward complete edge vector of edge idx */
+            /* compute forward node vector of node b */
             {
                 const arb_mat_struct *tmat = transition_matrices + idx;
-                _arb_mat_mul_AT_B(fcvec, tmat, fivec, prec);
+                _arb_mat_mul_AT_B(fnvec, tmat, fevec, prec);
             }
         }
     }
