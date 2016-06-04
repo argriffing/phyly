@@ -132,7 +132,8 @@ root_prior = root_prior.tolist()
 d = dict(model_and_data = dict(
     edges = edges,
     edge_rate_coefficients = edge_rate_coefficients,
-    rate_mixture = rate_mixture,
+    #rate_mixture = rate_mixture,
+    gamma_rate_mixture = dict(gamma_shape=gamma_shape, gamma_categories=4),
     rate_divisor = "equilibrium_exit_rate",
     root_prior = root_prior,
     rate_matrix = rate_matrix,
