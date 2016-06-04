@@ -63,5 +63,5 @@ $ python mknuc.py > nuc.json
 $ python mkmodel.py > model.json
 $ jq -s '.[0] * .[1]' nuc.json model.json > in.json
 $ arbplf-ll < in.json
-{"columns": ["value"], "data": [[-2616.073588220348]]}
+{"columns": ["value"], "data": [[-2616.0735881244163]]}
 ```

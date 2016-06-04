@@ -1,6 +1,7 @@
 #include "stdlib.h"
 #include "stdio.h"
 
+#include "flint/flint.h"
 #include "arb.h"
 #include "arb_mat.h"
 
@@ -9,13 +10,55 @@
 #include "arb_mat_extras.h"
 #include "model.h"
 
+void
+navigation_pre_init(navigation_t nav)
+{
+    nav->preorder = NULL;
+    nav->b_to_idx = NULL;
+    nav->idx_to_a = NULL;
+}
+
+
+/* on failure return a nonzero error code */
+int
+navigation_init(navigation_t nav, const csr_graph_t g,
+        slong node_count, slong edge_count, slong root_node_index)
+{
+    int result;
+
+    if (nav->preorder || nav->b_to_idx || nav->idx_to_a)
+    {
+        flint_fprintf(stderr, "internal error: tree navigation structure "
+                "has been incorrectly initialized\n");
+        return -1;
+    }
+
+    nav->preorder = flint_malloc(node_count * sizeof(int));
+    result = csr_graph_get_tree_topo_sort(nav->preorder, g, root_node_index);
+    if (result) return result;
+
+    nav->b_to_idx = flint_malloc(node_count * sizeof(int));
+    nav->idx_to_a = flint_malloc(edge_count * sizeof(int));
+    _csr_graph_get_backward_maps(nav->idx_to_a, nav->b_to_idx, g);
+
+    return 0;
+}
+
+
+void
+navigation_clear(navigation_t nav)
+{
+    flint_free(nav->preorder);
+    flint_free(nav->b_to_idx);
+    flint_free(nav->idx_to_a);
+}
+
 
 void
 model_and_data_init(model_and_data_t m)
 {
     m->use_equilibrium_rate_divisor = 0;
     m->root_node_index = -1;
-    m->preorder = NULL;
     m->edge_rate_coefficients = NULL;
     csr_graph_init(m->g);
     arb_mat_init(m->mat, 0, 0);
@@ -25,12 +68,12 @@ model_and_data_init(model_and_data_t m)
     arb_one(m->rate_divisor);
     root_prior_pre_init(m->root_prior);
     rate_mixture_pre_init(m->rate_mixture);
+    navigation_pre_init(m->navigation);
 }
 
 void
 model_and_data_clear(model_and_data_t m)
 {
-    free(m->preorder);
     free(m->edge_rate_coefficients);
     csr_graph_clear(m->g);
     arb_mat_clear(m->mat);
@@ -39,6 +82,7 @@ model_and_data_clear(model_and_data_t m)
     arb_clear(m->rate_divisor);
     root_prior_clear(m->root_prior);
     rate_mixture_clear(m->rate_mixture);
+    navigation_clear(m->navigation);
 }
 
 slong

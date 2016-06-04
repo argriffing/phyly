@@ -59,6 +59,19 @@ void pmat_update_base_node_vectors(
         arb_mat_struct *base_node_vectors, const pmat_t p, slong site);
 
 
+typedef struct
+{
+    int *preorder;
+    int *b_to_idx;
+    int *idx_to_a;
+} navigation_struct;
+typedef navigation_struct navigation_t[1];
+
+void navigation_pre_init(navigation_t navigation);
+int navigation_init(navigation_t nav, const csr_graph_t g,
+        slong node_count, slong edge_count, slong root_node_index);
+void navigation_clear(navigation_t navigation);
+
 
 typedef struct
 {
@@ -66,13 +79,13 @@ typedef struct
     arb_mat_t mat;
     pmat_t p;
     int root_node_index;
-    int *preorder;
     int use_equilibrium_rate_divisor;
     arb_t rate_divisor;
     root_prior_t root_prior;
     double *edge_rate_coefficients;
     csr_edge_mapper_t edge_map;
     rate_mixture_t rate_mixture;
+    navigation_t navigation;
 } model_and_data_struct;
 typedef model_and_data_struct model_and_data_t[1];
 

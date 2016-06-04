@@ -511,8 +511,6 @@ _recompute_second_order(so_t so,
     int result = 0;
     int i, j, idx, site, a;
 
-    int *idx_to_a = NULL;
-    int *b_to_idx = NULL;
     int *site_selection_count = NULL;
     int *pre_to_idx = NULL;
 
@@ -570,11 +568,8 @@ _recompute_second_order(so_t so,
     }
 
     /* Get maps for navigating towards the root of the tree. */
-    idx_to_a = malloc(edge_count * sizeof(int));
     pre_to_idx = malloc(edge_count * sizeof(int));
-    b_to_idx = malloc(node_count * sizeof(int));
-    _csr_graph_get_backward_maps(idx_to_a, b_to_idx, m->g);
-    _csr_graph_get_preorder_edges(pre_to_idx, m->g, m->preorder);
+    _csr_graph_get_preorder_edges(pre_to_idx, m->g, m->navigation->preorder);
 
     /* define site aggregation weights */
     result = get_site_agg_weights(
@@ -628,7 +623,7 @@ _recompute_second_order(so_t so,
                     w->base_plane->node_vectors,
                     m->root_prior, csw->equilibrium,
                     tmat_base,
-                    m->g, m->preorder, node_count, prec);
+                    m->g, m->navigation->preorder, node_count, prec);
 
             /* compute category likelihood */
             arb_mul(cat_lhood, cat_lhood, prior_prob, prec);
@@ -692,10 +687,10 @@ _recompute_second_order(so_t so,
 
                     update_indirect = 1;
                     evaluate_site_derivatives(cat_lhood_gradient + idx_i,
-                            m->g, m->preorder,
+                            m->g, m->navigation->preorder,
                             csw->rate_matrix, tmat_base,
                             m->root_prior, csw->equilibrium,
-                            w, idx_to_a, b_to_idx,
+                            w, m->navigation->idx_to_a, m->navigation->b_to_idx,
                             idx_i, w->deriv_plane, update_indirect, prec);
 
                     if (req_h)
@@ -708,10 +703,10 @@ _recompute_second_order(so_t so,
                             evaluate_site_derivatives(
                                     arb_mat_entry(
                                         cat_lhood_hessian, idx_i, idx_j),
-                                    m->g, m->preorder,
+                                    m->g, m->navigation->preorder,
                                     csw->rate_matrix, tmat_base,
                                     m->root_prior, csw->equilibrium,
-                                    w, idx_to_a, b_to_idx,
+                                    w, m->navigation->idx_to_a, m->navigation->b_to_idx,
                                     idx_j, w->hess_plane, update_indirect, prec);
                         }
                     }
@@ -827,8 +822,6 @@ finish:
     arb_clear(tmp);
     arb_mat_clear(ll_hessian);
 
-    free(idx_to_a);
-    free(b_to_idx);
     free(pre_to_idx);
     free(site_selection_count);
 
@@ -975,7 +968,7 @@ void _compute_ll(arb_t ll,
                 w->base_plane->node_vectors,
                 m->root_prior, csw->equilibrium,
                 tmat_base,
-                m->g, m->preorder, node_count, prec);
+                m->g, m->navigation->preorder, node_count, prec);
 
         /*
          * If any site likelihood is exactly zero

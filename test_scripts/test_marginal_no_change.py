@@ -19,34 +19,43 @@ import json
 import copy
 
 import numpy as np
-from numpy.testing import (
-        assert_, assert_equal, assert_raises, assert_allclose, TestCase)
+from numpy.testing import assert_equal, assert_raises, assert_allclose
 
-from arbplf import arbplf_ll
-from arbplf import arbplf_dwell
-from arbplf import arbplf_marginal
-from arbplf import arbplf_em_update
+from arbplf import (
+        arbplf_ll, arbplf_dwell, arbplf_trans,
+        arbplf_marginal, arbplf_em_update)
+
 
 # remains constant across all tests in the module
 desired_marginal = {
-    "columns": ["site", "node", "state", "value"],
+    "columns": ["node", "state", "value"],
     "data": [
-        [0, 0, 0, 1.0],
-        [0, 0, 1, 0.0],
-        [0, 1, 0, 1.0],
-        [0, 1, 1, 0.0],
-        [0, 2, 0, 1.0],
-        [0, 2, 1, 0.0]]
+        [0, 0, 1.0],
+        [0, 1, 0.0],
+        [1, 0, 1.0],
+        [1, 1, 0.0],
+        [2, 0, 1.0],
+        [2, 1, 0.0]]
     }
 
 # remains constant across all tests in the module
 desired_dwell = {
-    "columns": ["site", "edge", "state", "value"],
+    "columns": ["edge", "state", "value"],
     "data": [
-        [0, 0, 0, 1.0],
+        [0, 0, 1.0],
+        [0, 1, 0.0],
+        [1, 0, 1.0],
+        [1, 1, 0.0]]
+    }
+
+# remains constant across all tests in the module
+desired_trans = {
+    "columns": ["edge", "first_state", "second_state", "value"],
+    "data": [
         [0, 0, 1, 0.0],
-        [0, 1, 0, 1.0],
-        [0, 1, 1, 0.0]]
+        [0, 1, 0, 0.0],
+        [1, 0, 1, 0.0],
+        [1, 1, 0, 0.0]]
     }
 
 # remains constant across all tests in the module
@@ -58,35 +67,40 @@ desired_em_update = {
     }
 
 
-def test_marginal_no_change():
+def test():
     d = {
             "model_and_data" : {
                 "edges" : [[0, 1], [1, 2]],
                 "edge_rate_coefficients" : [1, 1],
                 "rate_matrix" : [[0, 1], [0, 0]],
                 "probability_array" : [[[1, 0], [1, 1], [1, 0]]]
-                }
+                },
+            "site_reduction" : {"aggregation" : "only"}
             }
 
     actual_marginal = json.loads(arbplf_marginal(json.dumps(d)))
     assert_equal(actual_marginal, desired_marginal)
 
-    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
-    assert_equal(actual_dwell, desired_dwell)
+    g = copy.deepcopy(d)
+    g['trans_reduction'] = dict(selection=[[0, 1], [1, 0]])
+    actual_trans = json.loads(arbplf_trans(json.dumps(g)))
+    assert_equal(actual_trans, desired_trans)
 
     actual_ll = json.loads(arbplf_ll(json.dumps(d)))
     desired_ll = {
-        "columns": ["site", "value"],
-        "data": [[0, -2.0]]
+        "columns": ["value"],
+        "data": [[-2.0]]
         }
     assert_equal(actual_ll, desired_ll)
 
-    d['site_reduction'] = {'aggregation' : 'sum'}
     actual_em_update = json.loads(arbplf_em_update(json.dumps(d)))
     assert_equal(actual_em_update, desired_em_update)
 
+    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
+    assert_equal(actual_dwell, desired_dwell)
 
-def test_marginal_no_change_heterogeneous_edge_rates():
+
+def test_heterogeneous_edge_rates():
     # try changing one of the edge rate coefficients
     d = {
             "model_and_data" : {
@@ -94,28 +108,33 @@ def test_marginal_no_change_heterogeneous_edge_rates():
                 "edge_rate_coefficients" : [1, 2],
                 "rate_matrix" : [[0, 1], [0, 0]],
                 "probability_array" : [[[1, 0], [1, 1], [1, 0]]]
-                }
+                },
+            "site_reduction" : {"aggregation" : "only"}
             }
 
     actual_marginal = json.loads(arbplf_marginal(json.dumps(d)))
     assert_equal(actual_marginal, desired_marginal)
 
-    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
-    assert_equal(actual_dwell, desired_dwell)
+    g = copy.deepcopy(d)
+    g['trans_reduction'] = dict(selection=[[0, 1], [1, 0]])
+    actual_trans = json.loads(arbplf_trans(json.dumps(g)))
+    assert_equal(actual_trans, desired_trans)
 
     actual_ll = json.loads(arbplf_ll(json.dumps(d)))
     desired_ll = {
-        "columns": ["site", "value"],
-        "data": [[0, -3.0]]
+        "columns": ["value"],
+        "data": [[-3.0]]
         }
     assert_equal(actual_ll, desired_ll)
 
-    d['site_reduction'] = {'aggregation' : 'sum'}
     actual_em_update = json.loads(arbplf_em_update(json.dumps(d)))
     assert_equal(actual_em_update, desired_em_update)
 
+    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
+    assert_equal(actual_dwell, desired_dwell)
 
-def test_marginal_no_change_edges_are_not_preordered():
+
+def test_edges_are_not_preordered():
     # Try switching the order of the edges in the input
     # and increasing the birth rate in the rate matrix.
     d = {
@@ -124,22 +143,27 @@ def test_marginal_no_change_edges_are_not_preordered():
                 "edge_rate_coefficients" : [1, 2],
                 "rate_matrix" : [[0, 2], [0, 0]],
                 "probability_array" : [[[1, 0], [1, 1], [1, 0]]]
-                }
+                },
+            "site_reduction" : {"aggregation" : "only"}
             }
 
     actual_marginal = json.loads(arbplf_marginal(json.dumps(d)))
     assert_equal(actual_marginal, desired_marginal)
 
-    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
-    assert_equal(actual_dwell, desired_dwell)
+    g = copy.deepcopy(d)
+    g['trans_reduction'] = dict(selection=[[0, 1], [1, 0]])
+    actual_trans = json.loads(arbplf_trans(json.dumps(g)))
+    assert_equal(actual_trans, desired_trans)
 
     actual_ll = json.loads(arbplf_ll(json.dumps(d)))
     desired_ll = {
-        "columns": ["site", "value"],
-        "data": [[0, -6.0]]
+        "columns": ["value"],
+        "data": [[-6.0]]
         }
     assert_equal(actual_ll, desired_ll)
 
-    d['site_reduction'] = {'aggregation' : 'sum'}
     actual_em_update = json.loads(arbplf_em_update(json.dumps(d)))
     assert_equal(actual_em_update, desired_em_update)
+
+    actual_dwell = json.loads(arbplf_dwell(json.dumps(d)))
+    assert_equal(actual_dwell, desired_dwell)

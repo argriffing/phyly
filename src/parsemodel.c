@@ -355,22 +355,10 @@ _validate_edges(model_and_data_t m, json_t *root)
         }
     }
 
-    /* define a topological ordering of the nodes */
-    {
-        if (m->preorder)
-        {
-            fprintf(stderr, "_validate_edges: expected NULL preorder\n");
-            result = -1;
-            goto finish;
-        }
-        m->preorder = malloc(node_count * sizeof(int));
-        result = csr_graph_get_tree_topo_sort(
-                m->preorder, m->g, m->root_node_index);
-        if (result)
-        {
-            goto finish;
-        }
-    }
+    /* initialize the navigation object */
+    result = navigation_init(m->navigation, m->g,
+            node_count, edge_count, m->root_node_index);
+    if (result) goto finish;
 
 finish:
 

@@ -31,7 +31,8 @@ int _arb_mat_solve_arb_vec(arb_struct *x,
 void _arb_mat_indeterminate(arb_mat_t m);
 int _arb_mat_is_indeterminate(const arb_mat_t m);
 void _arb_mat_row_sums(arb_struct *dest, arb_mat_t src, slong prec);
-void _arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
+void _arb_mat_mul_entrywise(arb_mat_t c,
+        const arb_mat_t a, const arb_mat_t b, slong prec);
 void _arb_mat_div_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec);
 void _arb_mat_ones(arb_mat_t A);
 void _arb_mat_zero_diagonal(arb_mat_t A);
@@ -39,7 +40,8 @@ void _prune_update_rate(arb_mat_t d,
         const arb_mat_t c, const arb_mat_t a, const arb_mat_t b, slong prec);
 void _prune_update_prob(arb_mat_t d,
         const arb_mat_t c, const arb_mat_t a, const arb_mat_t b, slong prec);
-void _csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g);
+void _csr_graph_get_backward_maps(
+        int *idx_to_a, int *b_to_idx, const csr_graph_t g);
 void _csr_graph_get_preorder_edges(
         int *pre_to_idx, const csr_graph_t g, const int *preorder_nodes);
 void _arb_update_rate_matrix_diagonal(arb_mat_t A, slong prec);

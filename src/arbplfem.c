@@ -41,7 +41,7 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
-#include "evaluate_site_marginal.h"
+#include "evaluate_site_forward.h"
 #include "arb_vec_extras.h"
 #include "arb_mat_extras.h"
 #include "equilibrium.h"
@@ -60,7 +60,8 @@ typedef struct
     arb_mat_struct *base_node_vectors;
     arb_mat_struct *lhood_node_vectors;
     arb_mat_struct *lhood_edge_vectors;
-    arb_mat_struct *marginal_node_vectors;
+    arb_mat_struct *forward_node_vectors;
+    arb_mat_struct *forward_edge_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
@@ -73,10 +74,11 @@ likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
 
     w->dwell_accum = _arb_vec_init(edge_count);
     w->trans_accum = _arb_vec_init(edge_count);
-    w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
     w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
     w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
-    w->marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->forward_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
+    w->forward_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
 }
 
 static void
@@ -87,10 +89,11 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 
     _arb_vec_clear(w->dwell_accum, edge_count);
     _arb_vec_clear(w->trans_accum, edge_count);
-    _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
     _arb_mat_vec_clear(w->base_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
-    _arb_mat_vec_clear(w->marginal_node_vectors, node_count);
+    _arb_mat_vec_clear(w->forward_edge_vectors, edge_count);
+    _arb_mat_vec_clear(w->forward_node_vectors, node_count);
 }
 
 static void
@@ -154,20 +157,15 @@ static void
 _evaluate_edge_expectations(
         arb_struct *dwell_accum,
         arb_struct *trans_accum,
-        arb_mat_struct *marginal_node_vectors,
-        arb_mat_struct *lhood_node_vectors,
-        arb_mat_struct *lhood_edge_vectors,
-        arb_mat_struct *dwell_frechet_matrices,
-        arb_mat_struct *trans_frechet_matrices,
-        csr_graph_t g, int *preorder,
+        const arb_mat_struct *lhood_node_vectors,
+        const arb_mat_struct *forward_edge_vectors,
+        const arb_mat_struct *dwell_frechet_matrices,
+        const arb_mat_struct *trans_frechet_matrices,
+        const csr_graph_t g, int *preorder,
         int node_count, int state_count,
         const int *edge_is_requested, slong prec)
 {
-    int u, a, b;
-    int idx;
-    int start, stop;
-    slong state;
-    arb_mat_struct *lvec, *mvec, *evec;
+    slong u, idx, state;
     arb_mat_t fvec;
     arb_t tmp, dwell_tmp, trans_tmp;
 
@@ -179,21 +177,20 @@ _evaluate_edge_expectations(
 
     for (u = 0; u < node_count; u++)
     {
-        a = preorder[u];
-        mvec = marginal_node_vectors + a;
-        start = g->indptr[a];
-        stop = g->indptr[a+1];
+        slong a = preorder[u];
+        slong start = g->indptr[a];
+        slong stop = g->indptr[a+1];
 
         for (idx = start; idx < stop; idx++)
         {
-            b = g->indices[idx];
+            slong b = g->indices[idx];
 
             /*
              * At this point (a, b) is an edge from node a to node b
              * in a pre-order traversal of edges of the tree.
              */
-            lvec = lhood_node_vectors + b;
-            evec = lhood_edge_vectors + idx;
+            const arb_mat_struct *lvec = lhood_node_vectors + b;
+            const arb_mat_struct *evec = forward_edge_vectors + idx;
 
             /* dwell update */
             if (edge_is_requested[idx])
@@ -202,16 +199,9 @@ _evaluate_edge_expectations(
                 arb_mat_mul(fvec, dwell_frechet_matrices + idx, lvec, prec);
                 for (state = 0; state < state_count; state++)
                 {
-                    if (!arb_is_zero(arb_mat_entry(evec, state, 0)))
-                    {
-                        arb_div(tmp,
-                                arb_mat_entry(fvec, state, 0),
-                                arb_mat_entry(evec, state, 0), prec);
-                        arb_addmul(
-                                dwell_tmp,
-                                arb_mat_entry(mvec, state, 0),
-                                tmp, prec);
-                    }
+                    arb_addmul(dwell_tmp,
+                            arb_mat_entry(fvec, state, 0),
+                            arb_mat_entry(evec, state, 0), prec);
                 }
 
                 arb_set(dwell_accum + idx, dwell_tmp);
@@ -224,16 +214,9 @@ _evaluate_edge_expectations(
                 arb_mat_mul(fvec, trans_frechet_matrices + idx, lvec, prec);
                 for (state = 0; state < state_count; state++)
                 {
-                    if (!arb_is_zero(arb_mat_entry(evec, state, 0)))
-                    {
-                        arb_div(tmp,
-                                arb_mat_entry(fvec, state, 0),
-                                arb_mat_entry(evec, state, 0), prec);
-                        arb_addmul(
-                                trans_tmp,
-                                arb_mat_entry(mvec, state, 0),
-                                tmp, prec);
-                    }
+                    arb_addmul(trans_tmp,
+                            arb_mat_entry(fvec, state, 0),
+                            arb_mat_entry(evec, state, 0), prec);
                 }
 
                 arb_set(trans_accum + idx, trans_tmp);
@@ -332,7 +315,7 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
                     w->base_node_vectors,
                     m->root_prior, csw->equilibrium,
                     tmat_base,
-                    m->g, m->preorder, node_count, prec);
+                    m->g, m->navigation->preorder, node_count, prec);
 
             /* Compute the likelihood for the rate category. */
             arb_mul(cat_lhood, lhood, prior_prob, prec);
@@ -342,35 +325,32 @@ _accum(likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m,
             {
                 const arb_struct * cat_rate = csw->rate_mix_rates + cat;
 
-                /*
-                 * Update marginal distribution vectors at nodes.
-                 * This is a forward pass from the root to the leaves.
-                 */
-                evaluate_site_marginal(
-                        w->marginal_node_vectors,
-                        w->lhood_node_vectors,
+                /* Update forward vectors. */
+                evaluate_site_forward(
+                        w->forward_edge_vectors,
+                        w->forward_node_vectors,
+                        w->base_node_vectors,
                         w->lhood_edge_vectors,
                         m->root_prior, csw->equilibrium,
-                        tmat_base,
-                        m->g, m->preorder, node_count, state_count, prec);
+                        tmat_base, m->g, m->navigation,
+                        csw->node_count, csw->state_count, prec);
 
                 /* Update dwell and trans expectations on edges. */
                 _evaluate_edge_expectations(
                         dwell_cat,
                         trans_cat,
-                        w->marginal_node_vectors,
                         w->lhood_node_vectors,
-                        w->lhood_edge_vectors,
+                        w->forward_edge_vectors,
                         dwell_base,
                         trans_base,
-                        m->g, m->preorder, node_count, state_count,
+                        m->g, m->navigation->preorder, node_count, state_count,
                         edge_is_requested, prec);
 
                 /* Accumulate the category-specific expectations. */
                 for (idx = 0; idx < edge_count; idx++)
                 {
                     if (!edge_is_requested[idx]) continue;
-                    arb_mul(tmp, cat_lhood, cat_rate, prec);
+                    arb_mul(tmp, prior_prob, cat_rate, prec);
                     arb_addmul(dwell_site + idx, dwell_cat + idx, tmp, prec);
                     arb_addmul(trans_site + idx, trans_cat + idx, tmp, prec);
                 }

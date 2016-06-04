@@ -46,6 +46,7 @@
 #include "reduction.h"
 #include "util.h"
 #include "evaluate_site_lhood.h"
+#include "evaluate_site_forward.h"
 #include "evaluate_site_marginal.h"
 #include "ndaccum.h"
 #include "equilibrium.h"
@@ -64,7 +65,9 @@ typedef struct
     arb_mat_struct *base_node_vectors;
     arb_mat_struct *lhood_node_vectors;
     arb_mat_struct *lhood_edge_vectors;
-    arb_mat_struct *marginal_node_vectors; /* one site, one category */
+    arb_mat_struct *forward_edge_vectors;
+    arb_mat_struct *forward_node_vectors;
+    arb_mat_struct *lhood_scaled_marginal_vectors; /* one site, one category */
     arb_mat_struct *cc_marginal_node_vectors; /* one site, across categories */
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
@@ -76,10 +79,12 @@ likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
     slong edge_count = model_and_data_edge_count(m);
     slong state_count = model_and_data_state_count(m);
 
-    w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
     w->base_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
     w->lhood_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
-    w->marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->forward_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
+    w->forward_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
+    w->lhood_scaled_marginal_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->cc_marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
 }
 
@@ -89,10 +94,12 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
     slong node_count = model_and_data_node_count(m);
     slong edge_count = model_and_data_edge_count(m);
 
-    _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
     _arb_mat_vec_clear(w->base_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_edge_vectors, edge_count);
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
-    _arb_mat_vec_clear(w->marginal_node_vectors, node_count);
+    _arb_mat_vec_clear(w->forward_edge_vectors, edge_count);
+    _arb_mat_vec_clear(w->forward_node_vectors, node_count);
+    _arb_mat_vec_clear(w->lhood_scaled_marginal_vectors, node_count);
     _arb_mat_vec_clear(w->cc_marginal_node_vectors, node_count);
 }
 
@@ -102,7 +109,7 @@ _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
     int site, i, j;
-    arb_t cat_lhood, post_lhood, post_lhood_sum;
+    arb_t cat_lhood, post_lhood, site_lhood;
     nd_axis_struct *site_axis, *node_axis, *state_axis;
     int *coords;
     slong cat;
@@ -112,7 +119,7 @@ _nd_accum_update(nd_accum_t arr,
 
     arb_init(cat_lhood);
     arb_init(post_lhood);
-    arb_init(post_lhood_sum);
+    arb_init(site_lhood);
 
     coords = malloc(arr->ndim * sizeof(int));
 
@@ -151,7 +158,7 @@ _nd_accum_update(nd_accum_t arr,
          * For each category, compute a likelihood for the current site,
          * and compute marginal distributions at all requested nodes.
          */
-        arb_zero(post_lhood_sum);
+        arb_zero(site_lhood);
         for (cat = 0; cat < ncats; cat++)
         {
             const arb_struct * prior_prob = csw->rate_mix_prior + cat;
@@ -168,7 +175,7 @@ _nd_accum_update(nd_accum_t arr,
                     w->base_node_vectors,
                     m->root_prior, csw->equilibrium,
                     tmat_base,
-                    m->g, m->preorder, csw->node_count, prec);
+                    m->g, m->navigation->preorder, csw->node_count, prec);
 
             /* Compute the likelihood for the site and category. */
             arb_mul(post_lhood, prior_prob, cat_lhood, prec);
@@ -180,31 +187,36 @@ _nd_accum_update(nd_accum_t arr,
             if (arb_is_zero(post_lhood))
                 continue;
 
-            arb_add(post_lhood_sum, post_lhood_sum, post_lhood, prec);
+            arb_add(site_lhood, site_lhood, post_lhood, prec);
 
-            /*
-             * Update marginal distribution vectors at nodes.
-             * This is a forward pass from the root to the leaves.
-             */
-            evaluate_site_marginal(
-                    w->marginal_node_vectors,
-                    w->lhood_node_vectors,
+            /* Update forward vectors. */
+            evaluate_site_forward(
+                    w->forward_edge_vectors,
+                    w->forward_node_vectors,
+                    w->base_node_vectors,
                     w->lhood_edge_vectors,
                     m->root_prior, csw->equilibrium,
-                    tmat_base,
-                    m->g, m->preorder, csw->node_count, csw->state_count, prec);
+                    tmat_base, m->g, m->navigation,
+                    csw->node_count, csw->state_count, prec);
+
+            /* Update marginal distributions, scaled by category lhood. */
+            evaluate_site_marginal_unnormalized(
+                    w->lhood_scaled_marginal_vectors,
+                    w->forward_node_vectors,
+                    w->lhood_node_vectors,
+                    csw->node_count, prec);
 
             /*
              * Accumulate the marginal probabilities for this category.
              */
             for (i = 0; i < csw->node_count; i++)
             {
-                arb_mat_struct *a = w->marginal_node_vectors + i;
+                arb_mat_struct *a = w->lhood_scaled_marginal_vectors + i;
                 arb_mat_struct *b = w->cc_marginal_node_vectors + i;
                 for (j = 0; j < csw->state_count; j++)
                 {
                     arb_addmul(arb_mat_entry(b, j, 0),
-                               arb_mat_entry(a, j, 0), post_lhood, prec);
+                               arb_mat_entry(a, j, 0), prior_prob, prec);
                 }
             }
         }
@@ -215,7 +227,7 @@ _nd_accum_update(nd_accum_t arr,
             arb_mat_scalar_div_arb(
                     w->cc_marginal_node_vectors + i,
                     w->cc_marginal_node_vectors + i,
-                    post_lhood_sum, prec);
+                    site_lhood, prec);
         }
 
         /* Update the nd accumulator. */
@@ -243,7 +255,7 @@ _nd_accum_update(nd_accum_t arr,
 
     arb_clear(cat_lhood);
     arb_clear(post_lhood);
-    arb_clear(post_lhood_sum);
+    arb_clear(site_lhood);
 
     free(coords);
 }

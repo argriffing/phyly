@@ -192,7 +192,8 @@ _arb_mat_indeterminate(arb_mat_t m)
 }
 
 void
-_arb_mat_mul_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)
+_arb_mat_mul_entrywise(arb_mat_t c,
+        const arb_mat_t a, const arb_mat_t b, slong prec)
 {
     slong i, j, nr, nc;
 
@@ -385,7 +386,7 @@ _prune_update_rate(arb_mat_t D,
  * Note that the edges do not need to be traversed in any particular order.
  */
 void
-_csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, csr_graph_t g)
+_csr_graph_get_backward_maps(int *idx_to_a, int *b_to_idx, const csr_graph_t g)
 {
     int idx;
     int a, b;
