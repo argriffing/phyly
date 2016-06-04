@@ -191,25 +191,6 @@ _arb_mat_indeterminate(arb_mat_t m)
     }
 }
 
-void
-_arb_mat_mul_entrywise(arb_mat_t c,
-        const arb_mat_t a, const arb_mat_t b, slong prec)
-{
-    slong i, j, nr, nc;
-
-    nr = arb_mat_nrows(a);
-    nc = arb_mat_ncols(a);
-
-    for (i = 0; i < nr; i++)
-    {
-        for (j = 0; j < nc; j++)
-        {
-            arb_mul(arb_mat_entry(c, i, j),
-                    arb_mat_entry(a, i, j),
-                    arb_mat_entry(b, i, j), prec);
-        }
-    }
-}
 
 void
 _arb_mat_div_entrywise(arb_mat_t c, arb_mat_t a, arb_mat_t b, slong prec)

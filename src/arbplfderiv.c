@@ -189,7 +189,7 @@ evaluate_site_derivatives(arb_struct *derivatives, int *edge_is_requested,
                 else
                 {
                     emat = w->lhood_edge_vectors + idx;
-                    _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
+                    arb_mat_mul_entrywise(nmat, nmat, emat, prec);
                 }
             }
 

@@ -386,7 +386,7 @@ evaluate_site_derivatives(arb_t derivative,
                 emati = indirect->edge_pvectors[idx];
                 emat = plane->edge_vectors + idx;
                 _arb_mat_mul_rate_matrix(emat, rmat, emati, prec);
-                _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
+                arb_mat_mul_entrywise(nmat, nmat, emat, prec);
                 if (update_indirect)
                 {
                     indirect->edge_pvectors[idx] = emat;
@@ -400,7 +400,7 @@ evaluate_site_derivatives(arb_t derivative,
                 nmatb = plane->node_vectors + b;
                 emat = plane->edge_vectors + idx;
                 _arb_mat_mul_stochastic(emat, tmat, nmatb, prec);
-                _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
+                arb_mat_mul_entrywise(nmat, nmat, emat, prec);
                 if (update_indirect)
                 {
                     indirect->edge_pvectors[idx] = emat;
@@ -410,7 +410,7 @@ evaluate_site_derivatives(arb_t derivative,
             else
             {
                 emati = indirect->edge_pvectors[idx];
-                _arb_mat_mul_entrywise(nmat, nmat, emati, prec);
+                arb_mat_mul_entrywise(nmat, nmat, emati, prec);
                 if (update_indirect)
                 {
                     indirect->node_pvectors[a] = nmat;

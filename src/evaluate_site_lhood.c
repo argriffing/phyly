@@ -47,7 +47,7 @@ evaluate_site_lhood(arb_t lhood,
             {
                 emat = lhood_edge_vectors + idx;
                 _arb_mat_mul_stochastic(emat, tmat, nmatb, prec);
-                _arb_mat_mul_entrywise(nmat, nmat, emat, prec);
+                arb_mat_mul_entrywise(nmat, nmat, emat, prec);
             }
             else
             {

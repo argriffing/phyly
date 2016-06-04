@@ -66,7 +66,7 @@ evaluate_site_forward(
          * The tmp vector is about the likelihood above,
          * and including, the node of interest.
          */
-        _arb_mat_mul_entrywise(tmp,
+        arb_mat_mul_entrywise(tmp,
                 forward_node_vectors + a,
                 base_node_vectors + a, prec);
 
@@ -88,7 +88,7 @@ evaluate_site_forward(
                     const arb_mat_struct *lvec = lhood_edge_vectors + idx2;
                     if (idx2 != idx)
                     {
-                        _arb_mat_mul_entrywise(fevec, fevec, lvec, prec);
+                        arb_mat_mul_entrywise(fevec, fevec, lvec, prec);
                     }
                 }
             }
