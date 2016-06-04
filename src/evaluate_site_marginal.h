@@ -18,15 +18,6 @@ void evaluate_site_marginal_unnormalized(
         const arb_mat_struct *lhood_node_vectors,
         int node_count, slong prec);
 
-void evaluate_site_marginal(
-        arb_mat_struct *marginal_node_vectors,
-        arb_mat_struct *base_node_vectors,
-        arb_mat_struct *lhood_node_vectors,
-        arb_mat_struct *lhood_edge_vectors,
-        const root_prior_t r, const arb_struct *equilibrium,
-        const arb_mat_struct *transition_matrices,
-        csr_graph_struct *g, const navigation_t nav,
-        int node_count, int state_count, slong prec);
 
 #ifdef __cplusplus
 }

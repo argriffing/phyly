@@ -250,7 +250,7 @@ _update_site(nd_accum_t arr,
                 csw->node_count, csw->state_count, prec);
 
         /* Update expectations at edges. */
-        new_evaluate_site_frechet(
+        evaluate_site_frechet(
                 w->edge_expectations,
                 w->lhood_node_vectors,
                 w->forward_edge_vectors,
