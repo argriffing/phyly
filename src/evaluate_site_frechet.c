@@ -74,7 +74,7 @@ evaluate_site_frechet(
 void
 new_evaluate_site_frechet(
         arb_struct *lhood_scaled_edge_expectations,
-        const arb_mat_struct *lhood_edge_vectors,
+        const arb_mat_struct *lhood_node_vectors,
         const arb_mat_struct *forward_edge_vectors,
         const arb_mat_struct *frechet_matrices,
         const csr_graph_t g, int *preorder,
@@ -93,7 +93,8 @@ new_evaluate_site_frechet(
 
         for (idx = start; idx < stop; idx++)
         {
-            const arb_mat_struct *lvec = lhood_edge_vectors + idx;
+            slong b = g->indices[idx];
+            const arb_mat_struct *lvec = lhood_node_vectors + b;
             const arb_mat_struct *evec = forward_edge_vectors + idx;
 
             arb_zero(lhood_scaled_edge_expectations + idx);
@@ -107,5 +108,5 @@ new_evaluate_site_frechet(
         }
     }
 
-    arb_mat_clear(fvec); 
+    arb_mat_clear(fvec);
 }

@@ -47,7 +47,6 @@
 #include "util.h"
 #include "evaluate_site_lhood.h"
 #include "evaluate_site_forward.h"
-#include "evaluate_site_marginal.h"
 #include "evaluate_site_frechet.h"
 #include "ndaccum.h"
 #include "equilibrium.h"
@@ -72,7 +71,6 @@ typedef struct
     arb_mat_struct *lhood_edge_vectors;
     arb_mat_struct *forward_node_vectors;
     arb_mat_struct *forward_edge_vectors;
-    arb_mat_struct *marginal_node_vectors;
 } likelihood_ws_struct;
 typedef likelihood_ws_struct likelihood_ws_t[1];
 
@@ -90,7 +88,6 @@ likelihood_ws_init(likelihood_ws_t w, const model_and_data_t m)
     w->lhood_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
     w->forward_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
     w->forward_edge_vectors = _arb_mat_vec_init(state_count, 1, edge_count);
-    w->marginal_node_vectors = _arb_mat_vec_init(state_count, 1, node_count);
 }
 
 static void
@@ -106,7 +103,6 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
     _arb_mat_vec_clear(w->lhood_node_vectors, node_count);
     _arb_mat_vec_clear(w->forward_edge_vectors, edge_count);
     _arb_mat_vec_clear(w->forward_node_vectors, node_count);
-    _arb_mat_vec_clear(w->marginal_node_vectors, node_count);
 }
 
 /*
@@ -275,24 +271,10 @@ _update_site(nd_accum_t arr,
                 tmat_base, m->g, m->navigation,
                 csw->node_count, csw->state_count, prec);
 
-        /* fixme: deprecated */
-        /*
-         * Update marginal distribution vectors at nodes.
-         * This is a forward pass from the root to the leaves.
-         */
-        evaluate_site_marginal(
-                w->marginal_node_vectors,
-                w->base_node_vectors,
-                w->lhood_node_vectors,
-                w->lhood_edge_vectors,
-                m->root_prior, csw->equilibrium,
-                tmat_base,
-                m->g, m->navigation, node_count, state_count, prec);
-
         /* Update expectations at edges. */
         new_evaluate_site_frechet(
                 w->edge_expectations,
-                w->lhood_edge_vectors,
+                w->lhood_node_vectors,
                 w->forward_edge_vectors,
                 fmat_base,
                 m->g, m->navigation->preorder, node_count, state_count, prec);
@@ -309,12 +291,11 @@ _update_site(nd_accum_t arr,
 
             /*
              * Multiply by the product of the category rate,
-             * the edge rate, and the category likelihood.
+             * the edge rate, and the prior category probability.
              * In the analogous 'dwell' function (as opposed to 'trans'),
-             * only the category likelihood is included.
+             * only the prior category probability is included.
              */
             arb_mul(tmp, cat_rate, csw->edge_rates + idx, prec);
-            /* arb_mul(tmp, tmp, cat_lhood, prec); */
             arb_mul(tmp, tmp, prior_prob, prec);
             arb_addmul(w->cc_edge_expectations + idx,
                        w->edge_expectations + idx, tmp, prec);
