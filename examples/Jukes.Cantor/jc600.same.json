@@ -1,0 +1,15 @@
+ {
+ "model_and_data" : {
+	 "edges" : [[0, 1]],
+	 "edge_rate_coefficients" : [600],
+	 "rate_matrix" : [
+		 [0, 1, 1, 1],
+		 [1, 0, 1, 1],
+		 [1, 1, 0, 1],
+		 [1, 1, 1, 0]],
+	 "rate_divisor" : 3,
+	 "probability_array" : [
+		 [[1, 0, 0, 0],
+		  [1, 0, 0, 0]]
+	 ]}
+ }
