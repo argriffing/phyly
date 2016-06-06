@@ -115,10 +115,11 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 static void
 _update_state_pair_frechet_matrices(
         cross_site_ws_t csw, model_and_data_t m,
+        nd_axis_struct *edge_axis,
         slong first_state, slong second_state, slong prec)
 {
     arb_mat_t P, L, Q;
-    slong cat, idx;
+    slong cat;
     arb_t rate;
 
     slong state_count = model_and_data_state_count(m);
@@ -134,11 +135,14 @@ _update_state_pair_frechet_matrices(
 
     for (cat = 0; cat < rate_category_count; cat++)
     {
+        slong edge;
         const arb_struct * cat_rate = csw->rate_mix_rates + cat;
-        for (idx = 0; idx < edge_count; idx++)
+        for (edge = 0; edge < edge_count; edge++)
         {
+            slong idx = m->edge_map->order[edge];
             const arb_struct * edge_rate = csw->edge_rates + idx;
             arb_mat_struct *fmat;
+            if (!edge_axis->request_update[edge]) continue;
             fmat = cross_site_ws_trans_frechet_matrix(csw, cat, idx);
             arb_mul(rate, edge_rate, cat_rate, prec);
             arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
@@ -154,13 +158,14 @@ _update_state_pair_frechet_matrices(
 
 static void
 _update_aggregated_state_frechet_matrices(
-        cross_site_ws_t csw, model_and_data_t m, nd_axis_struct *trans_axis,
+        cross_site_ws_t csw, model_and_data_t m,
+        nd_axis_struct *edge_axis, nd_axis_struct *trans_axis,
         const int *first_idx, const int *second_idx, slong prec)
 {
     arb_mat_t P, L, Q;
     arb_t rate;
     slong first_state, second_state;
-    slong cat, idx, trans_idx;
+    slong cat, trans_idx;
 
     slong state_count = model_and_data_state_count(m);
     slong edge_count = model_and_data_edge_count(m);
@@ -189,11 +194,14 @@ _update_aggregated_state_frechet_matrices(
 
     for (cat = 0; cat < rate_category_count; cat++)
     {
+        slong edge;
         const arb_struct * cat_rate = csw->rate_mix_rates + cat;
-        for (idx = 0; idx < edge_count; idx++)
+        for (edge = 0; edge < edge_count; edge++)
         {
+            slong idx = m->edge_map->order[edge];
             const arb_struct * edge_rate = csw->edge_rates + idx;
             arb_mat_struct *fmat;
+            if (!edge_axis->request_update[edge]) continue;
             fmat = cross_site_ws_trans_frechet_matrix(csw, cat, idx);
             arb_mul(rate, edge_rate, cat_rate, prec);
             arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
@@ -348,6 +356,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
     slong site_count = model_and_data_site_count(m);
 
     nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
+    nd_axis_struct *edge_axis = arr->axes + EDGE_AXIS;
     nd_axis_struct *trans_axis = arr->axes + TRANS_AXIS;
 
     coords = malloc(arr->ndim * sizeof(int));
@@ -362,7 +371,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
      * by the edge rate coefficients.
      */
     _update_aggregated_state_frechet_matrices(
-            csw, m, trans_axis, first_idx, second_idx, prec);
+            csw, m, edge_axis, trans_axis, first_idx, second_idx, prec);
 
     /*
      * Update the output array at the given precision.
@@ -394,6 +403,7 @@ _nd_accum_update(nd_accum_t arr,
     slong site_count = model_and_data_site_count(m);
 
     nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
+    nd_axis_struct *edge_axis = arr->axes + EDGE_AXIS;
     nd_axis_struct *trans_axis = arr->axes + TRANS_AXIS;
 
     coords = malloc(arr->ndim * sizeof(int));
@@ -416,7 +426,7 @@ _nd_accum_update(nd_accum_t arr,
         second_state = second_idx[trans_idx];
 
         _update_state_pair_frechet_matrices(
-                csw, m, first_state, second_state, prec);
+                csw, m, edge_axis, first_state, second_state, prec);
 
         for (site = 0; site < site_count; site++)
         {

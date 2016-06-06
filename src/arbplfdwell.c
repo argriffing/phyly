@@ -116,9 +116,9 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 static void
 _update_single_state_frechet_matrices(
         cross_site_ws_t csw, model_and_data_t m,
-        slong state, slong prec)
+        nd_axis_struct *edge_axis, slong state, slong prec)
 {
-    slong cat, idx;
+    slong cat;
     arb_mat_t P, L, Q;
     arb_t rate;
 
@@ -133,11 +133,14 @@ _update_single_state_frechet_matrices(
     arb_one(arb_mat_entry(L, state, state));
     for (cat = 0; cat < rate_category_count; cat++)
     {
+        slong edge;
         const arb_struct *cat_rate = csw->rate_mix_rates + cat;
-        for (idx = 0; idx < edge_count; idx++)
+        for (edge = 0; edge < edge_count; edge++)
         {
+            slong idx = m->edge_map->order[edge];
             const arb_struct *edge_rate = csw->edge_rates + idx;
             arb_mat_struct *fmat;
+            if (!edge_axis->request_update[edge]) continue;
             fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
             arb_mul(rate, edge_rate, cat_rate, prec);
             arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
@@ -153,9 +156,9 @@ _update_single_state_frechet_matrices(
 static void
 _update_aggregated_state_frechet_matrices(
         cross_site_ws_t csw, model_and_data_t m,
-        nd_axis_struct *state_axis, slong prec)
+        nd_axis_struct *edge_axis, nd_axis_struct *state_axis, slong prec)
 {
-    slong state, cat, idx;
+    slong state, cat;
     arb_mat_t P, L, Q;
     arb_t rate;
 
@@ -175,11 +178,14 @@ _update_aggregated_state_frechet_matrices(
     }
     for (cat = 0; cat < rate_category_count; cat++)
     {
+        slong edge;
         const arb_struct *cat_rate = csw->rate_mix_rates + cat;
-        for (idx = 0; idx < edge_count; idx++)
+        for (edge = 0; edge < edge_count; edge++)
         {
+            slong idx = m->edge_map->order[edge];
             const arb_struct *edge_rate = csw->edge_rates + idx;
             arb_mat_struct *fmat;
+            if (!edge_axis->request_update[edge]) continue;
             fmat = cross_site_ws_dwell_frechet_matrix(csw, cat, idx);
             arb_mul(rate, edge_rate, cat_rate, prec);
             arb_mat_scalar_mul_arb(Q, csw->rate_matrix, rate, prec);
@@ -316,6 +322,7 @@ _nd_accum_update_state_agg(nd_accum_t arr,
     slong site_count = model_and_data_site_count(m);
 
     nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
+    nd_axis_struct *edge_axis = arr->axes + EDGE_AXIS;
     nd_axis_struct *state_axis = arr->axes + STATE_AXIS;
 
     coords = malloc(arr->ndim * sizeof(int));
@@ -331,7 +338,8 @@ _nd_accum_update_state_agg(nd_accum_t arr,
      * to have zero row sums, but it has not been scaled
      * by the edge rate coefficients.
      */
-    _update_aggregated_state_frechet_matrices(csw, m, state_axis, prec);
+    _update_aggregated_state_frechet_matrices(
+            csw, m, edge_axis, state_axis, prec);
 
     /*
      * Update the output array at the given precision.
@@ -357,16 +365,16 @@ _nd_accum_update(nd_accum_t arr,
         likelihood_ws_t w, cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
     int state, site;
-    nd_axis_struct *state_axis, *site_axis;
     int *coords;
 
     slong state_count = model_and_data_state_count(m);
     slong site_count = model_and_data_site_count(m);
 
-    coords = malloc(arr->ndim * sizeof(int));
+    nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
+    nd_axis_struct *edge_axis = arr->axes + EDGE_AXIS;
+    nd_axis_struct *state_axis = arr->axes + STATE_AXIS;
 
-    site_axis = arr->axes + SITE_AXIS;
-    state_axis = arr->axes + STATE_AXIS;
+    coords = malloc(arr->ndim * sizeof(int));
 
     /* zero all requested cells of the array */
     nd_accum_zero_requested_cells(arr);
@@ -388,7 +396,7 @@ _nd_accum_update(nd_accum_t arr,
          * to have zero row sums, but it has not been scaled
          * by the edge rate coefficients.
          */
-        _update_single_state_frechet_matrices(csw, m, state, prec);
+        _update_single_state_frechet_matrices(csw, m, edge_axis, state, prec);
 
         for (site = 0; site < site_count; site++)
         {

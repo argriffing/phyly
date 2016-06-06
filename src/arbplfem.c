@@ -99,7 +99,7 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 static void
 _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
 {
-    slong state, cat, idx, sa, sb;
+    slong state, cat, edge, sa, sb;
     arb_mat_t P, L_dwell, L_trans, Q;
     arb_t rate;
 
@@ -128,9 +128,12 @@ _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
     for (cat = 0; cat < rate_category_count; cat++)
     {
         const arb_struct * cat_rate = csw->rate_mix_rates + cat;
-        for (idx = 0; idx < edge_count; idx++)
+        for (edge = 0; edge < edge_count; edge++)
         {
+            slong idx = m->edge_map->order[edge];
             arb_mat_struct *fmat;
+            /* todo: allow edge selection (but not necessarily aggregation) */
+            /* if (!edge_axis->request_update[edge]) continue; */
 
             /* scale the rate matrix */
             arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
