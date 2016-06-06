@@ -39,7 +39,7 @@ These derivatives can be checked using explicit formulas.
 However if the branch lengths are large enough,
 it is possible that the derivative of the log likelihood with
 respect to the branch length is closer to zero than to any
-number representeable in double precision.
+positive number representeable in double precision.
 Because the numbers in the JSON output are double-precision approximations,
 the result in this case is uninformative even if it is computed without
 precision loss due to internal rounding or cancellation.
