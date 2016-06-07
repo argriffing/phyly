@@ -97,9 +97,10 @@ likelihood_ws_clear(likelihood_ws_t w, const model_and_data_t m)
 }
 
 static void
-_update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
+_update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m,
+        const int *edge_is_requested, slong prec)
 {
-    slong state, cat, edge, sa, sb;
+    slong state, cat, sa, sb;
     arb_mat_t P, L_dwell, L_trans, Q;
     arb_t rate;
 
@@ -127,13 +128,12 @@ _update_frechet_matrices(cross_site_ws_t csw, model_and_data_t m, slong prec)
 
     for (cat = 0; cat < rate_category_count; cat++)
     {
+        slong idx;
         const arb_struct * cat_rate = csw->rate_mix_rates + cat;
-        for (edge = 0; edge < edge_count; edge++)
+        for (idx = 0; idx < edge_count; idx++)
         {
-            slong idx = m->edge_map->order[edge];
             arb_mat_struct *fmat;
-            /* todo: allow edge selection (but not necessarily aggregation) */
-            /* if (!edge_axis->request_update[edge]) continue; */
+            if (!edge_is_requested[idx]) continue;
 
             /* scale the rate matrix */
             arb_mul(rate, csw->edge_rates + idx, cat_rate, prec);
@@ -428,7 +428,7 @@ _query(model_and_data_t m, column_reduction_t r_site, int *result_out)
         cross_site_ws_update(csw, m, prec);
 
         /* update frechet dwell and trans matrices */
-        _update_frechet_matrices(csw, m, prec);
+        _update_frechet_matrices(csw, m, edge_is_requested, prec);
 
         /* accumulate numerators and denominators over sites */
         _accum(w, csw, m, r_site, edge_is_requested, prec);
