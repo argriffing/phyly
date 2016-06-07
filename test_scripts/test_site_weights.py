@@ -1,13 +1,17 @@
 """
 Test an invariant related to site weights.
 
-In particular, changing the weight of a site from 1 (default) to 2
-should have the same effect as adding a duplicate site with weight 1.
+In particular, when a site reduction is requested in the presence
+of redundant sites, only the sum of weights of those sites should matter.
+
+This invariant is tested for all functions except arbplf_newton_refine,
+and it is tested in the presence and absence of rate mixtures.
 
 """
 from __future__ import print_function, division
 
 import json
+import copy
 from numpy.testing import assert_equal
 
 
@@ -53,6 +57,30 @@ edge_sum = dict(edge_reduction=dict(aggregation='sum'))
 state_sum = dict(state_reduction=dict(aggregation='sum'))
 trans_sum = dict(trans_reduction=dict(aggregation='sum'))
 
+def check_site_weights(f, reductions):
+    mix = dict(rates=[1, 2], prior=[0.2, 0.8])
+    for rate_mixture in None, mix:
+        #
+        m = copy.deepcopy(model_a)
+        if rate_mixture:
+            m['rate_mixture'] = rate_mixture
+        in_a = dict(model_and_data = m)
+        in_a.update(site_sum_a)
+        for r in reductions:
+            in_a.update(r)
+        #
+        m = copy.deepcopy(model_b)
+        if rate_mixture:
+            m['rate_mixture'] = rate_mixture
+        in_b = dict(model_and_data = m)
+        in_b.update(site_sum_b)
+        for r in reductions:
+            in_b.update(r)
+        #
+        a = json.loads(f(json.dumps(in_a)))
+        b = json.loads(f(json.dumps(in_b)))
+        assert_equal(a, b)
+
 def test_site_weights():
     for f, reductions in (
         (arbplf_ll, []),
@@ -65,19 +93,5 @@ def test_site_weights():
         (arbplf_deriv, [edge_sum]),
         (arbplf_hess, []),
         (arbplf_inv_hess, [])):
-        #
         print(f)
-        #
-        in_a = dict(model_and_data = model_a)
-        in_a.update(site_sum_a)
-        for r in reductions:
-            in_a.update(r)
-        #
-        in_b = dict(model_and_data = model_b)
-        in_b.update(site_sum_b)
-        for r in reductions:
-            in_b.update(r)
-        #
-        a = json.loads(f(json.dumps(in_a)))
-        b = json.loads(f(json.dumps(in_b)))
-        assert_equal(a, b)
+        yield check_site_weights, f, reductions
