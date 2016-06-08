@@ -458,22 +458,17 @@ finish:
 static int
 _validate_probability_array(model_and_data_t m, json_t *root)
 {
-    int node_count, state_count;
     int i, j, k;
     int site_count, n;
     json_t *x, *y, *z;
-    int result;
-
-    node_count = m->g->n;
-    state_count = arb_mat_nrows(m->mat);
-
-    result = 0;
+    int result = 0;
+    int node_count = m->g->n;
+    int state_count = arb_mat_nrows(m->mat);
 
     if (!json_is_array(root))
     {
         fprintf(stderr, "_validate_probability_array: expected an array\n");
-        result = -1;
-        goto finish;
+        result = -1; goto finish;
     }
 
     site_count = json_array_size(root);
@@ -485,8 +480,7 @@ _validate_probability_array(model_and_data_t m, json_t *root)
         if (!json_is_array(x))
         {
             fprintf(stderr, "_validate_probability_array: expected an array\n");
-            result = -1;
-            goto finish;
+            result = -1; goto finish;
         }
 
         n = json_array_size(x);
@@ -495,8 +489,7 @@ _validate_probability_array(model_and_data_t m, json_t *root)
             fprintf(stderr, "_validate_probability_array: failed to ");
             fprintf(stderr, "match the number of nodes: ");
             fprintf(stderr, "(actual: %d desired: %d)\n", n, node_count);
-            result = -1;
-            goto finish;
+            result = -1; goto finish;
         }
         for (j = 0; j < node_count; j++)
         {
@@ -505,8 +498,7 @@ _validate_probability_array(model_and_data_t m, json_t *root)
             {
                 fprintf(stderr, "_validate_probability_array: ");
                 fprintf(stderr, "expected an array\n");
-                result = -1;
-                goto finish;
+                result = -1; goto finish;
             }
 
             n = json_array_size(y);
@@ -515,8 +507,7 @@ _validate_probability_array(model_and_data_t m, json_t *root)
                 fprintf(stderr, "_validate_probability_array: failed to ");
                 fprintf(stderr, "match the number of states: ");
                 fprintf(stderr, "(actual: %d desired: %d)\n", n, state_count);
-                result = -1;
-                goto finish;
+                result = -1; goto finish;
             }
             for (k = 0; k < state_count; k++)
             {
@@ -525,8 +516,7 @@ _validate_probability_array(model_and_data_t m, json_t *root)
                 {
                     fprintf(stderr, "_validate_probability_array: ");
                     fprintf(stderr, "not a number\n");
-                    result = -1;
-                    goto finish;
+                    result = -1; goto finish;
                 }
                 *pmat_entry(m->p, i, j, k) = json_number_value(z);
             }
@@ -534,6 +524,123 @@ _validate_probability_array(model_and_data_t m, json_t *root)
     }
 
 finish:
+
+    return result;
+}
+
+
+/* this initializes the probability array */
+static int
+_validate_character_data_and_definitions(model_and_data_t m,
+        json_t *character_data, json_t *character_definitions)
+{
+    int i, j, k;
+    int site_count, character_count, n;
+    json_t *x, *y, *z;
+    const char name[] = "_validate_character_data_and_definitions";
+    int node_count = m->g->n;
+    int state_count = arb_mat_nrows(m->mat);
+    int result = 0;
+    double *defn = NULL;
+
+    if (!_exists(character_data)) abort(); /* assert */
+
+    if (!_exists(character_definitions))
+    {
+        fprintf(stderr, "%s: 'character_data' has been provided without "
+                "'character_definitions'\n", name);
+    }
+
+    if (!json_is_array(character_data))
+    {
+        fprintf(stderr, "%s: expected 'character_data' "
+                "to be an array\n", name);
+        result = -1; goto finish;
+    }
+
+    if (!json_is_array(character_definitions))
+    {
+        fprintf(stderr, "%s: expected 'character_definitions' "
+                "to be an array\n", name);
+        result = -1; goto finish;
+    }
+
+    site_count = json_array_size(character_data);
+    pmat_init(m->p, site_count, node_count, state_count);
+
+    character_count = json_array_size(character_definitions);
+    defn = flint_malloc(character_count * state_count * sizeof(double));
+
+    /* validate the character definitions */
+    for (j = 0; j < character_count; j++)
+    {
+        y = json_array_get(character_definitions, j);
+        if (!json_is_array(y))
+        {
+            fprintf(stderr, "%s: expected an array\n", name);
+            result = -1; goto finish;
+        }
+
+        n = json_array_size(y);
+        if (n != state_count)
+        {
+            fprintf(stderr, "%s: failed to match the number of states: "
+                    "(actual: %d desired: %d)\n", name, n, state_count);
+            result = -1; goto finish;
+        }
+        for (k = 0; k < state_count; k++)
+        {
+            z = json_array_get(y, k);
+            if (!json_is_number(z))
+            {
+                fprintf(stderr, "%s: not a number\n", name);
+                result = -1; goto finish;
+            }
+            defn[j*state_count + k] = json_number_value(z);
+        }
+    }
+
+    /* validate the character data */
+    for (i = 0; i < site_count; i++)
+    {
+        x = json_array_get(character_data, i);
+        if (!json_is_array(x))
+        {
+            fprintf(stderr, "%s: expected an array\n", name);
+            result = -1; goto finish;
+        }
+
+        n = json_array_size(x);
+        if (n != node_count)
+        {
+            fprintf(stderr, "%s: failed to match the number of nodes: "
+                    "(actual: %d desired: %d)\n", name, n, node_count);
+            result = -1; goto finish;
+        }
+        for (j = 0; j < node_count; j++)
+        {
+            int character_idx;
+
+            y = json_array_get(x, j);
+            if (!json_is_integer(y))
+            {
+                fprintf(stderr, "%s: expected an integer\n", name);
+                result = -1; goto finish;
+            }
+
+            character_idx = json_integer_value(y);
+
+            for (k = 0; k < state_count; k++)
+            {
+                int defn_offset = character_idx * state_count + k;
+                *pmat_entry(m->p, i, j, k) = defn[defn_offset];
+            }
+        }
+    }
+
+finish:
+
+    flint_free(defn);
 
     return result;
 }
@@ -707,6 +814,8 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     json_t *root_prior = NULL;
     json_t *rate_mixture = NULL;
     json_t *gamma_rate_mixture = NULL;
+    json_t *character_definitions = NULL;
+    json_t *character_data = NULL;
 
     int result;
     json_error_t err;
@@ -716,11 +825,13 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     flags = JSON_STRICT;
 
     result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o, s:o, s:o, s?o, s?o, s?o, s?o}",
+            "{s:o, s:o, s:o, s?o, s?o, s?o, s?o, s?o, s?o, s?o}",
             "edges", &edges,
             "edge_rate_coefficients", &edge_rate_coefficients,
             "rate_matrix", &rate_matrix,
             "probability_array", &probability_array,
+            "character_definitions", &character_definitions,
+            "character_data", &character_data,
             "rate_divisor", &rate_divisor,
             "root_prior", &root_prior,
             "rate_mixture", &rate_mixture,
@@ -729,6 +840,29 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
         return result;
+    }
+
+    /* check mutual exclusivity constraints */
+    if (_exists(rate_mixture) && _exists(gamma_rate_mixture))
+    {
+        fprintf(stderr, "error: the mutually exclusive options "
+                "'gamma_rate_mixture' and 'rate_mixture' "
+                "have both been specified\n");
+        return -1;
+    }
+    if (_exists(probability_array) && _exists(character_data))
+    {
+        fprintf(stderr, "error: the mutually exclusive options "
+                "'probability_array' and 'character_data' "
+                "have both been specified\n");
+        return -1;
+    }
+    if (_exists(probability_array) && _exists(character_definitions))
+    {
+        fprintf(stderr, "error: the mutually exclusive options "
+                "'probability_array' and 'character_definitions' "
+                "have both been specified\n");
+        return -1;
     }
 
     result = _validate_edges(m, edges);
@@ -740,8 +874,24 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     result = _validate_rate_matrix(m, rate_matrix);
     if (result) return result;
 
-    result = _validate_probability_array(m, probability_array);
-    if (result) return result;
+    if (_exists(probability_array))
+    {
+        result = _validate_probability_array(m, probability_array);
+        if (result) return result;
+    }
+    else if (_exists(character_data))
+    {
+        result = _validate_character_data_and_definitions(m,
+                character_data, character_definitions);
+        if (result) return result;
+    }
+    else
+    {
+        fprintf(stderr, "error: either "
+                "'probability_array' or 'character_data' "
+                "must be specified\n");
+        return -1;
+    }
 
     result = _validate_rate_divisor(m, rate_divisor);
     if (result) return result;
@@ -749,13 +899,7 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     result = _validate_root_prior(m, root_prior);
     if (result) return result;
 
-    if (_exists(rate_mixture) && _exists(gamma_rate_mixture))
-    {
-        fprintf(stderr, "error: both gamma_rate_mixture and rate_mixture "
-                "have been specified\n");
-        return -1;
-    }
-    else if (_exists(gamma_rate_mixture))
+    if (_exists(gamma_rate_mixture))
     {
         result = _validate_gamma_rate_mixture(m, gamma_rate_mixture);
         if (result) return result;
