@@ -458,16 +458,17 @@ finish:
 static int
 _validate_probability_array(model_and_data_t m, json_t *root)
 {
-    int i, j, k;
+    int i, j;
     int site_count, n;
-    json_t *x, *y, *z;
+    json_t *x, *y;
+    const char name[] = "_validate_probability_array";
     int result = 0;
     int node_count = m->g->n;
     int state_count = arb_mat_nrows(m->mat);
 
     if (!json_is_array(root))
     {
-        fprintf(stderr, "_validate_probability_array: expected an array\n");
+        fprintf(stderr, "%s: expected an array\n", name);
         result = -1; goto finish;
     }
 
@@ -479,46 +480,26 @@ _validate_probability_array(model_and_data_t m, json_t *root)
         x = json_array_get(root, i);
         if (!json_is_array(x))
         {
-            fprintf(stderr, "_validate_probability_array: expected an array\n");
+            fprintf(stderr, "%s: expected an array\n", name);
             result = -1; goto finish;
         }
 
         n = json_array_size(x);
         if (n != node_count)
         {
-            fprintf(stderr, "_validate_probability_array: failed to ");
-            fprintf(stderr, "match the number of nodes: ");
-            fprintf(stderr, "(actual: %d desired: %d)\n", n, node_count);
+            fprintf(stderr, "%s: failed to match the number of nodes: "
+                    "(actual: %d desired: %d)\n", name, n, node_count);
             result = -1; goto finish;
         }
         for (j = 0; j < node_count; j++)
         {
             y = json_array_get(x, j);
-            if (!json_is_array(y))
+            result = _validate_nonnegative_array(
+                    pmat_entry(m->p, i, j, 0), state_count, y);
+            if (result)
             {
-                fprintf(stderr, "_validate_probability_array: ");
-                fprintf(stderr, "expected an array\n");
-                result = -1; goto finish;
-            }
-
-            n = json_array_size(y);
-            if (n != state_count)
-            {
-                fprintf(stderr, "_validate_probability_array: failed to ");
-                fprintf(stderr, "match the number of states: ");
-                fprintf(stderr, "(actual: %d desired: %d)\n", n, state_count);
-                result = -1; goto finish;
-            }
-            for (k = 0; k < state_count; k++)
-            {
-                z = json_array_get(y, k);
-                if (!json_is_number(z))
-                {
-                    fprintf(stderr, "_validate_probability_array: ");
-                    fprintf(stderr, "not a number\n");
-                    result = -1; goto finish;
-                }
-                *pmat_entry(m->p, i, j, k) = json_number_value(z);
+                fprintf(stderr, "%s: array validation has failed\n", name);
+                goto finish;
             }
         }
     }
@@ -536,7 +517,7 @@ _validate_character_data_and_definitions(model_and_data_t m,
 {
     int i, j, k;
     int site_count, character_count, n;
-    json_t *x, *y, *z;
+    json_t *x, *y;
     const char name[] = "_validate_character_data_and_definitions";
     int node_count = m->g->n;
     int state_count = arb_mat_nrows(m->mat);
@@ -575,28 +556,12 @@ _validate_character_data_and_definitions(model_and_data_t m,
     for (j = 0; j < character_count; j++)
     {
         y = json_array_get(character_definitions, j);
-        if (!json_is_array(y))
+        result = _validate_nonnegative_array(
+                defn + j*state_count, state_count, y);
+        if (result)
         {
-            fprintf(stderr, "%s: expected an array\n", name);
-            result = -1; goto finish;
-        }
-
-        n = json_array_size(y);
-        if (n != state_count)
-        {
-            fprintf(stderr, "%s: failed to match the number of states: "
-                    "(actual: %d desired: %d)\n", name, n, state_count);
-            result = -1; goto finish;
-        }
-        for (k = 0; k < state_count; k++)
-        {
-            z = json_array_get(y, k);
-            if (!json_is_number(z))
-            {
-                fprintf(stderr, "%s: not a number\n", name);
-                result = -1; goto finish;
-            }
-            defn[j*state_count + k] = json_number_value(z);
+            fprintf(stderr, "%s: array validation has failed\n", name);
+            goto finish;
         }
     }
 
