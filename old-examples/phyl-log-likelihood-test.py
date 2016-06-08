@@ -103,6 +103,7 @@ def mixture_objective(X):
     theta = expit(logit_theta)
     t = theta
     pi = [(1-t)/2, t/2, t/2, (1-t)/2]
+    print('pi:', pi)
 
     #alpha = 1.0
 
@@ -251,19 +252,20 @@ def block_objective(X):
 
 
 def main():
-    alpha = 2.0
-    #discretized_gamma(4, alpha, use_mean=1);
-    #_numerically_discretized_gamma(4, alpha, use_mean=1);
-    #return
-
     objective = mixture_objective
     #objective = block_objective
 
-    edge_rates = [1, 30, 1, 30, 30]
-    kappa = 0.2
+    #edge_rates = [1, 30, 1, 30, 30]
+    #kappa = 0.2
+    #theta = 0.5
+    #alpha = 2.0
+    edge_rates = [1, 2, 3, 1, 10]
+    alpha = 1.0
+    kappa = 3.0
     theta = 0.5
     X0 = np.array(edge_rates + [kappa, logit(theta), alpha], dtype=float)
-    objective(X0)
+    print('%.20g' % objective(X0))
+    return
 
     desired_ll = 85.030942031997312824
     #edge_rates = [1, 2, 3, 1, 10]
