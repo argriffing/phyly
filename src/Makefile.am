@@ -47,6 +47,8 @@ CORE_SOURCES = \
 	distribution.h \
 	gamma_discretization.c \
 	gamma_discretization.h \
+	gamma_heuristics.c \
+	gamma_heuristics.h \
 	rate_mixture.c \
 	rate_mixture.h \
 	cross_site_ws.c \

@@ -45,6 +45,7 @@ myext = Extension(
             'cross_site_ws.c',
             'finite_differences.c',
             'gamma_discretization.c',
+            'gamma_heuristics.c',
             ])
 
 setup(name="arbplf", version="0.0.1",
