@@ -624,11 +624,26 @@ _validate_character_data_and_definitions(model_and_data_t m,
             y = json_array_get(x, j);
             if (!json_is_integer(y))
             {
-                fprintf(stderr, "%s: expected an integer\n", name);
+                fprintf(stderr, "%s: character indices "
+                        "must be integers\n", name);
                 result = -1; goto finish;
             }
 
             character_idx = json_integer_value(y);
+            if (character_idx < 0)
+            {
+                fprintf(stderr, "%s: character indices "
+                        "must be non-negative\n", name);
+                result = -1; goto finish;
+            }
+
+            if (character_idx >= character_count)
+            {
+                fprintf(stderr, "%s: character indices "
+                        "must each be less than the character count (%d)\n",
+                        name, character_count);
+                result = -1; goto finish;
+            }
 
             for (k = 0; k < state_count; k++)
             {
