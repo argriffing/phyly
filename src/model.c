@@ -196,12 +196,6 @@ pmat_update_base_node_vectors(
             arb_set_d(arb_mat_entry(bvec, j, 0), *pmat_srcentry(p, site, i, j));
         }
     }
-
-    /* Optionally update the root node vector. */
-    /*
-    bvec = base_node_vectors + root_node_index;
-    root_prior_mul_col_vec(bvec, root_prior, equilibrium, prec);
-    */
 }
 
 
