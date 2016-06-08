@@ -13,7 +13,32 @@ import scipy.stats
 from scipy import optimize
 from scipy.special import gamma, gammainc, expit, logit
 
-from arbplf import arbplf_ll
+from arbplf import arbplf_ll, arbplf_deriv
+
+_character_definitions = [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1],
+        [1, 1, 1, 1]]
+_character_data = [
+        [0, 2, 1, 0, 4, 4],
+        [0, 0, 3, 0, 4, 4],
+        [0, 1, 1, 0, 4, 4],
+        [3, 3, 3, 3, 4, 4],
+        [2, 2, 2, 2, 4, 4],
+        [2, 2, 2, 2, 4, 4],
+        [1, 0, 0, 1, 4, 4],
+        [3, 3, 3, 2, 4, 4],
+        [2, 1, 2, 2, 4, 4],
+        [3, 3, 3, 3, 4, 4],
+        [2, 2, 2, 2, 4, 4],
+        [1, 1, 1, 1, 4, 4],
+        [0, 0, 0, 2, 4, 4],
+        [1, 1, 1, 1, 4, 4],
+        [2, 2, 2, 1, 4, 4],
+        [3, 3, 3, 3, 4, 4],
+        [1, 1, 2, 0, 4, 4]]
 
 def T92(k, t=0.5):
     # try to use the Bio++ T92 parameterization
@@ -123,33 +148,7 @@ def mixture_objective(X):
 
     # Sequences at internal nodes consist of unobserved nucleotide N.
     # The gamma rate class is unobserved.
-    sequences = [
-            "AAATGGCTGTGCACGTC",
-            "GACTGGATCTGCACGTC",
-            "CTCTGGATGTGCACGTG",
-            "AAATGGCGGTGCGCCTA",
-            "NNNNNNNNNNNNNNNNN",
-            "NNNNNNNNNNNNNNNNN"]
 
-    state_map = dict(
-            A = [1, 0, 0, 0],
-            C = [0, 1, 0, 0],
-            G = [0, 0, 1, 0],
-            T = [0, 0, 0, 1],
-            N = [1, 1, 1, 1])
-
-    root_node = 5
-    probability_array = []
-    for column in zip(*sequences):
-        arr = []
-        for s in column:
-            row = state_map[s] * 1
-            arr.append(row)
-        for k in range(1):
-            for i in range(state_count):
-                arr[root_node][k*1 + i] *= (
-                        pi[i] / 1)
-        probability_array.append(arr)
     rate_mixture = dict(
             rates = mixture_rates.tolist(),
             prior = 'uniform_distribution')
@@ -158,10 +157,12 @@ def mixture_objective(X):
             "edges" : edges,
             "rate_divisor" : 100 * x,
             'gamma_rate_mixture' : gamma_rate_mixture,
-            #'rate_mixture' : rate_mixture,
             "edge_rate_coefficients" : edge_rates,
             "rate_matrix" : rate_matrix,
-            "probability_array" : probability_array}
+            'root_prior' : 'uniform_distribution',
+            'character_definitions' : _character_definitions,
+            'character_data' : _character_data,
+            }
     d = {
             "model_and_data" : model_and_data,
             "site_reduction" : {"aggregation" : "sum"}}
@@ -204,39 +205,16 @@ def block_objective(X):
 
     # Sequences at internal nodes consist of unobserved nucleotide N.
     # The gamma rate class is unobserved.
-    sequences = [
-            "AAATGGCTGTGCACGTC",
-            "GACTGGATCTGCACGTC",
-            "CTCTGGATGTGCACGTG",
-            "AAATGGCGGTGCGCCTA",
-            "NNNNNNNNNNNNNNNNN",
-            "NNNNNNNNNNNNNNNNN"]
 
-    state_map = dict(
-            A = [1, 0, 0, 0],
-            C = [0, 1, 0, 0],
-            G = [0, 0, 1, 0],
-            T = [0, 0, 0, 1],
-            N = [1, 1, 1, 1])
-
-    root_node = 5
-    probability_array = []
-    for column in zip(*sequences):
-        arr = []
-        for s in column:
-            row = state_map[s] * rate_category_count
-            arr.append(row)
-        for k in range(rate_category_count):
-            for i in range(state_count):
-                arr[root_node][k*rate_category_count + i] *= (
-                        pi[i] / rate_category_count)
-        probability_array.append(arr)
     model_and_data = {
             "edges" : edges,
             "rate_divisor" : 100 * x,
             "edge_rate_coefficients" : edge_rates,
             "rate_matrix" : rate_matrix,
-            "probability_array" : probability_array}
+            'root_prior' : 'uniform_distribution',
+            'character_definitions' : _character_definitions,
+            'character_data' : _character_data,
+            }
     d = {
             "model_and_data" : model_and_data,
             "site_reduction" : {"aggregation" : "sum"}}

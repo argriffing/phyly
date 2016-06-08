@@ -560,7 +560,9 @@ _validate_character_data_and_definitions(model_and_data_t m,
                 defn + j*state_count, state_count, y);
         if (result)
         {
-            fprintf(stderr, "%s: array validation has failed\n", name);
+            fprintf(stderr, "%s: validation of definition of "
+                    "character %d of %d has failed\n",
+                    name, j, character_count);
             goto finish;
         }
     }
