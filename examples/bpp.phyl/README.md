@@ -127,9 +127,9 @@ a complete lack of information.
 <dd>
 Entry (i, j) of this matrix indicates which 'character' is observed
 at node j of the tree, at alignment column i.
-Note that characters observed at leaf nodes unambiguously indicate
-one of the states of the model, whereas characters observed at
-internal nodes are uninformative.
+Note that in this example characters observed at leaf nodes
+unambiguously indicate a model state,
+whereas characters observed at internal nodes are uninformative.
 </dd>
 
 <dt>site_reduction</dt>
