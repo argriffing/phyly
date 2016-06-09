@@ -1,5 +1,5 @@
 This directory contains examples of various analyses of
-a scenario used the test suite of bpp-phyl.
+a scenario used in the test suite of bpp-phyl.
 
 ![tree figure](treefig.png)
 
