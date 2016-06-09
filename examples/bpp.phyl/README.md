@@ -84,26 +84,60 @@ The CTMC process defined by this rate matrix is shared across
 all edges of the tree, although each edge may further scale this rate
 by its own coefficient.
 Diagonal entries of this matrix are ignored.
-The rate matrix in this particular example defines a Jukes-Cantor process.
+The rate matrix in this particular example defines a K80 process.
 </dd>
 
 <dt>rate_divisor</dt>
 <dd>
-In this example, the rate matrix is scaled by 1/3
+In this example, the rate matrix is scaled by 1/5
 so that the off-diagonal entries of each row of the scaled matrix
 add up to 1.
 </dd>
 
-<dt>probability_array</dt>
+<dt>gamma_rate_mixture</dt>
 <dd>
-This is a 3 dimensional nd-array that allows a separate
-emission likelihood to be specified for each (site, node, state) triple.
-In this example we have 1 site, 8 nodes, and 4 nucleotide states (A, C, G, T).
-The first five rows define a single column (ACCCG)
-in an alignment of 5 leaf taxon nucleotide sequences,
-and the last three rows indicate that no nucleotide sequence data is available
-for any of the three internal nodes for this column.
-This format is quite flexible but is unwieldy for large amounts of data.
+The 17 sites in this example are assumed to evolve with varying rates.
+This variability is modeled by a discrete approximation
+of a gamma distribution, as a mixture of rate classes.
+</dd>
+
+<dt>gamma_shape</dt>
+<dd>
+The shape parameter of the gamma distribution of rates,
+before discretization.
+</dd>
+
+<dt>gamma_categories</dt>
+<dd>
+The number of categories in the discretized rate distribution.
+</dd>
+
+<dt>character_definitions</dt>
+<dd>
+Observations at nodes of the tree do not necessarily map directly
+to states of the CTMC; this matrix defines a soft mapping
+from observed 'characters' to the underlying states of the model.
+In this example we have five 'characters' and four states.
+The first four 'characters' each correspond unambiguously
+to an underlying state, while the fifth character indicates
+a complete lack of information.
+</dd>
+
+<dt>character_data</dt>
+<dd>
+Entry (i, j) of this matrix indicates which 'character' is observed
+at node j of the tree, at alignment column i.
+Note that characters observed at leaf nodes unambiguously indicate
+one of the states of the model, whereas characters observed at
+internal nodes are uninformative.
+</dd>
+
+<dt>site_reduction</dt>
+<dd>
+This option indicates a request to apply some kind of reduction across sites.
+This particular example requests the sum of values (e.g. log likelihoods)
+across sites; without this option, the value would be
+be reported for each site separately.
 </dd>
 
 </dl>
