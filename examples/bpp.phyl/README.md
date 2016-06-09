@@ -134,10 +134,9 @@ whereas characters observed at internal nodes are uninformative.
 
 <dt>site_reduction</dt>
 <dd>
-This option indicates a request to apply some kind of reduction across sites.
-This particular example requests the sum of values (e.g. log likelihoods)
-across sites; without this option, the value would be
-be reported for each site separately.
+This option requests a reduction across sites.
+In this particular example the values (e.g. log likelihoods) are to be summed;
+without this option the value at each site would be reported separately.
 </dd>
 
 </dl>
