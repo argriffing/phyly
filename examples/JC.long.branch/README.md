@@ -1,4 +1,4 @@
-Main example
+Motivating example
 ---
 
 This example involves a single branch
@@ -21,20 +21,20 @@ For an extremely simple tree
 consisting of only a single branch with observations at both endpoints,
 and assuming a Jukes-Cantor process,
 the double precision log likelihood is indistinguishable from
-`-log(4)` when the branch length is large enough that at least
+`log(1/16)` when the branch length is large enough that at least
 29 substitutions are expected on the branch.
 This is true regardless of whether the initial and final states
 are identical or non-identical.
 
 ```shell
 $ arbplf-ll < jc29.same.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 $ arbplf-ll < jc29.diff.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 $ arbplf-ll < jc30.same.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 $ arbplf-ll < jc30.diff.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 ```
 
 Because the double precision log likelihood is the same across all
@@ -84,7 +84,7 @@ $ arbplf-deriv < jc600.same.json
 {"columns": ["site", "edge", "value"], "data": [[0, 0, 0.0]]}
 ```
 
-Additional examples in the subdirectories
+Additional examples
 ---
 
 The subdirectories of `JC.long.branch` have various analyses
@@ -93,8 +93,8 @@ For these examples a branch length of 20 unconditionally
 expected substitutions is used, and four endpoint scenarios are considered
 for each example:
 
- - both endpoints are observed and share identical state
  - both endpoints are observed and have different states
+ - both endpoints are observed and have the same state
  - one endpoint is unobserved
  - both endpoints are unobserved
 
