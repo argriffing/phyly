@@ -98,7 +98,7 @@ for each example:
  - one endpoint is unobserved
  - both endpoints are unobserved
 
-One 'site' is used for each of the four scenarios.
+![tree figure](treefig.png)
 
 The analyses considered are `ll`, `deriv`, `marginal`, `dwell`, and `trans`.
 All of these additional examples use the following json input file:
