@@ -2,7 +2,7 @@ This example uses a general time-reversible model of DNA evolution
 on a small evolutionary tree,
 with discretized gamma distributed rates across sites.
 Of the several `arbplf-*` functions,
-only log likelihood is demonstrated here.
+only the log likelihood is demonstrated here.
 
 The example has been taken from the maximum likelihood
 parameter estimates found by GeLL in its DNA 'driver'
