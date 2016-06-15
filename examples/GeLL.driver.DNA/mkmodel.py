@@ -1,8 +1,8 @@
 """
-Test log likelihood.
+Test log likelihood under a DNA model with discretized gamma rates at sites.
 
-https://github.com/danielmoney/GeLL
-Compare to the DNA GeLL driver test.
+Compare to the GeLL DNA example available at
+http://phylo.bio.ku.edu/GeLL/DriverExamples.tar.gz
 
 nucleotide order is TCAG
 

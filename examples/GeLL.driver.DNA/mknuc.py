@@ -99,11 +99,6 @@ ATTATTTCAAACTGACACTGAACTGCAACCCAAACGCTAGAACTCTCCCTAAGCTT
 """
 )
 
-def elem(i):
-    x = [0]*4
-    x[i] = 1
-    return x
-
 def get_array_string():
     sequences = [''.join(s.split()) for s in brown_nuc_sequences]
     state_map = dict(zip('TCAG', (0, 1, 2, 3)))
