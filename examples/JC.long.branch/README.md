@@ -35,7 +35,7 @@ $ arbplf-ll < jc30.diff.json
 ```
 
 Because the double precision log likelihood is the same across all
-of these endpoint data and branch length combinations,
+of these endpoint and branch length combinations,
 the derivatives of log likelihood with respect to branch lengths
 will be similarly uninformative (equal to zero) if computed using
 double precision finite differences.
