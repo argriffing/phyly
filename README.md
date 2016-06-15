@@ -56,6 +56,8 @@ the examples that involve scripting:
    -- Pretty-print tabular data in Python
  * [ete3](http://etetoolkit.org/)
    -- A Python framework for the analysis and visualization of trees.
+ * [dendropy](https://pythonhosted.org/DendroPy)
+   -- A Python library for phylogenetic computing.
 
 The [jq](https://stedolan.github.io/jq/) tool may be used for json filtering.
 
@@ -68,7 +70,7 @@ work if you are lucky:
 
 ```shell
 $ ./autogen.sh
-$ ./configure --prefix=/my/prefix CFLAGS='-march=native -O3 -ffast-math -g -Wall -Wextra'
+$ ./configure --prefix=/my/prefix CFLAGS='-march=native -O3 -g -Wall -Wextra'
 $ make
 $ make check
 $ make install
