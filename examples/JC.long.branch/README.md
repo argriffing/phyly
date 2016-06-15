@@ -1,3 +1,6 @@
+Main example
+---
+
 This example involves a single branch
 under a Jukes-Cantor process of evolution,
 and was created in response to the question
@@ -79,4 +82,48 @@ This can occur when the derivatives are smaller than around 10^-300.
 ```shell
 $ arbplf-deriv < jc600.same.json 
 {"columns": ["site", "edge", "value"], "data": [[0, 0, 0.0]]}
+```
+
+Additional examples in the subdirectories
+---
+
+The subdirectories of `JC.long.branch` have various analyses
+of the single long branch Jukes-Cantor scenario.
+For these examples a branch length of 20 unconditionally
+expected substitutions is used, and four endpoint scenarios are considered
+for each example:
+
+ - both endpoints are observed and share identical state
+ - both endpoints are observed and have different states
+ - one endpoint is unobserved
+ - both endpoints are unobserved
+
+One 'site' is used for each of the four scenarios.
+
+The analyses considered are `ll`, `deriv`, `marginal`, `dwell`, and `trans`.
+All of these additional examples use the following json input file:
+
+```json
+{
+  "model_and_data" : {
+    "edges" : [[0, 1]],
+    "edge_rate_coefficients" : [20],
+    "root_prior" : [0.25, 0.25, 0.25, 0.25],
+    "rate_matrix" : [
+      [0, 1, 1, 1],
+      [1, 0, 1, 1],
+      [1, 1, 0, 1],
+      [1, 1, 1, 0]],
+    "rate_divisor" : 3,
+    "character_definitions" : [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [1, 1, 1, 1]],
+    "character_data" : [
+      [0, 1],
+      [0, 0],
+      [2, 0],
+      [2, 2]]
+  }
+}
 ```
