@@ -88,11 +88,8 @@ Additional examples
 ---
 
 The subdirectories have various analyses
-([`ll`](ll),
-[`deriv`](deriv),
-[`marginal`](marginal),
-[`dwell`](dwell), and
-[`trans`](trans))
+([ll](ll), [deriv](deriv), [marginal](marginal), [dwell](dwell), and
+[trans](trans))
 of the single long branch Jukes-Cantor scenario.
 For these examples a branch length of 20 unconditionally
 expected substitutions is used, and four endpoint scenarios are considered
