@@ -7,6 +7,11 @@ is it less feasible to compute derivatives using
 [finite differences](https://en.wikipedia.org/wiki/Difference_quotient)?
 Is it when branch lengths are large?"
 
+The short answer is yes,
+the double-precision finite-difference estimate of the derivative
+of the log likelihood with respect to the length of a branch
+will be zero if the branch is very long.
+
 For an extremely simple tree
 consisting of only a single branch with observations at both endpoints,
 and assuming a Jukes-Cantor process,
