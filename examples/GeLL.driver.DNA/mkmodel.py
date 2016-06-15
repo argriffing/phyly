@@ -49,59 +49,8 @@ for edge in t.edges():
         edges.append([a, b])
         edge_rate_coefficients.append(blen)
 
-
-# after newton refinement
-"""
-edges = [[7, 6], [6, 2], [6, 5], [5, 1], [5, 0], [7, 4], [7, 3]]
-edge_rate_coefficients = [
-        0.13145200724721293, 0.074353875249493578, 0.03549942903352548,
-        0.074617521458904559, 0.05798731228835121, 0.54487253533045377,
-        0.35032287773486109]
-"""
-
-# after newton refinement, under R gamma discretization
-"""
-edges = [[7, 6], [6, 2], [6, 5], [5, 1], [5, 0], [7, 4], [7, 3]]
-edge_rate_coefficients = [
-        0.13145200573081059, 0.074353875690038762, 0.03549942844687657,
-        0.074617521553158941, 0.057987312415124601, 0.54487251982330476,
-        0.3503228685883748]
-"""
-
 gamma_shape = 0.19242344607262146
 rate_category_count = 4
-
-def discretized_gamma(N, alpha, use_mean=1):
-    if use_mean != 1:
-        raise NotImplementedException
-    beta = alpha
-    scale = 1 / beta
-    rv = scipy.stats.gamma(alpha, scale=scale)
-    x = rv.ppf(np.linspace(0, 1, num=N+1))
-    pairs = zip(x[:-1], x[1:])
-    rates = []
-    def f(x):
-        return gammainc(alpha+1, x/scale)
-    for lb, ub in pairs:
-        l = f(lb)
-        u = f(ub)
-        r = u - l
-        rates.append(r)
-    rates = N * np.array(rates)
-    return rates.tolist()
-
-# Use rates that have been precomputed with R.
-rates = [
-    0.00040475329105955009735,
-    0.02952208517227917009,
-    0.36359599368963063659,
-    3.6064771678470304295,
-    ]
-
-rate_mixture = dict(
-        prior = [1/rate_category_count] * rate_category_count,
-        #rates = discretized_gamma(rate_category_count, gamma_shape))
-        rates = rates)
 
 pT = 1.0
 pC = 1.471797772941626
@@ -132,7 +81,6 @@ root_prior = root_prior.tolist()
 d = dict(model_and_data = dict(
     edges = edges,
     edge_rate_coefficients = edge_rate_coefficients,
-    #rate_mixture = rate_mixture,
     gamma_rate_mixture = dict(gamma_shape=gamma_shape, gamma_categories=4),
     rate_divisor = "equilibrium_exit_rate",
     root_prior = root_prior,
