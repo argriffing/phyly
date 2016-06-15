@@ -4,7 +4,7 @@ Input (in.json):
   "model_and_data" : {
     "edges" : [[0, 1]],
     "edge_rate_coefficients" : [20],
-    "root_prior" : "uniform_distribution",
+    "root_prior" : [0.25, 0.25, 0.25, 0.25],
     "rate_matrix" : [
       [0, 1, 1, 1],
       [1, 0, 1, 1],
