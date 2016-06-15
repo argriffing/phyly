@@ -1,8 +1,10 @@
-DNA example with discretized gamma distributed rates across sites.
+This example uses a general time-reversible model of DNA evolution
+on a small evolutionary tree,
+with discretized gamma distributed rates across sites.
+Of the several `arbplf-*` functions,
+only log likelihood is demonstrated here.
 
----
-
-This example has been taken from the maximum likelihood
+The example has been taken from the maximum likelihood
 parameter estimates found by GeLL in its DNA 'driver'
 [example](http://phylo.bio.ku.edu/GeLL/DriverExamples.tar.gz).
 
