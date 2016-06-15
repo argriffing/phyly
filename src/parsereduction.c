@@ -8,6 +8,14 @@
 #include "reduction.h"
 
 
+/* helper function */
+static int
+_exists(const json_t *value)
+{
+    return (value && !json_is_null(value));
+}
+
+
 static int
 _validate_column_selection(column_reduction_t r,
         int k, const char *name, json_t *root)
@@ -317,7 +325,7 @@ validate_column_pair_reduction(column_reduction_t r,
      * then allow {AGG_SUM, AGG_AVG}
      * but not {AGG_NONE, AGG_ONLY, AGG_WEIGHTED_SUM}.
      */
-    if (selection)
+    if (_exists(selection))
     {
         result = _validate_column_pair_selection(r, first_idx, second_idx,
                 k0, k1, name, selection);
@@ -329,47 +337,55 @@ validate_column_pair_reduction(column_reduction_t r,
     else
     {
         r->agg_mode = -1;
-        if (aggregation && json_is_string(aggregation))
+        if (_exists(aggregation))
         {
-            if (!strcmp(json_string_value(aggregation), "sum"))
+            if (json_is_string(aggregation))
             {
-                r->agg_mode = AGG_SUM;
-            }
-            else if (!strcmp(json_string_value(aggregation), "avg"))
-            {
-                r->agg_mode = AGG_AVG;
-            }
-
-            /* choose all pairs */
-            {
-                slong i, a, b, len;
-                len = k * (k - 1);
-                r->selection_len = len;
-                r->selection = malloc(len * sizeof(int));
-                *first_idx = flint_malloc(len * sizeof(int));
-                *second_idx = flint_malloc(len * sizeof(int));
-                i = 0;
-                for (a = 0; a < k; a++)
+                if (!strcmp(json_string_value(aggregation), "sum"))
                 {
-                    for (b = 0; b < k; b++)
-                    {
-                        if (a != b)
-                        {
-                            r->selection[i] = i;
-                            (*first_idx)[i] = a;
-                            (*second_idx)[i] = b;
-                            i++;
-                        }
-                    }
+                    r->agg_mode = AGG_SUM;
+                }
+                else if (!strcmp(json_string_value(aggregation), "avg"))
+                {
+                    r->agg_mode = AGG_AVG;
                 }
             }
         }
+        else
+        {
+            r->agg_mode = AGG_NONE;
+        }
+
         if (r->agg_mode == -1)
         {
             fprintf(stderr, "error: %s reduction (no selection): ", name);
             fprintf(stderr, "if no selection is specified, "
-                    "a \"sum\" or \"avg\" aggregation is required\n");
+                    "the only allowed aggregations are \"sum\" or \"avg\"\n");
             return -1;
+        }
+
+        /* choose all pairs */
+        {
+            slong i, a, b, len;
+            len = k * (k - 1);
+            r->selection_len = len;
+            r->selection = malloc(len * sizeof(int));
+            *first_idx = flint_malloc(len * sizeof(int));
+            *second_idx = flint_malloc(len * sizeof(int));
+            i = 0;
+            for (a = 0; a < k; a++)
+            {
+                for (b = 0; b < k; b++)
+                {
+                    if (a != b)
+                    {
+                        r->selection[i] = i;
+                        (*first_idx)[i] = a;
+                        (*second_idx)[i] = b;
+                        i++;
+                    }
+                }
+            }
         }
     }
 

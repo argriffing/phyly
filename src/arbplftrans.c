@@ -569,9 +569,8 @@ _parse(model_and_data_t m,
         size_t flags;
         json_error_t err;
         flags = JSON_STRICT;
-        /* trans_reduction is required (not optional) */
         result = json_unpack_ex(root, &err, flags,
-                "{s:o, s?o, s?o, s:o}",
+                "{s:o, s?o, s?o, s?o}",
                 "model_and_data", &model_and_data,
                 "site_reduction", &site_reduction,
                 "edge_reduction", &edge_reduction,
