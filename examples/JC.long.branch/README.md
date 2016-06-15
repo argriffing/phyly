@@ -8,9 +8,11 @@ is it less feasible to compute derivatives using
 Is it when branch lengths are large?"
 
 The short answer is yes,
-the double-precision finite-difference estimate of the derivative
-of the log likelihood with respect to the length of a branch
-will be zero if the branch is very long.
+the derivatives estimated using finite differences of double precision
+log likelihoods will be zero when the branches are very long.
+This is true even when the derivatives are not too small to be
+represented precisely with double floats, and it is true even when the
+double precision log likelihoods have no error except truncation error.
 
 For an extremely simple tree
 consisting of only a single branch with observations at both endpoints,
