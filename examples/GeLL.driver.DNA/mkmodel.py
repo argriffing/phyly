@@ -1,8 +1,8 @@
 """
-Test log likelihood using the GeLL test.
+Test log likelihood.
 
 https://github.com/danielmoney/GeLL
-LikelihoodTest.java
+Compare to the DNA GeLL driver test.
 
 nucleotide order is TCAG
 
