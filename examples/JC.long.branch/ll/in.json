@@ -1,0 +1,22 @@
+{
+  "model_and_data" : {
+    "edges" : [[0, 1]],
+    "edge_rate_coefficients" : [20],
+    "root_prior" : "uniform_distribution",
+    "rate_matrix" : [
+      [0, 1, 1, 1],
+      [1, 0, 1, 1],
+      [1, 1, 0, 1],
+      [1, 1, 1, 0]],
+    "rate_divisor" : 3,
+    "character_definitions" : [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [1, 1, 1, 1]],
+    "character_data" : [
+      [0, 1],
+      [0, 0],
+      [2, 0],
+      [2, 2]]
+  }
+}
