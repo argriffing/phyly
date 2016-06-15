@@ -87,7 +87,12 @@ $ arbplf-deriv < jc600.same.json
 Additional examples
 ---
 
-The subdirectories of `JC.long.branch` have various analyses
+The subdirectories have various analyses
+([`ll`](ll),
+[`deriv`](deriv),
+[`marginal`](marginal),
+[`dwell`](dwell), and
+[`trans`](trans))
 of the single long branch Jukes-Cantor scenario.
 For these examples a branch length of 20 unconditionally
 expected substitutions is used, and four endpoint scenarios are considered
@@ -98,10 +103,12 @@ for each example:
  - one endpoint is unobserved
  - both endpoints are unobserved
 
+The 'tree' shape, the branch length, and the endpoint scenarios
+common to all analyses are represented in the following figure:
+
 ![tree figure](treefig.png)
 
-The analyses considered are `ll`, `deriv`, `marginal`, `dwell`, and `trans`.
-All of these additional examples use the following json input file:
+All of these additional examples take the following JSON file as input:
 
 ```json
 {
