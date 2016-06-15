@@ -99,46 +99,28 @@ ATTATTTCAAACTGACACTGAACTGCAACCCAAACGCTAGAACTCTCCCTAAGCTT
 """
 )
 
-def elem(i):
-    x = [0]*4
-    x[i] = 1
-    return x
-
 def get_array_string():
-    probability_array = []
     sequences = [''.join(s.split()) for s in brown_nuc_sequences]
     state_map = dict(zip('TCAG', (0, 1, 2, 3)))
+    character_data = []
     for column in zip(*sequences):
-        rows = []
-        for nt in column:
-            rows.append(elem(state_map[nt]))
-        # 3 internal nodes
-        for i in range(3):
-            rows.append([1, 1, 1, 1])
-        probability_array.append(rows)
-    #s = json.dumps(probability_array, indent=2)
-    #s = json.dumps(probability_array)
-    #print(s)
+        x = [state_map[nt] for nt in column]
+        # 3 internal nodes each with an uninformative character
+        x.extend([4]*3)
+        character_data.append(x)
     f = StringIO()
-    print('{ "model_and_data" : { "probability_array" :', file=f)
-    print('[', file=f)
-    for site, site_data in enumerate(probability_array):
-        s = str(site_data).replace(' ', '')
-        """
-        print('  [')
-        for node, node_data in enumerate(site_data):
-            print('    ', node_data, sep='', end='')
-            if node == len(site_data) - 1:
-                print()
-            else:
-                print(',')
-        if site == len(probability_array) - 1:
-            print('  ]')
-        else:
-            print('  ],')
-        """
-        print('    ', s, sep='', end='', file=f)
-        if site == len(probability_array) - 1:
+    print('{ "model_and_data" : {', file=f)
+    print('"character_definitions" : [', file=f)
+    print("""
+	  [1, 0, 0, 0],
+	  [0, 1, 0, 0],
+	  [0, 0, 1, 0],
+	  [0, 0, 0, 1],
+	  [1, 1, 1, 1]],""", file=f)
+    print('"character_data" : [', file=f)
+    for site, site_data in enumerate(character_data):
+        print(site_data, end='', file=f)
+        if site == len(character_data) - 1:
             print('', file=f)
         else:
             print(',', file=f)
@@ -151,4 +133,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
