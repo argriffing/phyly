@@ -1,0 +1,4 @@
+{
+  "columns": ["site", "edge", "first_state", "second_state", "value"],
+  "data": [[0, 0, 0, 1, 0.06030150753768844]]
+}

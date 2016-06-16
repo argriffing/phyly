@@ -1,0 +1,16 @@
+{
+  "model_and_data": {
+    "edges": [[0, 1]],
+    "edge_rate_coefficients": [1],
+    "root_prior" : [0.3, 0.2, 0.25, 0.25],
+    "rate_matrix": [
+      [0, 0.2, 0.5, 0.25],
+      [0.3, 0, 0.25, 0.5],
+      [0.6, 0.2, 0, 0.25],
+      [0.3, 0.4, 0.25, 0]],
+    "rate_divisor": "equilibrium_exit_rate",
+    "probability_array" : [[
+      [1, 1, 1, 1],
+      [1, 1, 1, 1]]]},
+    "trans_reduction" : {"selection" : [[0, 1]]}
+}
