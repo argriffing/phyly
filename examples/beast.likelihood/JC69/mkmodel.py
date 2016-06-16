@@ -1,9 +1,8 @@
 """
 https://github.com/beast-dev/beast-mcmc/blob/master/src/test/dr/evomodel/treelikelihood/LikelihoodTest.java
 
-nucleotide order is TCAG.
-
-use jukes cantor
+The model is Jukes-Cantor, and the nucleotide order
+is TCAG (although it doesn't matter for jukes cantor...)
 
 combine with nucleotide data:
 $ python mknuc.py > nuc.json

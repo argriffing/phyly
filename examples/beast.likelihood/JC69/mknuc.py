@@ -7,7 +7,7 @@ human chimp bonobo gorilla orangutan siamang
 from __future__ import print_function, division
 
 from StringIO import StringIO
-
+from collections import defaultdict
 import json
 
 beast_nuc_sequences = (
@@ -18,9 +18,7 @@ beast_nuc_sequences = (
 "AGAAATATGTCTGACAAAAGAGTTACTTTGATAGAGTAAAAAATAGAGGTCTAAATCCCCTTATTTCTACTAGGACTATGGGAATTGAACCCACCCCTGAGAATCCAAAATTCTCCGTGCCACCCATCACACCCCATCCTAAGTAAGGTCAGCTAAATAAGCTATCGGGCCCATACCCCGAAAATGTTGGTTACACCCTTCCCGTACTAAGAAATTTAGGTTA--CACAGACCAAGAGCCTTCAAAGCCCTCAGCAAGTCA-CAGCACTTAATTTCTGTAAGGACTGCAAAACCCCACTTTGCATCAACTGAGCGCAAATCAGCCACTTTAATTAAGCTAAGCCCTCCTAGACCGATGGGACTTAAACCCACAAACATTTAGTTAACAGCTAAACACCCTAGTCAAT-TGGCTTCAGTCCAAAGCCCCGGCAGGCCTTAAAGCTGCTCCTTCGAATTTGCAATTCAACATGACAA-TCACCTCAGGGCTTGGTAAAAAGAGGTCTGACCCCTGTTCTTAGATTTACAGCCTAATGCCTTAACTCGGCCATTTTACCGCAAAAAAGGAAGGAATCGAACCTCCTAAAGCTGGTTTCAAGCCAACCCCATAACCCCCATGACTTTTTCAAAAGGTACTAGAAAAACCATTTCGTAACTTTGTCAAAGTTAAATTACAGGTC-AGACCCTGTGTATCTTA-CATTGCAAAGCTAACCTAGCATTAACCTTTTAAGTTAAAGACTAAGAGAACCAGCCTCTCTTTGCAATGA",
 "AGAAATACGTCTGACGAAAGAGTTACTTTGATAGAGTAAATAACAGGGGTTTAAATCCCCTTATTTCTACTAGAACCATAGGAGTCGAACCCATCCTTGAGAATCCAAAACTCTCCGTGCCACCCGTCGCACCCTGTTCTAAGTAAGGTCAGCTAAATAAGCTATCGGGCCCATACCCCGAAAATGTTGGTTATACCCTTCCCATACTAAGAAATTTAGGTTAAACACAGACCAAGAGCCTTCAAAGCCCTCAGTAAGTTAACAAAACTTAATTTCTGCAAGGGCTGCAAAACCCTACTTTGCATCAACCGAACGCAAATCAGCCACTTTAATTAAGCTAAGCCCTTCTAGATCGATGGGACTTAAACCCATAAAAATTTAGTTAACAGCTAAACACCCTAAACAACCTGGCTTCAATCTAAAGCCCCGGCAGA-GTTGAAGCTGCTTCTTTGAACTTGCAATTCAACGTGAAAAATCACTTCGGAGCTTGGCAAAAAGAGGTTTCACCTCTGTCCTTAGATTTACAGTCTAATGCTTTA-CTCAGCCACTTTACCACAAAAAAGGAAGGAATCGAACCCTCTAAAACCGGTTTCAAGCCAGCCCCATAACCTTTATGACTTTTTCAAAAGATATTAGAAAAACTATTTCATAACTTTGTCAAAGTTAAATCACAGGTCCAAACCCCGTATATCTTATCACTGTAGAGCTAGACCAGCATTAACCTTTTAAGTTAAAGACTAAGAGAACTACCGCCTCTTTACAGTGA")
 
-def get_array_string():
-    sequences = [''.join(s.split()) for s in beast_nuc_sequences]
-    state_map = dict(zip('TCAG-', (0, 1, 2, 3, 4)))
+def get_full_character_data():
     """
     'human',
     'chimp',
@@ -34,12 +32,28 @@ def get_array_string():
     'siamang',
     'R']
     """
+    sequences = [''.join(s.split()) for s in beast_nuc_sequences]
+    state_map = dict(zip('TCAG-', (0, 1, 2, 3, 4)))
     character_data = []
     for column in zip(*sequences):
         x = [state_map[nt] for nt in column]
         u = 4
-        y = [x[0], x[1], x[2], u, u, x[3], u, x[4], u, x[5], u]
+        y = (x[0], x[1], x[2], u, u, x[3], u, x[4], u, x[5], u)
         character_data.append(y)
+    return character_data
+
+def get_data_and_patterns(full_data):
+    m = defaultdict(int)
+    for site_data in full_data:
+        m[site_data] += 1
+    data = []
+    counts = []
+    for d, c in m.items():
+        data.append(list(d))
+        counts.append(c)
+    return data, counts
+
+def get_array_string(data, counts):
     f = StringIO()
     print('{ "model_and_data" : {', file=f)
     print('"character_definitions" : [', file=f)
@@ -50,18 +64,30 @@ def get_array_string():
 	  [0, 0, 0, 1],
 	  [1, 1, 1, 1]],""", file=f)
     print('"character_data" : [', file=f)
-    for site, site_data in enumerate(character_data):
+    for site, site_data in enumerate(data):
         print(site_data, end='', file=f)
-        if site == len(character_data) - 1:
+        if site == len(data) - 1:
             print('', file=f)
         else:
             print(',', file=f)
     print('] },', file=f)
-    print('"site_reduction" : {"aggregation" : "sum"} }', file=f)
+    #print('"site_reduction" : {"aggregation" : "sum"} }', file=f)
+    print('"site_reduction" : {"aggregation" :', file=f)
+    print('[', file=f)
+    n = 20
+    for i in range(0, len(counts), n):
+        chunk = counts[i:i+n]
+        if i:
+            print(',', file=f)
+        print(', '.join(str(c) for c in chunk), end='', file=f)
+    print(']', file=f)
+    print('} }', file=f)
     return f.getvalue()
 
 def main():
-    print(get_array_string())
+    full_data = get_full_character_data()
+    data, counts = get_data_and_patterns(full_data)
+    print(get_array_string(data, counts))
 
 if __name__ == '__main__':
     main()
