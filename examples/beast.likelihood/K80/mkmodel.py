@@ -1,13 +1,14 @@
 """
 https://github.com/beast-dev/beast-mcmc/blob/master/src/test/dr/evomodel/treelikelihood/LikelihoodTest.java
 
-The model is Jukes-Cantor, and the nucleotide order
-is TCAG (although it doesn't matter for jukes cantor...)
+The model is K80, and the nucleotide order is TCAG.
 
 combine with nucleotide data:
 $ python mknuc.py > nuc.json
 $ python mkmodel.py > model.json
 $ jq -s '.[0] * .[1]' nuc.json model.json > in.json
+
+This script is mostly copied and pasted from the JC69 example.
 
 """
 from __future__ import print_function, division
@@ -36,12 +37,10 @@ newick = "((((human:0.024003,(chimp:0.010772,bonobo:0.010772)N3:0.013231)N4:0.01
 root_prior = [0.25, 0.25, 0.25, 0.25]
 
 rate_matrix = [
-        [0, 1, 1, 1],
-        [1, 0, 1, 1],
-        [1, 1, 0, 1],
-        [1, 1, 1, 0]]
-
-rate_divisor = 3
+        [0, 27.402591, 1, 1],
+        [27.402591, 0, 1, 1],
+        [1, 1, 0, 27.402591],
+        [1, 1, 27.402591, 0]]
 
 t = dendropy.Tree.get(data=newick, schema='newick')
 
@@ -69,7 +68,7 @@ d = dict(model_and_data = dict(
     edges = edges,
     edge_rate_coefficients = edge_rate_coefficients,
     root_prior = root_prior,
-    rate_divisor = rate_divisor,
+    rate_divisor = "equilibrium_exit_rate",
     rate_matrix = rate_matrix,
     ))
 s = json.dumps(d, indent=2)
