@@ -14,8 +14,7 @@ p(G) = 0.25
 p(T) = 0.25
 ```
 
-This expectation is actually `12 / 199` which is pretty close
-to the BEAST test reference.
+This expectation is `12 / 199` which is near the BEAST reference value.
 
 ```python
 >>> 0.201005 * 0.3
