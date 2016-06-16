@@ -79,8 +79,7 @@ and it connects node 0 to node 1.
 <dt>edge_rate_coefficients</dt>
 <dd>
 An ordered list of edge-specific rate scaling factors.
-In this case we have only one edge,
-and its associated rate scaling factor is 1.
+In this case we have a scaling factor of 1 for the only edge.
 </dd>
 
 <dt>root_prior</dt>
