@@ -166,7 +166,7 @@ gamma_rate_mixture_category_count(const gamma_rate_mixture_t x)
 void
 gamma_rate_mixture_summarize(
         arb_ptr rate_mix_prior, arb_ptr rate_mix_rates, arb_ptr rate_mix_expect,
-        const gamma_rate_mixture_t x, slong prec)
+        const gamma_rate_mixture_t x, enum rate_mixture_mode mode, slong prec)
 {
     slong i;
     arb_ptr r;
@@ -200,7 +200,20 @@ gamma_rate_mixture_summarize(
         arb_t s;
         arb_init(s);
         arb_set_d(s, x->gamma_shape);
-        gamma_rates(rate_mix_rates, x->gamma_categories, s, prec);
+        if (mode == RATE_MIXTURE_GAMMA)
+        {
+            gamma_rates(
+                    rate_mix_rates, x->gamma_categories, s, prec);
+        }
+        else if (mode == RATE_MIXTURE_GAMMA_MEDIAN)
+        {
+            normalized_median_gamma_rates(
+                    rate_mix_rates, x->gamma_categories, s, prec);
+        }
+        else
+        {
+            abort(); /* assert */
+        }
         arb_clear(s);
     }
 
@@ -257,7 +270,8 @@ rate_mixture_category_count(const rate_mixture_t x)
     {
         return x->custom_mix->n;
     }
-    else if (x->mode == RATE_MIXTURE_GAMMA)
+    else if (x->mode == RATE_MIXTURE_GAMMA ||
+             x->mode == RATE_MIXTURE_GAMMA_MEDIAN)
     {
         return gamma_rate_mixture_category_count(x->gamma_mix);
     }
@@ -294,11 +308,12 @@ rate_mixture_summarize(
                     rate_mix_rates + i, x->custom_mix, i);
         }
     }
-    else if (x->mode == RATE_MIXTURE_GAMMA)
+    else if (x->mode == RATE_MIXTURE_GAMMA ||
+             x->mode == RATE_MIXTURE_GAMMA_MEDIAN)
     {
         gamma_rate_mixture_summarize(
                 rate_mix_prior, rate_mix_rates, rate_mix_expect,
-                x->gamma_mix, prec);
+                x->gamma_mix, x->mode, prec);
 
         /* debug */
         /*

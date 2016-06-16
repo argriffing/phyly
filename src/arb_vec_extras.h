@@ -28,6 +28,8 @@ void _arb_vec_div(arb_struct *c,
         const arb_struct *a, const arb_struct *b, slong n, slong prec);
 void _arb_vec_scalar_sub(arb_ptr res, arb_srcptr vec,
         slong len, const arb_t c, slong prec);
+void _arb_vec_scalar_mul_si(arb_ptr res, arb_srcptr vec,
+        slong len, slong y, slong prec);
 
 #ifdef __cplusplus
 }

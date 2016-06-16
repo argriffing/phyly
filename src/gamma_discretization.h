@@ -13,6 +13,8 @@ extern "C" {
 void gamma_rates(arb_struct *rates, slong n, const arb_t s, slong prec);
 void gamma_expectile(arb_t res, const arb_t quantile, const arb_t s, slong prec);
 void gamma_quantile(arb_t res, slong k, slong n, const arb_t s, slong prec);
+void normalized_median_gamma_rates(
+        arb_struct *rates, slong n, const arb_t s, slong prec);
 
 #ifdef __cplusplus
 }

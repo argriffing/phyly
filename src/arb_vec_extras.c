@@ -171,6 +171,15 @@ _arb_vec_scalar_sub(arb_ptr res, arb_srcptr vec,
         arb_sub(res + i, vec + i, c, prec);
 }
 
+void
+_arb_vec_scalar_mul_si(arb_ptr res, arb_srcptr vec,
+        slong len, slong y, slong prec)
+{
+    slong i;
+    for (i = 0; i < len; i++)
+        arb_mul_si(res + i, vec + i, y, prec);
+}
+
 /* from arb arb_poly zeta_series.c */
 void
 _arb_vec_printd(arb_srcptr vec, slong len, slong digits)
