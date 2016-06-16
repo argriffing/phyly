@@ -5,7 +5,7 @@ which compares a 'marginal rate' to the reference value
 
 The 'marginal rate' in question is the
 number of `A -> C` substitutions expected at stationary
-along a branch where the total expected number of substitutions is 1,
+along a branch for which the total expected number of substitutions is 1,
 for an HKY model with kappa = 2 and with stationary distribution
 ```
 p(A) = 0.3
