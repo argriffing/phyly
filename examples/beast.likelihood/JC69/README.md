@@ -1,5 +1,5 @@
 This is the first test in the
-[LikelihoodTest.java](https://github.com/beast-dev/beast-mcmc/blob/master/src/test/dr/evomodel/treelikelihood/LikelihoodTest.java) file in BEAGLE.
+[LikelihoodTest.java](https://github.com/beast-dev/beast-mcmc/blob/master/src/test/dr/evomodel/treelikelihood/LikelihoodTest.java) file in BEAST.
 It expects the log likelihood `-1992.20564`
 for a sequence alignment from several primate taxa,
 given a known tree, under Jukes-Cantor evolution.
