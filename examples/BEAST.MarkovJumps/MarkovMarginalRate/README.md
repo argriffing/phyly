@@ -111,7 +111,7 @@ emission likelihood to be specified for each (site, node, state) triple.
 In this example we have 1 site, 2 nodes, and 4 nucleotide states (A, C, G, T).
 Setting all likelihoods to 1 indicates that
 no data is available whatsoever, so we are effectively
-doing an unconditional calculation.
+requesting an unconditional calculation.
 </dd>
 
 <dt>trans_reduction</dt>
