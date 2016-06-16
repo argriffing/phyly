@@ -1,14 +1,12 @@
 This example is taken from `testMarginalRates` in
 [MarkovJumpsSubstitutionModelTest.java](https://github.com/beast-dev/beast-mcmc/blob/master/src/test/dr/evomodel/substmodel/MarkovJumpsSubstitutionModelTest.java)
-which compares a 'marginal rate' to
-```
-rMarkovMarginalRate = 0.2010050 * 0.3
-```
+which compares a 'marginal rate' to the reference value
+`rMarkovMarginalRate = 0.2010050 * 0.3`.
 
 The 'marginal rate' in question is the
 number of `A -> C` substitutions expected at stationary
 along a branch where the total expected number of substitutions is 1,
-for an HKY model with `kappa=2` and with stationary distribution
+for an HKY model with kappa = 2 and with stationary distribution
 ```
 p(A) = 0.3
 p(C) = 0.2
@@ -17,7 +15,7 @@ p(T) = 0.25
 ```
 
 This expectation is actually `12 / 199` which is pretty close
-to the value that the BEAST test uses for reference.
+to the BEAST test reference.
 
 ```python
 >>> 0.201005 * 0.3
