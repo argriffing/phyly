@@ -725,8 +725,6 @@ _validate_gamma_rate_mixture(model_and_data_t m, json_t *root)
     size_t flags = JSON_STRICT;
     rate_mixture_struct *x = m->rate_mixture;
 
-    x->mode = RATE_MIXTURE_GAMMA;
-
     g = flint_malloc(sizeof(custom_rate_mixture_struct));
     gamma_rate_mixture_init(g);
     x->gamma_mix = g;
@@ -796,6 +794,7 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     json_t *root_prior = NULL;
     json_t *rate_mixture = NULL;
     json_t *gamma_rate_mixture = NULL;
+    json_t *normalized_median_gamma_rate_mixture = NULL;
     json_t *character_definitions = NULL;
     json_t *character_data = NULL;
 
@@ -807,7 +806,7 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     flags = JSON_STRICT;
 
     result = json_unpack_ex(root, &err, flags,
-            "{s:o, s:o, s:o, s?o, s?o, s?o, s?o, s?o, s?o, s?o}",
+            "{s:o, s:o, s:o, s?o, s?o, s?o, s?o, s?o, s?o, s?o, s?o}",
             "edges", &edges,
             "edge_rate_coefficients", &edge_rate_coefficients,
             "rate_matrix", &rate_matrix,
@@ -817,7 +816,9 @@ validate_model_and_data(model_and_data_t m, json_t *root)
             "rate_divisor", &rate_divisor,
             "root_prior", &root_prior,
             "rate_mixture", &rate_mixture,
-            "gamma_rate_mixture", &gamma_rate_mixture);
+            "gamma_rate_mixture", &gamma_rate_mixture,
+            "normalized_median_gamma_rate_mixture",
+                &normalized_median_gamma_rate_mixture);
     if (result)
     {
         fprintf(stderr, "error: on line %d: %s\n", err.line, err.text);
@@ -825,12 +826,16 @@ validate_model_and_data(model_and_data_t m, json_t *root)
     }
 
     /* check mutual exclusivity constraints */
-    if (_exists(rate_mixture) && _exists(gamma_rate_mixture))
     {
-        fprintf(stderr, "error: the mutually exclusive options "
-                "'gamma_rate_mixture' and 'rate_mixture' "
-                "have both been specified\n");
-        return -1;
+        int mixtures = 0;
+        if (_exists(rate_mixture)) mixtures++;
+        if (_exists(gamma_rate_mixture)) mixtures++;
+        if (_exists(normalized_median_gamma_rate_mixture)) mixtures++;
+        if (mixtures > 1)
+        {
+            fprintf(stderr, "error: conflicting rate mixture options\n");
+            return -1;
+        }
     }
     if (_exists(probability_array) && _exists(character_data))
     {
@@ -883,7 +888,15 @@ validate_model_and_data(model_and_data_t m, json_t *root)
 
     if (_exists(gamma_rate_mixture))
     {
+        m->rate_mixture->mode = RATE_MIXTURE_GAMMA;
         result = _validate_gamma_rate_mixture(m, gamma_rate_mixture);
+        if (result) return result;
+    }
+    else if (_exists(normalized_median_gamma_rate_mixture))
+    {
+        m->rate_mixture->mode = RATE_MIXTURE_GAMMA_MEDIAN;
+        result = _validate_gamma_rate_mixture(m,
+                normalized_median_gamma_rate_mixture);
         if (result) return result;
     }
     else if (_exists(rate_mixture))

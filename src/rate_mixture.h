@@ -13,7 +13,8 @@ enum rate_mixture_mode {
     RATE_MIXTURE_NONE,
     RATE_MIXTURE_CUSTOM,
     RATE_MIXTURE_UNIFORM,
-    RATE_MIXTURE_GAMMA};
+    RATE_MIXTURE_GAMMA,
+    RATE_MIXTURE_GAMMA_MEDIAN};
 
 typedef struct
 {
@@ -28,7 +29,7 @@ void gamma_rate_mixture_clear(gamma_rate_mixture_t x);
 slong gamma_rate_mixture_category_count(const gamma_rate_mixture_t x);
 void gamma_rate_mixture_summarize(
         arb_ptr rate_mix_prior, arb_ptr rate_mix_rates, arb_ptr rate_mix_expect,
-        const gamma_rate_mixture_t x, slong prec);
+        const gamma_rate_mixture_t x, enum rate_mixture_mode mode, slong prec);
 
 
 typedef struct

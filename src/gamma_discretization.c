@@ -330,3 +330,41 @@ gamma_rates(arb_struct *rates, slong n, const arb_t s, slong prec)
     _arb_vec_clear(quantiles, n+1);
     _arb_vec_clear(expectiles, n+1);
 }
+
+void
+normalized_median_gamma_rates(
+        arb_struct *rates, slong n, const arb_t s, slong prec)
+{
+    int k;
+    arb_struct *quantiles;
+
+    quantiles = _arb_vec_init(n);
+    for (k = 0; k < n; k++)
+    {
+        /*
+         * If n == 4 then pick quantiles like o in
+         * | o | o | o | o |
+         * 0 1 2 3 4 5 6 7 8
+         * Note that these are the medians of each quartile.
+         */
+        gamma_quantile(quantiles + k, 2*k + 1, 2*n, s, prec);
+    }
+
+    if (GAMMA_DISC_DEBUG)
+    {
+        flint_printf("quantiles prec=%wd\n", prec);
+        _arb_vec_printd(quantiles, n, 15);
+    }
+
+    /*
+     * Normalize so that the expected rate is 1.
+     * This is equivalent to scaling the quantiles vector
+     * so that its entries add up to n.
+     */
+    {
+        _arb_vec_proportions(rates, quantiles, n, prec);
+        _arb_vec_scalar_mul_si(rates, rates, n, n, prec);
+    }
+
+    _arb_vec_clear(quantiles, n);
+}
