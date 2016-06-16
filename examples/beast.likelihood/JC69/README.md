@@ -1,3 +1,19 @@
+This is the first test in the
+[LikelihoodTest.java](https://github.com/beast-dev/beast-mcmc/blob/master/src/test/dr/evomodel/treelikelihood/LikelihoodTest.java) file in BEAGLE.
+It expects the log likelihood `-1992.20564`
+for a sequence alignment from several primate taxa,
+given a known tree, under Jukes-Cantor evolution.
+
+Command:
+```shell
+$ arbplf-ll < in.json > out.json
+```
+
+Output (out.json):
+```json
+{"columns": ["value"], "data": [[-1992.2056440317256]]}
+```
+
 Input (in.json):
 ```json
 {
@@ -809,14 +825,4 @@ Input (in.json):
       [2, 2, 2, 4, 4, 2, 4, 2, 4, 2, 4]]
   }
 }
-```
-
-Output (out.json):
-```json
-{"columns": ["value"], "data": [[-1992.2056440317256]]}
-```
-
-Command:
-```shell
-$ arbplf-ll < in.json > out.json
 ```
