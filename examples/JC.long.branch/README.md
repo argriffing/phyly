@@ -1,3 +1,6 @@
+Motivating example
+---
+
 This example involves a single branch
 under a Jukes-Cantor process of evolution,
 and was created in response to the question
@@ -18,20 +21,20 @@ For an extremely simple tree
 consisting of only a single branch with observations at both endpoints,
 and assuming a Jukes-Cantor process,
 the double precision log likelihood is indistinguishable from
-`-log(4)` when the branch length is large enough that at least
+`log(1/16)` when the branch length is large enough that at least
 29 substitutions are expected on the branch.
 This is true regardless of whether the initial and final states
 are identical or non-identical.
 
 ```shell
 $ arbplf-ll < jc29.same.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 $ arbplf-ll < jc29.diff.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 $ arbplf-ll < jc30.same.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 $ arbplf-ll < jc30.diff.json 
-{"columns": ["site", "value"], "data": [[0, -1.3862943611198906]]}
+{"columns": ["site", "value"], "data": [[0, -2.7725887222397811]]}
 ```
 
 Because the double precision log likelihood is the same across all
@@ -79,4 +82,52 @@ This can occur when the derivatives are smaller than around 10^-300.
 ```shell
 $ arbplf-deriv < jc600.same.json 
 {"columns": ["site", "edge", "value"], "data": [[0, 0, 0.0]]}
+```
+
+Additional examples
+---
+
+The subdirectories have various analyses
+([ll](ll), [deriv](deriv), [marginal](marginal), [dwell](dwell), and
+[trans](trans))
+of the single long branch Jukes-Cantor scenario.
+For these examples a branch length of 20 unconditionally
+expected substitutions is used, and four endpoint scenarios are considered
+for each example:
+
+ - both endpoints are observed and have different states
+ - both endpoints are observed and have the same state
+ - one endpoint is unobserved
+ - both endpoints are unobserved
+
+The 'tree' shape, the branch length, and the endpoint scenarios
+common to all analyses are represented in the following figure:
+
+![tree figure](treefig.png)
+
+All of these additional examples take the following JSON file as input:
+
+```json
+{
+  "model_and_data" : {
+    "edges" : [[0, 1]],
+    "edge_rate_coefficients" : [20],
+    "root_prior" : [0.25, 0.25, 0.25, 0.25],
+    "rate_matrix" : [
+      [0, 1, 1, 1],
+      [1, 0, 1, 1],
+      [1, 1, 0, 1],
+      [1, 1, 1, 0]],
+    "rate_divisor" : 3,
+    "character_definitions" : [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [1, 1, 1, 1]],
+    "character_data" : [
+      [0, 1],
+      [0, 0],
+      [2, 0],
+      [2, 2]]
+  }
+}
 ```
