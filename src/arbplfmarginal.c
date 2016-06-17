@@ -58,6 +58,10 @@
 #include "runjson.h"
 #include "arbplfmarginal.h"
 
+#define SITE_AXIS 0
+#define NODE_AXIS 1
+#define STATE_AXIS 2
+
 
 /* Likelihood workspace. */
 typedef struct
@@ -110,22 +114,21 @@ _nd_accum_update(nd_accum_t arr,
 {
     int site, i, j;
     arb_t cat_lhood, post_lhood, site_lhood;
-    nd_axis_struct *site_axis, *node_axis, *state_axis;
     int *coords;
     slong cat;
 
     slong ncats = model_and_data_rate_category_count(m);
     slong site_count = model_and_data_site_count(m);
 
+    nd_axis_struct *site_axis = arr->axes + SITE_AXIS;
+    nd_axis_struct *node_axis = arr->axes + NODE_AXIS;
+    nd_axis_struct *state_axis = arr->axes + STATE_AXIS;
+
     arb_init(cat_lhood);
     arb_init(post_lhood);
     arb_init(site_lhood);
 
     coords = malloc(arr->ndim * sizeof(int));
-
-    site_axis = arr->axes + 0;
-    node_axis = arr->axes + 1;
-    state_axis = arr->axes + 2;
 
     /* zero all requested cells of the array */
     nd_accum_zero_requested_cells(arr);
@@ -281,14 +284,18 @@ _query(model_and_data_t m,
     slong node_count = model_and_data_node_count(m);
     slong state_count = model_and_data_state_count(m);
 
+    nd_axis_struct *site_axis = axes + SITE_AXIS;
+    nd_axis_struct *node_axis = axes + NODE_AXIS;
+    nd_axis_struct *state_axis = axes + STATE_AXIS;
+
     /* initialize likelihood workspace */
     cross_site_ws_init(csw, m);
     likelihood_ws_init(w, m);
 
     /* initialize axes at zero precision */
-    nd_axis_init(axes+0, "site", site_count, r_site, 0, NULL, 0);
-    nd_axis_init(axes+1, "node", node_count, r_node, 0, NULL, 0);
-    nd_axis_init(axes+2, "state", state_count, r_state, 0, NULL, 0);
+    nd_axis_init(site_axis , "site", site_count, r_site, 0, NULL, 0);
+    nd_axis_init(node_axis, "node", node_count, r_node, 0, NULL, 0);
+    nd_axis_init(state_axis, "state", state_count, r_state, 0, NULL, 0);
 
     /* initialize nd accumulation array */
     nd_accum_pre_init(arr);
@@ -301,9 +308,9 @@ _query(model_and_data_t m,
         cross_site_ws_update(csw, m, prec);
 
         /* recompute axis reduction weights with increased precision */
-        nd_axis_update_precision(axes+0, r_site, prec);
-        nd_axis_update_precision(axes+1, r_node, prec);
-        nd_axis_update_precision(axes+2, r_state, prec);
+        nd_axis_update_precision(site_axis, r_site, prec);
+        nd_axis_update_precision(node_axis, r_node, prec);
+        nd_axis_update_precision(state_axis, r_state, prec);
 
         /*
          * Recompute the output array with increased working precision.
@@ -327,10 +334,9 @@ finish:
     likelihood_ws_clear(w, m);
 
     /* clear axes */
-    for (axis_idx = 0; axis_idx < ndim; axis_idx++)
-    {
-        nd_axis_clear(axes + axis_idx);
-    }
+    nd_axis_clear(site_axis);
+    nd_axis_clear(node_axis);
+    nd_axis_clear(state_axis);
 
     /* clear nd accumulation array */
     nd_accum_clear(arr);

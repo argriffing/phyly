@@ -187,8 +187,9 @@ get_column_agg_weights(
             result = -1;
             goto finish;
         }
+        idx = r->selection[0];
         arb_one(weight_divisor);
-        arb_one(weights + 0);
+        arb_one(weights + idx);
     }
     else
     {

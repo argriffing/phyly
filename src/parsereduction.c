@@ -82,8 +82,7 @@ _validate_column_aggregation(column_reduction_t r,
     int i;
     double weight;
     int n;
-    const char valid_agg_string_msg[] = (
-            "{\"sum\", \"avg\", \"only\"}");
+    const char valid_agg_string_msg[] = "{\"sum\", \"avg\", \"only\"}";
 
     if (!root)
     {
