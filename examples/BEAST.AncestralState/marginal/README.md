@@ -3,29 +3,6 @@ Command:
 $ arbplf-marginal < in.json > out.json
 ```
 
-Input (in.json):
-```json
-{
-  "model_and_data": {
-    "edges": [[4, 0], [4, 3], [3, 1], [3, 2]],
-    "edge_rate_coefficients": [2, 1, 1, 1],
-    "root_prior": [0.25, 0.25, 0.25, 0.25],
-    "rate_matrix": [
-      [0, 1, 1, 1], 
-      [1, 0, 1, 1], 
-      [1, 1, 0, 1], 
-      [1, 1, 1, 0]],
-    "rate_divisor": 3,
-    "probability_array" : [
-      [[1, 0, 0, 0],
-       [0, 1, 0, 0],
-       [0, 1, 0, 0],
-       [1, 1, 1, 1],
-       [1, 1, 1, 1]]]
-  }
-}
-```
-
 Output (out.json):
 ```json
 {
@@ -56,5 +33,28 @@ Output (out.json):
     [0, 4, 1, 0.33744518055975692],
     [0, 4, 2, 0.20085406347951812],
     [0, 4, 3, 0.20085406347951812]]
+}
+```
+
+Input (in.json):
+```json
+{
+  "model_and_data": {
+    "edges": [[4, 0], [4, 3], [3, 1], [3, 2]],
+    "edge_rate_coefficients": [2, 1, 1, 1],
+    "root_prior": [0.25, 0.25, 0.25, 0.25],
+    "rate_matrix": [
+      [0, 1, 1, 1], 
+      [1, 0, 1, 1], 
+      [1, 1, 0, 1], 
+      [1, 1, 1, 0]],
+    "rate_divisor": 3,
+    "probability_array" : [
+      [[1, 0, 0, 0],
+       [0, 1, 0, 0],
+       [0, 1, 0, 0],
+       [1, 1, 1, 1],
+       [1, 1, 1, 1]]]
+  }
 }
 ```
