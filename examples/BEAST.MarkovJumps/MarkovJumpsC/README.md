@@ -82,8 +82,10 @@ This is analogous to `MarkovJumpsCore.makeComparableToRPackage(c);` in the BEAST
 A few other minor changes are made:
  - The rate matrix is multiplied by 10 so that its entries
 are exactly represented by floating point numbers.
- - A few `"aggregation" : "only"` reductions are added,
-to reduce the spamminess of the output JSON file.
+ - For the same reason, `"equilibrium_distribution"` is used instead of
+`[0.2, 0.3, 0.25, 0.25]` for the root prior.
+ - A few `"aggregation" : "only"` reductions are made,
+removing uninformative columns in the output table.
 
 Command:
 ```shell
