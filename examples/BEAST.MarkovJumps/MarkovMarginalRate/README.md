@@ -56,8 +56,11 @@ Input (in.json):
     "rate_divisor": "equilibrium_exit_rate",
     "probability_array" : [[
       [1, 1, 1, 1],
-      [1, 1, 1, 1]]]},
-    "trans_reduction" : {"selection" : [[0, 1]]}
+      [1, 1, 1, 1]]]
+  },
+  "trans_reduction" : {
+    "selection" : [[0, 1]]
+  }
 }
 ```
 
@@ -163,7 +166,10 @@ Input (in.pedantic.json):
     "rate_divisor": "equilibrium_exit_rate",
     "probability_array" : [[
       [1, 1, 1, 1],
-      [1, 1, 1, 1]]]},
-    "trans_reduction" : {"selection" : [[0, 1]]}
+      [1, 1, 1, 1]]]
+  },
+  "trans_reduction" : {
+    "selection" : [[0, 1]]
+  }
 }
 ```
