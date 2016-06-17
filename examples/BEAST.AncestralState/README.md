@@ -16,5 +16,6 @@ The [ll](ll) subdirectory checks the log likelihood under the imputed states.
 Because the state at each internal and leaf node is assumed to be
 known after the imputation, and because of the relative simplicity
 of Jukes-Cantor state transition probabilities, it is possible
-to compute the log likelihood directly without 'pruning'
-and without numerically solving differential equations.
+to compute the log likelihood associated with the imputed data
+directly without 'pruning' and without numerically solving
+differential equations.
