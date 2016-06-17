@@ -50,10 +50,8 @@ default_in = {
          [1, 1, 1, 1]]]},
      }
 
-def _assert_allclose_series(a, b):
-    # Align the layouts of the two pandas Series objects,
-    # preparing to compare their values.
-    # The align member function returns two new pandas Series objects.
+
+def _pd_assert_allclose(a, b):
     u, v = a.align(b)
     assert_allclose(u.values, v.values)
 
@@ -73,6 +71,22 @@ def myll(d):
     s = arbplf_ll(json.dumps(d))
     df = pd.read_json(StringIO(s), orient='split', precise_float=True)
     return df
+
+
+def test_trans_selection_only_vs_sum():
+    for trans in [0, 1], [1, 0], [1, 3], [3, 1]:
+        x = copy.deepcopy(default_in)
+        x['trans_reduction'] = dict(selection=[trans], aggregation='only')
+        x['edge_reduction'] = dict(aggregation='sum')
+        x['site_reduction'] = dict(selection=[0, 1])
+        x = mytrans(x).set_index('site')
+        y = copy.deepcopy(default_in)
+        y['trans_reduction'] = dict(selection=[trans], aggregation='sum')
+        y['edge_reduction'] = dict(aggregation='sum')
+        y['site_reduction'] = dict(selection=[1, 0])
+        y = mytrans(y).set_index('site')
+        _pd_assert_allclose(x, y)
+
 
 class TestTransEdgeOrder(TestCase):
 
@@ -108,7 +122,7 @@ class TestTransEdgeOrder(TestCase):
                     ym['edge_rate_coefficients'][v])
         g = mytrans(x).set_index('edge').value
         #
-        _assert_allclose_series(fperm, g)
+        _pd_assert_allclose(fperm, g)
 
     def test_rate_mixture_state_aggregation(self):
         rates = [2, 3]
@@ -158,7 +172,7 @@ class TestTransEdgeOrder(TestCase):
         x['trans_reduction'] = trans_reduction
         actual = mytrans(x).set_index('site').value
         # check that the two calculations are equivalent
-        _assert_allclose_series(actual, desired)
+        _pd_assert_allclose(actual, desired)
 
     def test_rate_mixture_no_state_aggregation(self):
         # FIXME .values may expect a particular ordering of the indices
@@ -245,4 +259,4 @@ def test_explicit_vs_implicit_aggregation_over_transitions():
         y['trans_reduction'] = {'aggregation' : agg}
         g = mytrans(y).set_index('edge').value
         #
-        _assert_allclose_series(f, g)
+        _pd_assert_allclose(f, g)

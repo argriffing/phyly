@@ -572,7 +572,7 @@ _recompute_second_order(so_t so,
     _csr_graph_get_preorder_edges(pre_to_idx, m->g, m->navigation->preorder);
 
     /* define site aggregation weights */
-    result = get_site_agg_weights(
+    result = get_column_agg_weights(
             site_weight_divisor, site_weights, site_count, r_site, prec);
     if (result) goto finish;
 
@@ -925,7 +925,7 @@ void _compute_ll(arb_t ll,
     }
 
     /* define site aggregation weights */
-    result = get_site_agg_weights(
+    result = get_column_agg_weights(
             site_weight_divisor, site_weights, site_count, p->r_site, prec);
     if (result) goto finish;
 

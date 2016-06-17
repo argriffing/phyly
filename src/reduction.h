@@ -25,22 +25,6 @@ typedef column_reduction_struct column_reduction_t[1];
 void column_reduction_init(column_reduction_t r);
 void column_reduction_clear(column_reduction_t r);
 
-int get_edge_agg_weights(
-        arb_t weight_divisor, arb_struct * weights,
-        int edge_count, int *order, column_reduction_t r, slong prec);
-
-int get_site_agg_weights(
-        arb_t weight_divisor, arb_struct * weights,
-        int site_count, column_reduction_t r, slong prec);
-
-int get_state_agg_weights(
-        arb_t weight_divisor, arb_struct * weights,
-        int state_count, column_reduction_t r, slong prec);
-
-int get_node_agg_weights(
-        arb_t weight_divisor, arb_struct * weights,
-        int node_count, column_reduction_t r, slong prec);
-
 int get_column_agg_weights(
         arb_t weight_divisor, arb_struct * weights,
         int column_count, column_reduction_t r, slong prec);

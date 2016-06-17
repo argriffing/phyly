@@ -272,7 +272,6 @@ _query(model_and_data_t m,
 {
     json_t * j_out = NULL;
     slong prec;
-    int axis_idx;
     nd_axis_struct axes[3];
     nd_accum_t arr;
     cross_site_ws_t csw;

@@ -259,6 +259,18 @@ class TestDerivSelection(CheckDeriv, TestCase):
 
         _assert_allclose_series(f, g)
 
+    def test_edge_selection_only_vs_sum(self):
+        for edge in range(7):
+            x = copy.deepcopy(default_in)
+            x['edge_reduction'] = dict(selection=[edge], aggregation='only')
+            x['site_reduction'] = dict(selection=[0, 1, 1])
+            x = myderiv(x).set_index('site')
+            y = copy.deepcopy(default_in)
+            y['edge_reduction'] = dict(selection=[edge], aggregation='sum')
+            y['site_reduction'] = dict(selection=[1, 0, 1])
+            y = myderiv(y).set_index('site')
+            _assert_allclose_series(x, y)
+
 
 class TestDerivSelectionAggregation(CheckDeriv, TestCase):
 
