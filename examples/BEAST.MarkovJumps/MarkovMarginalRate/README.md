@@ -4,7 +4,7 @@ which compares a 'marginal rate' to the reference value
 `rMarkovMarginalRate = 0.2010050 * 0.3`.
 
 The 'marginal rate' in question is the
-number of `A -> C` substitutions expected at stationary
+number of `A -> C` substitutions expected at stationarity
 along a branch for which the total expected number of substitutions is 1,
 for an HKY model with kappa = 2 and with
 the following stationary distribution.
