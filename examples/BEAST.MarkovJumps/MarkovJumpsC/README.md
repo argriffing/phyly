@@ -14,7 +14,6 @@ p(T) = 0.25
 Analysis using arbplf-trans
 ---
 
-```
 Command:
 ```shell
 $ arbplf-trans < in.json > out.json
