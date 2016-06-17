@@ -137,7 +137,9 @@ rewritten in a way that is mathematically equivalent but which avoids
 numbers not representable exactly in double precision floating point
 (for example 0.3 cannot be exactly represented,
 but 3 and 2.5 can be represented).
-This means that the output should be correct to within one 'ulp'.
+Because the inputs are exact and because `arbplf-trans`
+limits numerical errors,
+the output should be correct to within one 'ulp'.
 
 Command:
 ```shell
