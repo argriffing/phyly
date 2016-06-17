@@ -19,6 +19,30 @@ Command:
 $ arbplf-trans < in.json > out.json
 ```
 
+Output (out.json):
+```json
+{
+  "columns": ["site", "edge", "first_state", "second_state", "value"],
+  "data": [
+    [0, 0, 0, 1, 0.034557322625747726],
+    [1, 0, 0, 1, 0.66635306919144355],
+    [2, 0, 0, 1, 0.061024826428408126],
+    [3, 0, 0, 1, 0.141775071656737],
+    [4, 0, 0, 1, 0.0099347016603706789],
+    [5, 0, 0, 1, 0.038501747671765015],
+    [6, 0, 0, 1, 0.0099347016603706789],
+    [7, 0, 0, 1, 0.011499342473472427],
+    [8, 0, 0, 1, 0.011561873239441333],
+    [9, 0, 0, 1, 0.20159458430087887],
+    [10, 0, 0, 1, 0.0060246903175809443],
+    [11, 0, 0, 1, 0.028236718722494548],
+    [12, 0, 0, 1, 0.0099347016603706789],
+    [13, 0, 0, 1, 0.086710476457712418],
+    [14, 0, 0, 1, 0.0099347016603706789],
+    [15, 0, 0, 1, 0.0057448043879856107]]
+}
+```
+
 Input (in.json):
 ```json
 {
@@ -48,30 +72,6 @@ Input (in.json):
 }
 ```
 
-Output (out.json):
-```json
-{
-  "columns": ["site", "edge", "first_state", "second_state", "value"],
-  "data": [
-    [0, 0, 0, 1, 0.034557322625747726],
-    [1, 0, 0, 1, 0.66635306919144355],
-    [2, 0, 0, 1, 0.061024826428408126],
-    [3, 0, 0, 1, 0.141775071656737],
-    [4, 0, 0, 1, 0.0099347016603706789],
-    [5, 0, 0, 1, 0.038501747671765015],
-    [6, 0, 0, 1, 0.0099347016603706789],
-    [7, 0, 0, 1, 0.011499342473472427],
-    [8, 0, 0, 1, 0.011561873239441333],
-    [9, 0, 0, 1, 0.20159458430087887],
-    [10, 0, 0, 1, 0.0060246903175809443],
-    [11, 0, 0, 1, 0.028236718722494548],
-    [12, 0, 0, 1, 0.0099347016603706789],
-    [13, 0, 0, 1, 0.086710476457712418],
-    [14, 0, 0, 1, 0.0099347016603706789],
-    [15, 0, 0, 1, 0.0057448043879856107]]
-}
-```
-
 Reordered analysis, with improved accuracy and simpler output
 ---
 
@@ -88,34 +88,6 @@ to reduce the spamminess of the output JSON file.
 Command:
 ```shell
 $ arbplf-trans < in.reordered.json > out.reordered.json
-```
-
-Input (in.reordered.json):
-```json
-{
-  "model_and_data": {
-    "edges": [[0, 1]],
-    "edge_rate_coefficients": [1],
-    "root_prior" : "equilibrium_distribution",
-    "rate_matrix": [
-      [0, 2, 5, 2.5],
-      [3, 0, 2.5, 5],
-      [6, 2, 0, 2.5],
-      [3, 4, 2.5, 0]],
-    "rate_divisor": "equilibrium_exit_rate",
-    "character_definitions" : [
-      [1, 0, 0, 0],
-      [0, 0, 1, 0],
-      [0, 1, 0, 0],
-      [0, 0, 0, 1]],
-    "character_data" : [
-      [0, 0], [0, 1], [0, 2], [0, 3],
-      [1, 0], [1, 1], [1, 2], [1, 3],
-      [2, 0], [2, 1], [2, 2], [2, 3],
-      [3, 0], [3, 1], [3, 2], [3, 3]]},
-  "edge_reduction" : {"aggregation" : "only"},
-  "trans_reduction" : {"selection" : [[0, 1]], "aggregation" : "only"}
-}
 ```
 
 Output (out.reordered.json):
@@ -161,4 +133,32 @@ BEAST reference values (
 0.009934702
 0.08671048
 0.005744804
+```
+
+Input (in.reordered.json):
+```json
+{
+  "model_and_data": {
+    "edges": [[0, 1]],
+    "edge_rate_coefficients": [1],
+    "root_prior" : "equilibrium_distribution",
+    "rate_matrix": [
+      [0, 2, 5, 2.5],
+      [3, 0, 2.5, 5],
+      [6, 2, 0, 2.5],
+      [3, 4, 2.5, 0]],
+    "rate_divisor": "equilibrium_exit_rate",
+    "character_definitions" : [
+      [1, 0, 0, 0],
+      [0, 0, 1, 0],
+      [0, 1, 0, 0],
+      [0, 0, 0, 1]],
+    "character_data" : [
+      [0, 0], [0, 1], [0, 2], [0, 3],
+      [1, 0], [1, 1], [1, 2], [1, 3],
+      [2, 0], [2, 1], [2, 2], [2, 3],
+      [3, 0], [3, 1], [3, 2], [3, 3]]},
+  "edge_reduction" : {"aggregation" : "only"},
+  "trans_reduction" : {"selection" : [[0, 1]], "aggregation" : "only"}
+}
 ```
