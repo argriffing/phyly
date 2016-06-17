@@ -1,9 +1,16 @@
+The log likelihood associated with the augmented data
+can be computed directly as
+log(
+(prior probability of root state) *
+(probability of different endpoints on one branch of length 2) *
+(probability of identical endpoints on three branches each of length 1)).
+
 ```python
 >>> log( 0.25 * (0.25 - 0.25 * exp(-2*4/3)) * (0.25 + 0.75 * exp(-4*1/3))**3 )
 -5.2555142646496797
 ```
 
-Command:
+Or it can be computed using `arbplf-ll` as follows:
 ```shell
 $ arbplf-ll < in.json > out.json
 ```
