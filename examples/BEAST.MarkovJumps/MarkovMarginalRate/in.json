@@ -11,6 +11,9 @@
     "rate_divisor": "equilibrium_exit_rate",
     "probability_array" : [[
       [1, 1, 1, 1],
-      [1, 1, 1, 1]]]},
-    "trans_reduction" : {"selection" : [[0, 1]]}
+      [1, 1, 1, 1]]]
+  },
+  "trans_reduction" : {
+    "selection" : [[0, 1]]
+  }
 }
