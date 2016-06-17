@@ -9,6 +9,7 @@ p(A) = 0.3
 p(C) = 0.2
 p(G) = 0.25
 p(T) = 0.25
+```
 
 Analysis using arbplf-trans
 ---
