@@ -1,3 +1,8 @@
+Command:
+```shell
+$ arbplf-marginal < in.json > out.json
+```
+
 Input (in.json):
 ```json
 {
@@ -17,8 +22,7 @@ Input (in.json):
        [0, 1, 0, 0],
        [1, 1, 1, 1],
        [1, 1, 1, 1]]]
-  },
-  "node_reduction" : {"selection" : [4], "aggregation" : "only"}
+  }
 }
 ```
 
